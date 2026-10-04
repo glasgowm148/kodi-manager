@@ -1,0 +1,1 @@
+<settings><category label="Fen"><setting id="external_scraper" type="bool" label="External scraper" default="false"/></category></settings>

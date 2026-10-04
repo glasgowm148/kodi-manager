@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kodi-manager"
+version = "0.4.0"
+description = "Reusable Kodi management library and optional authenticated dashboard companion"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+dependencies = []
+classifiers = ["Development Status :: 3 - Alpha", "Programming Language :: Python :: 3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9", "build>=1.2,<2", "ruff>=0.12,<1"]
+
+[project.urls]
+Repository = "https://github.com/glasgowm148/kodi-manager"
+Issues = "https://github.com/glasgowm148/kodi-manager/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kodi_manager"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"web" = "kodi_manager/web"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "web", "addon", "tests", "scripts", "docs", ".github", ".gitattributes", "pyproject.toml", "README.md", "LICENSE", "SECURITY.md", "AGENTS.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]

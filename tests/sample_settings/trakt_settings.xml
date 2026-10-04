@@ -1,0 +1,1 @@
+<settings><category label="Trakt"><setting id="scrobble" type="bool" label="Scrobble" default="true"/><setting id="oauth_token" type="text" label="OAuth token" default="abc"/></category></settings>

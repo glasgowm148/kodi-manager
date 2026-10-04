@@ -1,0 +1,11 @@
+<settings>
+  <category label="32000">
+    <setting id="enable_metadata" type="bool" label="32001" default="true"/>
+    <setting id="username" type="text" label="32002" default=""/>
+    <setting id="max_items" type="integer" label="32003" default="20"/>
+    <setting id="view_mode" type="enum" label="32004" values="list|poster" default="list"/>
+    <setting id="api_key" type="text" label="32005" default="secret"/>
+    <setting id="pick_folder" type="folder" label="32006" default=""/>
+    <setting id="do_action" type="action" label="32007" default=""/>
+  </category>
+</settings>

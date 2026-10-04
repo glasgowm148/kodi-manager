@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kodi Manager</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="settings-ui.css">
+  <link rel="stylesheet" href="widgets.css">
+</head>
+<body>
+  <header>
+    <h1>Kodi Manager</h1>
+    <div class="topbar"><input id="globalSearch" placeholder="Search configs e.g. torbox"><button id="runSearch" class="action">Search</button><span id="top">Starting...</span><span id="dirtyStatus" class="muted">No unsaved changes</span><button id="saveChanges" class="action" disabled>Save Changes</button></div>
+  </header>
+  <div class="shell">
+    <nav id="nav"></nav>
+    <main>
+      <section id="banner"></section>
+      <section id="content"></section>
+    </main>
+  </div>
+  <script src="settings-ui.js"></script>
+  <script src="widgets.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

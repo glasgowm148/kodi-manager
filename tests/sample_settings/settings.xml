@@ -1,0 +1,7 @@
+<settings>
+  <setting id="enable_metadata" value="false"/>
+  <setting id="username" value="alice"/>
+  <setting id="max_items" value="50"/>
+  <setting id="view_mode" value="poster"/>
+  <setting id="api_key" value="real-secret"/>
+</settings>

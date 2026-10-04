@@ -1,0 +1,1 @@
+<settings><category label="Providers"><setting id="provider.demo" type="bool" label="Demo provider" default="true"/></category></settings>
