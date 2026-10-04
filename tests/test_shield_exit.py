@@ -31,7 +31,7 @@ class ShieldExitTests(unittest.TestCase):
     def test_abort_does_not_reuse_earlier_log_records(self):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / 'kodi.log'
-            log.write_text('info <general>: Stopping the application...\n')
+            log.write_bytes(b'info <general>: Stopping the application...\n')
             guard = shield_exit.ShieldExitGuard(True, str(log), '/script', '/result')
             with patch.object(guard, 'arm') as arm:
                 guard.on_abort()
@@ -39,9 +39,9 @@ class ShieldExitTests(unittest.TestCase):
 
     def test_native_abort_launches_only_once_with_current_identity(self):
         with tempfile.TemporaryDirectory() as directory:
-            log = Path(directory) / 'kodi.log'; log.write_text('startup\n')
+            log = Path(directory) / 'kodi.log'; log.write_bytes(b'startup\n')
             guard = shield_exit.ShieldExitGuard(True, str(log), '/script', '/result')
-            with log.open('a') as file: file.write('info <general>: Stopping the application...\n')
+            with log.open('ab') as file: file.write(b'info <general>: Stopping the application...\n')
             with patch('shield_exit.process_start', return_value='9988'), patch('shield_exit.subprocess.Popen', return_value=Mock()) as spawn:
                 guard.on_abort(); guard.arm()
                 spawn.assert_called_once()
@@ -52,20 +52,20 @@ class ShieldExitTests(unittest.TestCase):
 
     def test_shutdown_marker_can_arrive_after_abort_callback(self):
         with tempfile.TemporaryDirectory() as directory:
-            log = Path(directory) / 'kodi.log'; log.write_text('startup\n')
+            log = Path(directory) / 'kodi.log'; log.write_bytes(b'startup\n')
             guard = shield_exit.ShieldExitGuard(True, str(log), '/script', '/result')
             def publish(_):
-                with log.open('a') as file:
-                    file.write('info <general>: Stopping the application...\n')
+                with log.open('ab') as file:
+                    file.write(b'info <general>: Stopping the application...\n')
             with patch('shield_exit.time.sleep', side_effect=publish), patch.object(guard, 'arm') as arm:
                 guard.on_abort()
                 arm.assert_called_once()
 
     def test_arm_limits_old_history_without_reading_pre_service_records(self):
         with tempfile.TemporaryDirectory() as directory:
-            log = Path(directory) / 'kodi.log'; log.write_text('startup\n')
+            log = Path(directory) / 'kodi.log'; log.write_bytes(b'startup\n')
             guard = shield_exit.ShieldExitGuard(True, str(log), '/script', '/result')
-            with log.open('a') as file: file.write('session noise\n' * 20000)
+            with log.open('ab') as file: file.write(b'session noise\n' * 20000)
             with patch('shield_exit.process_start', return_value='9988'), patch('shield_exit.subprocess.Popen', return_value=Mock()) as spawn:
                 guard.arm()
                 self.assertEqual(int(spawn.call_args.args[0][5]), log.stat().st_size - 65536)
