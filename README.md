@@ -1,66 +1,97 @@
-# Kodi Manager
+<p align="center">
+  <img src="docs/images/banner.svg" alt="Kodi Manager — Understand your setup. Shape your Kodi experience." width="100%">
+</p>
 
-A reusable **Python library**, **Kodi service add-on** and **local browser dashboard** for inspecting
-and configuring Kodi. It is the optional on-device companion to
-[nvidia-MCP](https://github.com/glasgowm148/nvidia-MCP), and can also be used independently.
+<p align="center">
+  <a href="https://github.com/glasgowm148/kodi-manager/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/glasgowm148/kodi-manager/ci.yml?branch=main&amp;style=flat-square&amp;label=CI" alt="CI status"></a>
+  <a href="https://github.com/glasgowm148/kodi-manager/releases"><img src="https://img.shields.io/github/v/release/glasgowm148/kodi-manager?include_prereleases&amp;style=flat-square&amp;color=7dd3fc" alt="Latest release, including prereleases"></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/Python-3.9%2B-7dd3fc?style=flat-square" alt="Python library: 3.9 or newer"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c4b5fd?style=flat-square" alt="MIT license"></a>
+</p>
 
-The Python library runs on a computer. The companion runs **inside Kodi**, where it can access live
-add-on settings, profile paths and skin information unavailable through standard remote JSON-RPC.
-Installing the Python library alone does not install anything on a TV.
+<p align="center">
+  <a href="#what-you-can-do">Features</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#python-library">Python library</a> ·
+  <a href="#documentation">Documentation</a>
+</p>
 
-**Prerelease:** see [compatibility and remaining live checks](docs/compatibility.md),
-[recovery](docs/recovery.md) and the [changelog](CHANGELOG.md). Use 0.4.1 or later to avoid
-same-second backup collisions in 0.4.0.
+**Inspect and configure Kodi from your browser or your own tools.** See which add-ons are enabled, understand the playback pipeline, explore widget sources and manage supported Bingie layouts. Use it independently or as the on-device companion to [nvidia-MCP](https://github.com/glasgowm148/nvidia-MCP).
 
-## What it adds
+![Kodi Manager dashboard with component statuses, settings links and backup checkpoints](docs/images/dashboard.png)
 
-- Add-on/schema discovery, friendly settings, default/current values and masked credentials.
-- Player/provider/account pipeline inspection, including POV and both TMDb Helper variants.
-- Bingie menu/hub inspection, paginated provider folders and row previews; previewed layout edits,
-  revision checks and backups for supported skin versions.
-- Add-on and stack configuration backups, restore, logs and diagnostic pages.
-- A family-filter directory helper, plus reusable settings, validation, path and layout modules.
+*Public dashboard captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
-The public version contains original Manager code and synthetic tests. It contains **no personal
-accounts, watch history, device settings, vendor add-ons or household-specific third-party patches**.
-The Custom fixes page reports that no fixes are bundled. Installing this does not reproduce every
-playback/skin patch applied to the original household setup.
+> [!NOTE]
+> **Alpha / prerelease.** Use **0.4.1 or later** for the backup collision fix. The portable companion
+> still needs live-TV verification; see [compatibility](docs/compatibility.md) and [recovery](docs/recovery.md).
 
-## Install the Kodi companion
+## What you can do
 
-1. Download `service.kodi.addonadmin-0.4.1.zip` from the
-   [release](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.4.1), and verify its accompanying
-   SHA-256 file if transferring it through another system.
-2. Copy the ZIP to storage Kodi can access. In Kodi enable **Settings → System → Add-ons → Unknown
-   sources**, then **Add-ons → Install from zip file** and select it. This uses Kodi's installer rather
-   than copying files behind its add-on database.
-3. Open **My add-ons → Services → Kodi Manager → Configure**. For access from another computer,
-   enable LAN access and set the bind host to `0.0.0.0` (port `8765`). The default is loopback only.
-4. Restart the service/Kodi when the TV is free. Open `http://YOUR_KODI_IP:8765`.
-5. Enter the generated bearer token. It is in the active profile's
-   `addon_data/service.kodi.addonadmin/settings.xml`, under `auth_token`. Read it privately from local,
-   mounted or ADB-accessible Kodi storage. It is separate from Kodi's HTTP password.
+| Feature | What it helps you understand or change |
+| --- | --- |
+| **Setup dashboard** | Installation, enabled states and saved configuration, with explicit unknown states |
+| **Friendly settings** | Add-on schemas, current/default values, searchable controls and masked credentials |
+| **Playback pipeline** | The selected player, helper routing and evidence for provider/account links |
+| **Bingie Studio** | Current menu/hubs, paginated add-on folders, row previews and reviewed layout changes |
+| **Configuration recovery** | Add-on/stack backups, restore and diagnostic logs |
+| **Python library** | An authenticated API client, offline schema parsing and reusable configuration modules |
 
-**Write mode starts disabled.** Enable it in the service settings only when making changes. API
-clients can also require their own write opt-in. Backups are private and can contain credentials.
-Use a trusted LAN; do not expose the HTTP service to the internet.
+<details>
+<summary><strong>See the playback pipeline</strong></summary>
 
-Generic discovery/settings do not require Bingie. Layout writes recognize reviewed **Bingie 2.0.2 /
-Skin Shortcuts 2.0.3 source hashes**; unknown variants are view-only. Existing custom installations
-should be backed up before upgrading: this portable release deliberately omits their patch bundles.
+![Playback pipeline showing the interface, metadata helper, playback provider and routing evidence](docs/images/pipeline.png)
 
-## Use as a Python library
+*Synthetic example showing a Bingie → TMDb Bingie Helper → POV setup. Detected relationships are separate from account authentication.*
 
-Python 3.9+, no runtime dependencies. Install the release wheel, or install from source:
+</details>
 
-```sh
-git clone https://github.com/glasgowm148/kodi-manager.git
-cd kodi-manager
-python3 -m venv .venv
-.venv/bin/python -m pip install .
+## Which part runs where?
+
+| Part | Runs on | Purpose |
+| --- | --- | --- |
+| **Kodi service add-on** | Inside Kodi | Reads the live profile/settings and provides the local API |
+| **Browser dashboard** | Your computer or another LAN device | Uses that API to inspect and configure Kodi |
+| **Python library** | Your computer | Lets scripts and MCP clients use the API or parse schemas offline |
+
+Installing the Python library does **not** install the TV service. The service and library are released separately as a Kodi ZIP and Python wheel, from the same source. No PyPI publication is implied.
+
+## Quick start
+
+**If you use an agent, let it handle the downloads, transfer and computer configuration.** You handle the TV settings and native Kodi installer. Both devices must be on the same home network.
+
+1. **Prepare the TV.** Open Kodi and find the device's local IP. On a Shield, use **Settings → Device
+   Preferences → About → Status → IP address**. For agent-assisted transfer, complete the Shield's
+   [network-debugging preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md).
+2. **Hand over to the agent.** Give it the prompt below. It checks existing installations, prepares
+   the verified release ZIP and tells you its location on the TV.
+3. **Install and enable LAN access in Kodi.** Use **Add-ons → Install from zip file**, then **My
+   add-ons → Services → Kodi Manager → Configure**. Enable LAN access, set host `0.0.0.0` and port
+   `8765`. Restart when the TV is free; the agent retrieves the token privately and opens the dashboard.
+
+```text
+Set up https://github.com/glasgowm148/kodi-manager for my Kodi device.
+Read docs/setup.md and handle the computer steps automatically.
+Kodi IP: YOUR_KODI_IP
+Check for an existing installation and preserve customizations.
+Download and verify the companion ZIP, transfer it using authorized access,
+and tell me where to select it in Kodi's native installer.
+Retrieve the Manager token privately and verify read-only dashboard/API access.
+Keep write mode off. Do not interrupt playback.
 ```
+ Prefer to install manually? The [setup guide](docs/setup.md) includes the release download, exact Kodi menus, token location and connection troubleshooting. A bare Kodi installation needs no Bingie skin for general discovery/settings features.
 
-On Windows use `py -3 -m venv .venv` and `.venv\Scripts\python.exe`.
+## Making changes
+
+**Write mode starts disabled.** Enable it in the service settings when ready to change configuration; Python clients also need `allow_writes=True`. Layout writes require reviewed **Bingie 2.0.2 / Skin Shortcuts 2.0.3 source hashes**. Unknown variants stay view-only.
+
+Use a trusted LAN: the bearer-authenticated HTTP service is unencrypted and should not be exposed to the internet. Backups and account/log diagnostics are private and can contain credentials.
+
+This release ships Manager code, not household settings, cloud accounts/history or third-party provider/skin patch bundles. Account controls edit installed add-on settings; cloud signup/OAuth and Trakt history migration are separate workflows. See [API boundaries](docs/api.md).
+
+## Python library
+
+Use **Python 3.9+**. The library has no runtime dependencies. Install the wheel from [Releases](https://github.com/glasgowm148/kodi-manager/releases), or use the source instructions below.
 
 ```python
 import os
@@ -70,18 +101,19 @@ manager = ManagerClient("http://192.168.1.50:8765", os.environ["KODI_MANAGER_TOK
 print(manager.status())
 print(manager.pipeline())
 print(manager.layout())
-print(manager.sources())
-# A bounded preview executes the installed provider's code:
-# manager.browse("plugin://plugin.video.pov/", limit=24)
 ```
+ Use your device's address. `ManagerClient` also exposes health, add-ons, settings, sources, bounded folder browsing and layout preview/apply. Handle `ManagerError`; the client bounds responses and rejects redirects. See the [API guide](docs/api.md) for the preview/apply workflow and operation rules.
 
-`ManagerClient` has status, health, pipeline, addons, settings, layout, sources, browse and layout
-preview/apply methods. `request()` supports other documented `/api/` endpoints, rejects redirects,
-does not use environment proxies, and bounds requests/responses. Writes require `allow_writes=True`
-and the companion's write mode. Handle `ManagerError`; errors do not include tokens or response bodies.
-See [the API guide](docs/api.md) for live/offline boundaries and a layout workflow.
+<details>
+<summary><strong>Install from source and parse settings offline</strong></summary>
 
-Offline schema parsing is also available without Kodi:
+```sh
+git clone https://github.com/glasgowm148/kodi-manager.git
+cd kodi-manager
+python3 -m venv .venv
+.venv/bin/python -m pip install .
+```
+ On Windows use `py -3 -m venv .venv` and `.venv\Scripts\python.exe`.
 
 ```python
 from kodi_manager import parse_schema, flatten_settings
@@ -89,29 +121,23 @@ from kodi_manager import parse_schema, flatten_settings
 schema = parse_schema("addon/resources/settings.xml", "addon", "userdata/settings.xml")
 settings = flatten_settings(schema)  # Secret values are masked.
 ```
+ The top-level client/parser exports are the public interface. Internal runtime modules such as `server`, `pipeline` and `skin_layout` need Kodi's `xbmc` runtime or an application-supplied adapter; their interfaces may change during alpha.
 
-`kodi_manager.server`, `pipeline`, `skin_layout`, `widget_catalog` and adapters are reusable internal
-modules accepting a Kodi API adapter. Live calls require Kodi's `xbmc` runtime or an adapter supplied
-by the application. Their internals may change during alpha; the top-level client/parser exports are
-the intended public interface. No PyPI publication is implied; releases provide installable wheels.
+</details>
 
-## Build and test
+## Documentation
 
-```sh
-.venv/bin/python -m pip install -e '.[dev]'
-.venv/bin/pytest -q
-.venv/bin/ruff check .
-node --test tests/*.js
-.venv/bin/python -m build
-.venv/bin/python scripts/build_addon.py
-```
+| Guide | Use it for |
+| --- | --- |
+| [Setup](docs/setup.md) | TV installation, agent computer steps and connection troubleshooting |
+| [API](docs/api.md) | Endpoints, authentication, layout workflows and runtime boundaries |
+| [Compatibility](docs/compatibility.md) | Reviewed skin versions, test evidence and remaining live checks |
+| [Recovery](docs/recovery.md) | Backup, restore and upgrade preparation |
+| [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) | Development, packaging and release checks |
+| [Security](SECURITY.md) | Private diagnostics and vulnerability reports |
 
-The library and Kodi ZIP share `src/kodi_manager`; the browser assets have one source in `web/`.
-The deterministic companion builder uses an explicit resource allowlist and verifies matching
-versions. Tests use stubs/temporary folders/local HTTP, not a real TV. CI builds Linux/Windows
-Python 3.9, 3.11 and 3.13. Compatibility beyond the original Kodi 22 beta 2 setup is not yet live-tested.
+The library and Kodi ZIP share `src/kodi_manager`; browser assets live in `web/`. CI checks Python and UI tests, fresh-wheel installation and release contents. Development commands are in [Contributing](CONTRIBUTING.md).
 
-See [contributing and release checks](CONTRIBUTING.md). CI checks fresh-wheel installation, release
-archive contents, dependency vulnerabilities and Git-history secrets; Dependabot proposes monthly updates.
+---
 
-MIT licensed. Not affiliated with Kodi or NVIDIA. Provider add-ons/accounts are supplied by the user.
+[MIT license](LICENSE). Independent project; not affiliated with Kodi or NVIDIA. Provider add-ons and accounts are supplied by the user.
