@@ -1,0 +1,15 @@
+name: Feature request
+description: Explain a user problem and the desired outcome.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and proposed behavior
+      description: What is difficult, and what should the user or agent be able to do?
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and recovery
+      description: Relevant Kodi/skin/device versions, viewing interruptions and how a change could be undone. No private data.

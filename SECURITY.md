@@ -12,6 +12,10 @@ Backups, logs and account diagnostics may contain personal data. Report findings
 reproduction steps and redacted output via a private GitHub security advisory; never include real
 tokens or an entire Kodi backup in an issue.
 
+Use [GitHub's private vulnerability reporting](https://github.com/glasgowm148/kodi-manager/security/advisories/new).
+Include affected versions and a minimal synthetic reproduction; avoid public exploit reports while a
+fix is being coordinated. The portable service remains a prerelease with [documented verification limits](docs/compatibility.md).
+
 The fix protection engine accepts externally supplied verified manifests for reviewed code versions.
 No third-party patch payloads ship here. Unknown Bingie sources cannot be written by the layout
 adapter. Back up an existing customized Manager before installing this portable companion.

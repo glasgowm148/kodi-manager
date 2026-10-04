@@ -4,6 +4,7 @@ import shutil
 import time
 from pathlib import Path
 import re
+import uuid
 
 try:
     from .kodi_api import translate
@@ -45,14 +46,22 @@ def _copytree(src, dst):
     return files
 
 
+def allocate_backup(scope):
+    """Reserve a unique directory before copying; never reuse a prior snapshot."""
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    backup_id = timestamp + "-" + uuid.uuid4().hex
+    destination = _backup_path(scope, backup_id)
+    os.makedirs(destination, exist_ok=False)
+    return timestamp, backup_id, destination
+
+
 def create_backup(addon_info, kodi_version="", adapter=""):
     aid = addon_info["addon_id"]
-    ts = time.strftime("%Y%m%d-%H%M%S")
-    dest = _backup_path(aid, ts)
+    ts, backup_id, dest = allocate_backup(aid)
     src = addon_info.get("addon_data_path") or translate("special://profile/addon_data/%s" % aid)
     files = _copytree(src, os.path.join(dest, "addon_data"))
     manifest = {
-        "backup_id": ts,
+        "backup_id": backup_id,
         "addon_id": aid,
         "addon_name": addon_info.get("name", ""),
         "addon_version": addon_info.get("version", ""),
@@ -86,14 +95,14 @@ def restore_backup(addon_info, backup_id):
     if not os.path.isdir(src):
         raise ValueError("Backup not found")
     dest = addon_info.get("addon_data_path") or translate("special://profile/addon_data/%s" % aid)
-    create_backup(addon_info, adapter=addon_info.get("adapter_name", ""))
+    undo = create_backup(addon_info, adapter=addon_info.get("adapter_name", ""))
     _copytree(src, dest)
-    return {"restored": True, "backup_id": backup_id, "restart_required": True}
+    return {"restored": True, "backup_id": backup_id,
+            "undo_backup_id": undo["backup_id"], "restart_required": True}
 
 
 def create_stack_backup(addons, kodi_version=""):
-    ts = time.strftime("%Y%m%d-%H%M%S")
-    root = _backup_path("_stack", ts)
+    ts, backup_id, root = allocate_backup("_stack")
     included, skipped = [], []
     for addon in addons:
         if not addon or not addon.get("addon_id"):
@@ -104,7 +113,7 @@ def create_stack_backup(addons, kodi_version=""):
             included.append(addon["addon_id"])
         else:
             skipped.append(addon["addon_id"])
-    manifest = {"backup_id": ts, "timestamp": ts, "included_folders": included, "skipped_folders": skipped, "Kodi version": kodi_version}
+    manifest = {"backup_id": backup_id, "timestamp": ts, "included_folders": included, "skipped_folders": skipped, "Kodi version": kodi_version}
     os.makedirs(root, exist_ok=True)
     with open(os.path.join(root, "manifest.json"), "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, indent=2)
@@ -115,14 +124,15 @@ def restore_stack_backup(index, backup_id):
     root = _backup_path("_stack", backup_id)
     if not os.path.isdir(root):
         raise ValueError("Stack backup not found")
-    restored = []
+    restored, undo_backups = [], {}
     for aid in os.listdir(root):
         src = os.path.join(root, aid)
         if aid == "manifest.json" or not os.path.isdir(src):
             continue
         addon = index.get(aid)
         if addon:
-            create_backup(addon, adapter=addon.get("adapter_name", ""))
+            undo = create_backup(addon, adapter=addon.get("adapter_name", ""))
+            undo_backups[aid] = undo["backup_id"]
             _copytree(src, addon["addon_data_path"])
             restored.append(aid)
-    return {"restored": restored, "restart_required": True}
+    return {"restored": restored, "undo_backups": undo_backups, "restart_required": True}

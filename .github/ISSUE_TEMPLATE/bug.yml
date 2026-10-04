@@ -1,0 +1,25 @@
+name: Bug report
+description: Report behavior with versions and a small, redacted reproduction.
+body:
+  - type: markdown
+    attributes:
+      value: "Never attach tokens, settings exports, raw logs, backups, account/history data or private screenshots. Use private security reporting for vulnerabilities. Do not interrupt a viewer to collect evidence."
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions and device
+      description: Manager/library, computer OS/Python, Shield model/Android, Kodi, skin and affected add-on versions. Is this a customized installation?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction and expected behavior
+      description: Small steps, actual/expected result, active profile and read/write mode. A synthetic example is best.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted evidence
+      description: Error category and relevant few redacted lines. Omit IPs, names, email, URLs containing tokens and media history.

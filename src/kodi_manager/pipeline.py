@@ -2,7 +2,6 @@ import json
 import os
 import shutil
 import sqlite3
-import time
 import xml.etree.ElementTree as ET
 
 try:
@@ -11,12 +10,14 @@ try:
     from .validation import is_secret_like, mask_value, setting_editable, coerce_value, redact
     from .kodi_api import read_text, translate
     from .account_evidence import credential_present, summarize_account, account_provider, is_auth_field
+    from .backup import allocate_backup
 except ImportError:
     from settings_schema import parse_schema, flatten_settings, parse_user_settings
     from stack_detector import detect_stack
     from validation import is_secret_like, mask_value, setting_editable, coerce_value, redact
     from kodi_api import read_text, translate
     from account_evidence import credential_present, summarize_account, account_provider, is_auth_field
+    from backup import allocate_backup
 
 PLAYER_IDS = ["plugin.video.fenlight", "plugin.video.fen", "plugin.video.pov", "plugin.video.umbrella", "plugin.video.seren"]
 HELPER_IDS = ["plugin.video.tmdb.bingie.helper", "plugin.video.themoviedb.helper"]
@@ -490,10 +491,7 @@ def build_pipeline(kodi, index):
 
 
 def pipeline_backup(index, kodi_version="", pipeline_obj=None):
-    root = translate("special://profile/addon_data/service.kodi.addonadmin/backups/pipeline")
-    ts = time.strftime("%Y%m%d-%H%M%S")
-    dest = os.path.join(root, ts)
-    os.makedirs(dest, exist_ok=True)
+    ts, backup_id, dest = allocate_backup("pipeline")
     included, skipped = [], []
     for aid in PIPELINE_IDS:
         addon = index.get(aid)
@@ -504,7 +502,7 @@ def pipeline_backup(index, kodi_version="", pipeline_obj=None):
         else:
             skipped.append(aid)
     summary = (pipeline_obj or {}).get("summary", {})
-    manifest = {"backup_id": ts, "timestamp": ts, "included_components": included, "skipped_components": skipped, "Kodi version": kodi_version, "active_skin": summary.get("active_skin", {}), "detected_helper": summary.get("helper", {}), "detected_primary_player": summary.get("primary_player", {}), "account_status": redact(summary.get("accounts", {})), "warnings": summary.get("health", {}).get("warnings", [])}
+    manifest = {"backup_id": backup_id, "timestamp": ts, "included_components": included, "skipped_components": skipped, "Kodi version": kodi_version, "active_skin": summary.get("active_skin", {}), "detected_helper": summary.get("helper", {}), "detected_primary_player": summary.get("primary_player", {}), "account_status": redact(summary.get("accounts", {})), "warnings": summary.get("health", {}).get("warnings", [])}
     with open(os.path.join(dest, "manifest.json"), "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, indent=2)
     return manifest

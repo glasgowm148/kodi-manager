@@ -24,3 +24,5 @@ jobs:
       - run: node --test tests/test_settings_ui.js tests/test_app_status.js tests/test_dashboard.js tests/test_widgets_ui.js
       - run: python -m build
       - run: python scripts/build_addon.py
+      - run: python scripts/test_wheel.py
+      - run: python scripts/check_release.py dist/kodi_manager-0.4.1-py3-none-any.whl dist/kodi_manager-0.4.1.tar.gz dist/service.kodi.addonadmin-0.4.1.zip

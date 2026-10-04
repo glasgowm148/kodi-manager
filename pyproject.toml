@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kodi-manager"
-version = "0.4.0"
+version = "0.4.1"
 description = "Reusable Kodi management library and optional authenticated dashboard companion"
 readme = "README.md"
 license = "MIT"
@@ -26,7 +26,7 @@ packages = ["src/kodi_manager"]
 "web" = "kodi_manager/web"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "web", "addon", "tests", "scripts", "docs", ".github", ".gitattributes", "pyproject.toml", "README.md", "LICENSE", "SECURITY.md", "AGENTS.md"]
+include = ["src", "web", "addon", "tests", "scripts", "docs", ".github", ".gitattributes", "pyproject.toml", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "SECURITY.md", "AGENTS.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

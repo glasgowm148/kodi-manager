@@ -8,6 +8,10 @@ The Python library runs on a computer. The companion runs **inside Kodi**, where
 add-on settings, profile paths and skin information unavailable through standard remote JSON-RPC.
 Installing the Python library alone does not install anything on a TV.
 
+**Prerelease:** see [compatibility and remaining live checks](docs/compatibility.md),
+[recovery](docs/recovery.md) and the [changelog](CHANGELOG.md). Use 0.4.1 or later to avoid
+same-second backup collisions in 0.4.0.
+
 ## What it adds
 
 - Add-on/schema discovery, friendly settings, default/current values and masked credentials.
@@ -24,8 +28,8 @@ playback/skin patch applied to the original household setup.
 
 ## Install the Kodi companion
 
-1. Download `service.kodi.addonadmin-0.4.0.zip` from the
-   [release](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.4.0), and verify its accompanying
+1. Download `service.kodi.addonadmin-0.4.1.zip` from the
+   [release](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.4.1), and verify its accompanying
    SHA-256 file if transferring it through another system.
 2. Copy the ZIP to storage Kodi can access. In Kodi enable **Settings → System → Add-ons → Unknown
    sources**, then **Add-ons → Install from zip file** and select it. This uses Kodi's installer rather
@@ -106,5 +110,8 @@ The library and Kodi ZIP share `src/kodi_manager`; the browser assets have one s
 The deterministic companion builder uses an explicit resource allowlist and verifies matching
 versions. Tests use stubs/temporary folders/local HTTP, not a real TV. CI builds Linux/Windows
 Python 3.9, 3.11 and 3.13. Compatibility beyond the original Kodi 22 beta 2 setup is not yet live-tested.
+
+See [contributing and release checks](CONTRIBUTING.md). CI checks fresh-wheel installation, release
+archive contents, dependency vulnerabilities and Git-history secrets; Dependabot proposes monthly updates.
 
 MIT licensed. Not affiliated with Kodi or NVIDIA. Provider add-ons/accounts are supplied by the user.
