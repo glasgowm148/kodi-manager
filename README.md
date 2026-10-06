@@ -12,30 +12,38 @@
 <p align="center">
   <a href="#what-you-can-do">Features</a> ·
   <a href="#quick-start">Quick start</a> ·
+  <a href="docs/widget-cache.md">Faster rows</a> ·
   <a href="#python-library">Python library</a> ·
   <a href="#documentation">Documentation</a>
 </p>
 
-**Inspect and configure Kodi from your browser or your own tools.** See which add-ons are enabled, understand the playback pipeline, explore widget sources and manage supported Bingie layouts. Use it independently or as the on-device companion to [nvidia-MCP](https://github.com/glasgowm148/nvidia-MCP).
+**See what your Kodi setup is doing, fix it from a browser, and make slow home-screen rows fast.**
+Kodi Manager is a small service add-on with a local web dashboard. It shows which add-ons are
+installed and how playback is wired, lets you edit add-on settings and back them up, and can serve
+any skin's widget rows from a cache so they appear in about half a second. Use it on its own or as
+the on-device companion to [nvidia-MCP](https://github.com/glasgowm148/nvidia-MCP).
 
 ![Kodi Manager dashboard with component statuses, settings links and backup checkpoints](docs/images/dashboard.png)
 
-*Public dashboard captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
+*Dashboard captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
 > [!NOTE]
-> **Alpha / prerelease.** Use **0.4.2 or later** for bounded backups and one-time installer setup. The portable companion
-> still needs live-TV verification; see [compatibility](docs/compatibility.md) and [recovery](docs/recovery.md).
+> **Prerelease.** 0.6.0 is in use on an NVIDIA Shield with Kodi 22 beta 2 and the Bingie skin.
+> Other skins and devices are covered by automated tests, not yet by live use; see
+> [compatibility](docs/compatibility.md). Write mode is off until you turn it on, and every change
+> is backed up first.
 
 ## What you can do
 
-| Feature | What it helps you understand or change |
-| --- | --- |
-| **Setup dashboard** | Installation, enabled states and saved configuration, with explicit unknown states |
-| **Friendly settings** | Add-on schemas, current/default values, searchable controls, and visible, editable account tokens so you can enter and repair them |
-| **Playback pipeline** | The selected player, helper routing and evidence for provider/account links |
-| **Bingie Studio** | Current menu/hubs, paginated add-on folders, row previews and reviewed layout changes |
-| **Configuration recovery** | Add-on/stack backups, restore and diagnostic logs |
-| **Python library** | An authenticated API client, offline schema parsing and reusable configuration modules |
+| Feature | What it does | Needs |
+| --- | --- | --- |
+| **[Faster rows](docs/widget-cache.md)** | Serves home-screen rows from a cache, adds **View more** to the end of each list, refreshes in the background | Any skin, any video add-on, Kodi 20+ |
+| **Setup dashboard** | Shows installed and enabled add-ons and saved configuration, and marks anything it can't confirm as unknown | Any Kodi |
+| **Friendly settings** | Searchable add-on settings with current and default values; account tokens are visible so you can enter and repair them | Any Kodi |
+| **Playback pipeline** | Shows the selected player, helper routing and evidence for provider and account links | Any Kodi |
+| **Backups** | Add-on and full-stack checkpoints, restore with undo, diagnostic logs | Any Kodi |
+| **Layout editor** | Previews and applies hub and row changes after you review them | Bingie 2.0.2 with Skin Shortcuts 2.0.3 |
+| **Python library** | Authenticated API client and offline settings parser for scripts and MCP clients | Python 3.9+ |
 
 <details>
 <summary><strong>See the playback pipeline</strong></summary>
@@ -50,24 +58,34 @@
 
 | Part | Runs on | Purpose |
 | --- | --- | --- |
-| **Kodi service add-on** | Inside Kodi | Reads the live profile/settings and provides the local API |
-| **Browser dashboard** | Your computer or another LAN device | Uses that API to inspect and configure Kodi |
-| **Python library** | Your computer | Lets scripts and MCP clients use the API or parse schemas offline |
+| **Kodi add-on** (`service.kodi.addonadmin`) | Inside Kodi | Reads the live profile, serves the dashboard and API, and runs the widget cache |
+| **Browser dashboard** | Any device on your home network | Uses that API to inspect and configure Kodi |
+| **Python library** (`kodi-manager`) | Your computer | Lets scripts and MCP clients use the API, or parse settings offline |
 
-Installing the Python library does **not** install the TV service. The service and library are released separately as a Kodi ZIP and Python wheel, from the same source. No PyPI publication is implied.
+The Kodi add-on and the Python library are separate downloads built from the same source.
+Installing one does not install the other.
 
 ## Quick start
 
-**If you use an agent, let it handle the downloads, transfer and computer configuration.** You handle the TV settings and native Kodi installer. Both devices must be on the same home network.
+1. **Download** `service.kodi.addonadmin-<version>.zip` and `SHA256SUMS` from
+   [Releases](https://github.com/glasgowm148/kodi-manager/releases), and check the checksum.
+2. **Install it in Kodi.** Copy the ZIP to the device, then use **Add-ons → Install from zip file**.
+   Allow unknown sources if Kodi asks.
+3. **Turn on network access.** Go to **Add-ons → My add-ons → Services → Kodi Manager → Configure**,
+   enable LAN access and set host `0.0.0.0`, port `8765`. Restart Kodi.
+4. **Open the dashboard.** Go to `http://<kodi-ip>:8765` and enter the access token. Kodi Manager
+   generates it on first start and stores it as `auth_token` in the active profile's
+   `addon_data/service.kodi.addonadmin/settings.xml`; the setup guide shows how to read it.
 
-1. **Prepare the TV.** Open Kodi and find the device's local IP. On a Shield, use **Settings → Device
-   Preferences → About → Status → IP address**. For agent-assisted transfer, complete the Shield's
-   [network-debugging preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md).
-2. **Hand over to the agent.** Give it the prompt below. It checks existing installations, prepares
-   the verified release ZIP and tells you its location on the TV.
-3. **Install and enable LAN access in Kodi.** Use **Add-ons → Install from zip file**, then **My
-   add-ons → Services → Kodi Manager → Configure**. Enable LAN access, set host `0.0.0.0` and port
-   `8765`. Restart when the TV is free; the agent retrieves the token privately and opens the dashboard.
+The [setup guide](docs/setup.md) has exact menus for each step, where to find the token, and
+connection troubleshooting. No particular skin is needed.
+
+<details>
+<summary><strong>Let an AI agent do the computer side</strong></summary>
+
+You handle the TV settings and Kodi's installer; the agent downloads, verifies and transfers the
+ZIP and connects to the dashboard. On a Shield, complete nvidia-MCP's
+[network-debugging preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md) first.
 
 ```text
 Set up https://github.com/glasgowm148/kodi-manager for my Kodi device.
@@ -79,71 +97,43 @@ and tell me where to select it in Kodi's native installer.
 Retrieve the Manager token privately and verify read-only dashboard/API access.
 Keep write mode off. Do not interrupt playback.
 ```
- Prefer to install manually? The [setup guide](docs/setup.md) includes the release download, exact Kodi menus, token location and connection troubleshooting. A bare Kodi installation needs no Bingie skin for general discovery/settings features.
 
-## Faster widget rows (any skin, any video add-on)
+</details>
 
-Heavy add-ons can take 1–3 seconds per row before a home screen shows anything. Kodi Manager can
-serve each row from its last listing on disk instead, refreshing stale rows one at a time in the
-background (never during playback). Rows show up in about half a second.
+## Faster rows
 
-**Add a cached row in any skin**
+1. Open any video add-on folder you'd like as a row, open its context menu and choose
+   **Add to Kodi Manager cached rows**.
+2. In your skin's row or widget picker, browse to **Kodi Manager** and pick it.
 
-1. Open the add-on folder you want as a row (a list of films, a Trakt list, …).
-2. Open its context menu and choose **Add to Kodi Manager cached rows**, and give it a name.
-3. In your skin's widget/row picker, browse to **Kodi Manager** and pick the row.
+On Skin Shortcuts skins, **Route new skin widget rows through the widget cache** switches existing
+rows over automatically, after backing them up. See the [widget cache guide](docs/widget-cache.md)
+for:
 
-The same rows can be managed with `GET/POST /api/widget-cache/rows`. To paste a path into a skin's
-"custom widget path" field instead, `GET /api/widget-cache/url?source=<add-on folder>` returns it:
+- per-row options: more pages, hide watched;
+- the refresh schedule and row item limits;
+- what is kept from each add-on;
+- how to undo.
 
-```
-plugin://service.kodi.addonadmin/?mode=cached&source=<URL-encoded add-on folder>&reload=$INFO[Window(Home).Property(km_widgets)]
-```
+## Safety
 
-Optional parameters: `&pages=N` (1–5) reads more pages by following the add-on's own Next page item,
-and `&hide_watched=true` drops watched items from that row only.
+- **Write mode starts off.** Turn it on in the add-on settings when you want to change
+  configuration. Python clients also need `allow_writes=True`.
+- **Backups first.** Settings and layout changes take a backup first, and restores keep an undo
+  checkpoint. Automatic row routing copies the skin's files before rewriting them.
+- **Playback is protected.** Menu rebuilds and installs refuse to run while something is playing.
+- **Layout writes are pinned.** They only run on the reviewed Bingie 2.0.2 / Skin Shortcuts 2.0.3
+  source hashes. Other skin versions are view-only.
+- **Keep it on your home network.** The service uses bearer tokens over plain HTTP; never expose
+  it to the internet. Backups and diagnostics can contain credentials.
 
-**What every cached row gets**
-
-- A **View more** item at the end that opens the add-on's full, paged list, whenever the add-on
-  offered another page (always for known list routes).
-- A reload when fresh data changes it: the service bumps `Window(Home).Property(km_widgets)`.
-- Refreshes on a schedule: progress rows (continue watching, watchlists, recommendations) every 15
-  minutes and after playback stops, other rows every 6 hours, season and episode lists daily.
-
-**Switch existing rows over automatically (Skin Shortcuts skins)**
-
-Turn on **Route new skin widget rows through the widget cache**. On start, Kodi Manager rewrites
-direct rows to cached ones, after backing up the originals to
-`script.skinshortcuts/kodi-manager-backups/autocache-<time>/`. It understands skins that keep
-`widgetPath` properties (most Skin Shortcuts skins) and Bingie-style widget groups. By default it
-only routes list routes it knows (Fen, Fen Light, POV `build_*` lists and TMDb Helper widget rows);
-add other add-on IDs under **Also route rows from these add-ons**. Live TV, music and library rows
-are never touched.
-
-**Row item limit**
-
-Many skins cap how many items a row shows. Set **Row item limit** to that number so View more stays
-visible; with 0, Kodi Manager uses Bingie's limit when it detects Bingie.
-
-**Known add-ons**
-
-Results are fetched through Kodi's JSON-RPC, which keeps titles, artwork, ratings, resume points
-and IDs but not an add-on's own context menu. For TMDb Helper, Kodi Manager also restores the
-`<id>_id`, `item.*` and `widget` properties skins read, keeps play items playable (following its
-"only resolve strm" setting), and refreshes personal rows when TMDb Helper signals a Trakt sync.
-
-## Making changes
-
-**Write mode starts disabled.** Enable it in the service settings when ready to change configuration; Python clients also need `allow_writes=True`. Layout writes require reviewed **Bingie 2.0.2 / Skin Shortcuts 2.0.3 source hashes**. Unknown variants stay view-only.
-
-Use a trusted LAN: the bearer-authenticated HTTP service is unencrypted and should not be exposed to the internet. Backups and account/log diagnostics are private and can contain credentials.
-
-This release ships Manager code, not household settings, cloud accounts/history or third-party provider/skin patch bundles. Account controls edit installed add-on settings; cloud signup/OAuth and Trakt history migration are separate workflows. See [API boundaries](docs/api.md).
+Releases contain Manager code only: no household settings, accounts, watch history or third-party
+add-on patches. See [API boundaries](docs/api.md).
 
 ## Python library
 
-Use **Python 3.9+**. The library has no runtime dependencies. Install the wheel from [Releases](https://github.com/glasgowm148/kodi-manager/releases), or use the source instructions below.
+Use **Python 3.9+**. The library has no runtime dependencies; install the wheel from
+[Releases](https://github.com/glasgowm148/kodi-manager/releases) or from source.
 
 ```python
 import os
@@ -154,7 +144,10 @@ print(manager.status())
 print(manager.pipeline())
 print(manager.layout())
 ```
- Use your device's address. `ManagerClient` also exposes health, add-ons, settings, sources, bounded folder browsing and layout preview/apply. Handle `ManagerError`; the client bounds responses and rejects redirects. See the [API guide](docs/api.md) for the preview/apply workflow and operation rules.
+
+Use your device's address. `ManagerClient` also covers health, add-ons, settings, sources, bounded
+folder browsing and layout preview/apply. Catch `ManagerError`; the client caps response sizes and
+rejects redirects. See the [API guide](docs/api.md) for the preview/apply workflow.
 
 <details>
 <summary><strong>Install from source and parse settings offline</strong></summary>
@@ -165,7 +158,8 @@ cd kodi-manager
 python3 -m venv .venv
 .venv/bin/python -m pip install .
 ```
- On Windows use `py -3 -m venv .venv` and `.venv\Scripts\python.exe`.
+
+On Windows use `py -3 -m venv .venv` and `.venv\Scripts\python.exe`.
 
 ```python
 from kodi_manager import parse_schema, flatten_settings
@@ -173,7 +167,10 @@ from kodi_manager import parse_schema, flatten_settings
 schema = parse_schema("addon/resources/settings.xml", "addon", "userdata/settings.xml")
 settings = flatten_settings(schema)  # Secret values are masked.
 ```
- The top-level client/parser exports are the public interface. Internal runtime modules such as `server`, `pipeline` and `skin_layout` need Kodi's `xbmc` runtime or an application-supplied adapter; their interfaces may change during alpha.
+
+The client and parser exports above are the public interface. Modules such as `server`,
+`pipeline`, `skin_layout` and `widget_cache` expect Kodi's `xbmc` runtime and may change while the
+project is in prerelease.
 
 </details>
 
@@ -181,15 +178,17 @@ settings = flatten_settings(schema)  # Secret values are masked.
 
 | Guide | Use it for |
 | --- | --- |
-| [Setup](docs/setup.md) | TV installation, agent computer steps and connection troubleshooting |
+| [Setup](docs/setup.md) | Installing on the TV, finding the token, connection troubleshooting |
+| [Widget cache](docs/widget-cache.md) | Faster rows on any skin, row options, refresh schedule, undo |
 | [API](docs/api.md) | Endpoints, authentication, layout workflows and runtime boundaries |
-| [Compatibility](docs/compatibility.md) | Reviewed skin versions, test evidence and remaining live checks |
+| [Compatibility](docs/compatibility.md) | What has been tested live and what only in CI |
 | [Recovery](docs/recovery.md) | Backup, restore and upgrade preparation |
 | [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) | Development, packaging and release checks |
 | [Security](SECURITY.md) | Private diagnostics and vulnerability reports |
 
-The library and Kodi ZIP share `src/kodi_manager`; browser assets live in `web/`. CI checks Python and UI tests, fresh-wheel installation and release contents. Development commands are in [Contributing](CONTRIBUTING.md).
+The library and the Kodi ZIP share `src/kodi_manager`; the dashboard lives in `web/`. CI runs the
+Python and UI tests on Linux and Windows, installs a fresh wheel, and checks release contents.
 
 ---
 
-[MIT license](LICENSE). Independent project; not affiliated with Kodi or NVIDIA. Provider add-ons and accounts are supplied by the user.
+[MIT license](LICENSE). Independent project; not affiliated with the Kodi Foundation, NVIDIA or any add-on author. You supply your own add-ons and accounts.
