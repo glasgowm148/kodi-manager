@@ -415,3 +415,13 @@ def test_serve_with_more_pages_than_cached_queues_a_deeper_refresh(tmp_path):
     r.next_sweep = 10 ** 9
     cache.request(MOVIES, pages=4)
     assert r.tick() == 1 and len(rpc.calls) == 4 and cache.load(MOVIES)["pages"] == 4
+
+
+def test_view_more_stays_inside_the_skin_widget_limit():
+    files = wc.fetch(PagedRPC(pages=3), MOVIES, pages=3)
+    plugin = FakePlugin()
+    wc.render(SimpleNamespace(), SimpleNamespace(ListItem=FakeListItem), plugin, 1,
+              {"source": MOVIES, "files": files, "content": "movies"}, view_more=MOVIES, limit=5)
+    assert [li.label for _, li, _ in plugin.items] == ["Film 1-0", "Film 1-1", "Film 1-2", "Film 2-0", "View more"]
+    assert wc.skin_widget_limit(SimpleNamespace(getInfoLabel=lambda label: "21")) == 21
+    assert wc.skin_widget_limit(SimpleNamespace(getInfoLabel=lambda label: "")) == 0

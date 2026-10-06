@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.5 — 2026-10-06 (prerelease)
+
+- View more stays visible when the skin caps widget rows: Bingie shows at most
+  `Skin.String(WidgetsGlobalLimit)` items, so cached rows trim to one less and keep View more last.
+
 ## 0.5.4 — 2026-10-06 (prerelease)
 
 - Cached list rows end with a **View more** item that opens the add-on's full, paged listing

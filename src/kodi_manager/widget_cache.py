@@ -486,7 +486,7 @@ def _set_info(xbmc, li, item, kind):
 
 
 def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable=True,
-           hide_watched=False, view_more=None):
+           hide_watched=False, view_more=None, limit=0):
     content = entry.get("content") or content_for(entry["source"], entry["files"])
     xbmcplugin.setContent(handle, content)
     today = today or time.strftime("%Y-%m-%d")
@@ -522,6 +522,9 @@ def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable
         if playable and not folder:
             li.setProperty("IsPlayable", "true")
         items.append((url, li, folder))
+    if view_more and limit > 1 and len(items) > limit - 1:
+        # The skin shows at most ``limit`` items: keep room for View more.
+        items = items[:limit - 1]
     if view_more:
         li = xbmcgui.ListItem(label="View more", path=view_more, offscreen=True)
         art = POV_NEXT_ART
@@ -542,6 +545,14 @@ def helper_resolves(source):
         return xbmcaddon.Addon(helper).getSetting("only_resolve_strm") != "true"
     except Exception:
         return True
+
+
+def skin_widget_limit(xbmc):
+    """Bingie caps every widget at Skin.String(WidgetsGlobalLimit) items (0 = unknown)."""
+    try:
+        return int(xbmc.getInfoLabel("Skin.String(WidgetsGlobalLimit)") or 0)
+    except (ValueError, TypeError, AttributeError):
+        return 0
 
 
 def jsonrpc_via(xbmc):
@@ -576,7 +587,7 @@ def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
                 cache.request(source, priority=is_progress(source))
             cache.touch(source)
         render(xbmc, xbmcgui, xbmcplugin, handle, entry, helper_playable=helper_resolves(source),
-               hide_watched=hide_watched, view_more=view_more_url(source))
+               hide_watched=hide_watched, view_more=view_more_url(source), limit=skin_widget_limit(xbmc))
     except Exception as exc:
         xbmc.log("Kodi Manager widget cache: %s" % type(exc).__name__, xbmc.LOGWARNING)
         xbmcplugin.endOfDirectory(handle, succeeded=False, cacheToDisc=False)
