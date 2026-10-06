@@ -10,58 +10,47 @@
 </p>
 
 <p align="center">
-  <a href="#faster-rows">Faster rows</a> ·
+  <a href="#what-you-can-do">Features</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="#the-dashboard">Dashboard</a> ·
   <a href="#questions">Questions</a> ·
   <a href="#for-developers">Developers</a>
 </p>
 
-**Make Kodi's home screen fast, and see and fix your setup from a browser.**
+**Inspect and configure Kodi from your browser.** Kodi Manager is a Kodi add-on with a local web
+dashboard. It shows which add-ons are installed and enabled, how playback is wired from skin to
+player, and what each add-on is set to. You can then change settings, back them up and restore them
+from a phone or computer. Use it on its own or as the on-device companion to
+[nvidia-MCP](https://github.com/glasgowm148/nvidia-MCP).
 
-Kodi Manager is a small Kodi add-on. It does three things:
+![Kodi Manager dashboard with component statuses, settings links and backup checkpoints](docs/images/dashboard.png)
 
-- **Faster rows.** Home-screen rows load from a cache in about half a second instead of waiting
-  1–3 seconds each for the add-on behind them. Every list gets a **View more** item at the end.
-- **A dashboard.** It shows what's installed, how playback is wired and what each add-on is set to.
-  You can change settings from a phone or computer.
-- **Backups.** Checkpoints of add-on settings, with one-step restore and undo.
-
-It works with any skin and any video add-on. Nothing is uploaded anywhere: the add-on and its
-dashboard stay on your home network.
+*Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
 > [!NOTE]
-> **Prerelease.** 0.6.2 is in use on an NVIDIA Shield with Kodi 22 beta 2 and the Bingie
-> skin. Other skins and devices are covered by automated tests rather than live use so far; see
+> **Prerelease.** 0.6.2 is in use on an NVIDIA Shield with Kodi 22 beta 2 and the Bingie skin.
+> Other skins and devices are covered by automated tests rather than live use so far; see
 > [compatibility](docs/compatibility.md).
 
-## Faster rows
+## What you can do
 
-<p align="center">
-  <img src="docs/images/widget-cache.svg" alt="Without the cache, the skin asks the add-on for every row at once and waits 1–3 seconds per row. With Kodi Manager, rows come from a cache in about half a second, and a background refresher updates them one at a time, never during playback." width="100%">
-</p>
-
-Measured on an NVIDIA Shield (Kodi 22 beta 2, Bingie skin), from opening a page until its rows
-appeared:
-
-| Page | Without the cache | With the cache |
+| Feature | What it shows or changes | Works with |
 | --- | --- | --- |
-| Movies | about 3 s | about 1 s |
-| TV shows | about 4 s | about 0.5 s |
-| Favourites | about 6 s | about 0.5 s |
+| **Setup overview** | Installed and enabled add-ons and saved configuration; anything it can't confirm is marked unknown | Any Kodi 19+ |
+| **Settings** | Each add-on's settings with current and default values, searchable. Account tokens are visible so you can enter and repair them | Any Kodi 19+ |
+| **Playback pipeline** | Which player is selected, how metadata helpers route to it, and evidence for provider and account links | Any Kodi 19+ |
+| **Backups** | Add-on and whole-setup checkpoints, restore with undo, diagnostic logs | Any Kodi 19+ |
+| **Layout editor** | Previews hub and row changes, and applies them after you review them | Bingie 2.0.2 with Skin Shortcuts 2.0.3 |
+| **Faster rows** (optional) | Serves home-screen rows from a cache and adds **View more** to each list ([guide](docs/widget-cache.md)) | Any skin, Kodi 20+ |
+| **Python library** | API client and offline settings parser for scripts and MCP clients | Python 3.9+ |
 
-**Add a row in any skin:**
+<details>
+<summary><strong>See the playback pipeline</strong></summary>
 
-1. Open the add-on folder you want as a row (a film list, a Trakt list, a genre).
-2. Open its context menu and choose **Add to Kodi Manager cached rows**.
-3. In your skin's row or widget picker, choose **Kodi Manager → Cached rows →** your row.
+![Playback pipeline showing the interface, metadata helper, playback provider and routing evidence](docs/images/pipeline.png)
 
-**Or switch existing rows over automatically.** On skins built with Skin Shortcuts (most popular
-skins), turn on **Route new skin widget rows through the widget cache**. Kodi Manager backs up the
-skin's files, then switches supported rows over the next time Kodi starts.
+*Synthetic example: Bingie → TMDb Bingie Helper → POV. Detected relationships are separate from account authentication.*
 
-The [widget cache guide](docs/widget-cache.md) covers more pages per row, hiding watched items
-in a single row, the refresh schedule, and how to undo.
+</details>
 
 ## Quick start
 
@@ -74,8 +63,7 @@ in a single row, the refresh schedule, and how to undo.
 4. **Open the dashboard.** In Kodi, open **Add-ons → Video add-ons → Kodi Manager → Open the
    dashboard on another device**. It shows the address and access token to use in a browser.
 
-Cached rows don't need step 3; only the dashboard does. The
-[setup guide](docs/setup.md) has menu-by-menu steps and troubleshooting.
+The [setup guide](docs/setup.md) has menu-by-menu steps and troubleshooting.
 
 <details>
 <summary><strong>Let an AI agent do the computer side</strong></summary>
@@ -97,68 +85,38 @@ Keep write mode off. Do not interrupt playback.
 
 </details>
 
-## The dashboard
+## Optional: faster home-screen rows
 
-![Kodi Manager dashboard with component statuses, settings links and backup checkpoints](docs/images/dashboard.png)
-
-*Captured with synthetic demo data.*
-
-| Page | What it shows or changes |
-| --- | --- |
-| **Setup** | Installed and enabled add-ons and saved configuration; anything it can't confirm is marked unknown |
-| **Settings** | Each add-on's settings with current and default values, searchable. Account tokens are visible so you can enter and repair them |
-| **Playback pipeline** | Which player is selected, how metadata helpers route to it, and evidence for provider and account links |
-| **Backups** | Add-on and whole-setup checkpoints, restore with undo, diagnostic logs |
-| **Layout** | Previews and applies hub and row changes after you review them (Bingie 2.0.2 only) |
-
-<details>
-<summary><strong>See the playback pipeline</strong></summary>
-
-![Playback pipeline showing the interface, metadata helper, playback provider and routing evidence](docs/images/pipeline.png)
-
-*Synthetic example: Bingie → TMDb Bingie Helper → POV.*
-
-</details>
+Heavy add-ons can take 1–3 seconds per row before a home screen fills in. Kodi Manager can serve
+rows from a cache instead, so they appear in about half a second, and refresh them in the
+background. To use it, open an add-on folder, choose **Add to Kodi Manager cached rows** from its
+context menu, then pick it in your skin's row picker under **Kodi Manager → Cached rows**. Skin
+Shortcuts skins can switch existing rows over automatically. See the
+[widget cache guide](docs/widget-cache.md).
 
 ## Questions
 
-**Will it work with my skin?**
-Cached rows work in any skin whose row picker can browse add-ons, which is nearly all of them.
-Automatic switching needs a Skin Shortcuts skin. The layout page is Bingie-only.
+**Do I need a particular skin or add-on?**
+No. The dashboard, settings, pipeline and backups work with any skin. Only the layout editor is
+Bingie-specific.
 
-**Which add-ons?**
-Any video add-on. Fen, Fen Light, POV and TMDb Helper are recognised, so their rows get extras such
-as more pages and View more. Other add-ons get View more whenever they offer another page.
-
-**Will it slow Kodi down?**
-Not noticeably. Refreshes run one row at a time in the background and pause while anything plays.
-Rows refresh only when stale: progress rows (continue watching, watchlists) every 15 minutes,
-other lists every 6 hours. Each refresh is one call to the add-on, the same call the skin would
-have made.
-
-**What do I lose?**
-An add-on's own long-press menu on cached items, and rows can be a few minutes behind. Kodi Manager
-adds watchlist and "already watched" entries where it can. The [guide](docs/widget-cache.md#limits)
-lists the details.
-
-**How do I undo it?**
-Remove or replace a cached row in your skin like any other row. To undo the automatic switch,
-restore the skin files from `script.skinshortcuts/kodi-manager-backups/`. Do that before
-uninstalling Kodi Manager, because cached rows stay empty without it.
+**Does it change anything by itself?**
+No. Write mode starts off, so the dashboard can only look until you turn it on in the add-on's
+settings. Settings and layout changes take a backup first, and installs and menu rebuilds refuse to
+run while something is playing. The optional row cache only switches rows over if you turn that on.
 
 **Which Kodi versions?**
-Kodi 19 or newer for the dashboard, and Kodi 20 or newer for the cache. It's tested on Kodi 22
-beta 2; see [compatibility](docs/compatibility.md).
+Kodi 19 or newer; the optional row cache needs Kodi 20. It's tested on Kodi 22 beta 2; see
+[compatibility](docs/compatibility.md).
 
-**Is it safe?**
+**Is it safe on my network?**
+Keep it on your home network. The dashboard uses an access token over plain HTTP, so don't expose it
+to the internet. Backups and diagnostics can contain credentials. Releases contain Kodi Manager's
+code only: no accounts, watch history or third-party add-on patches.
 
-- **Write mode starts off.** You turn it on in the add-on's settings when you want to change
-  configuration.
-- **Backups first.** Settings and layout changes take a backup first.
-- **Playback is protected.** Installs and menu rebuilds refuse to run while something is playing.
-- **Keep it on your home network.** The dashboard uses an access token over plain HTTP, so don't
-  expose it to the internet. Releases contain Kodi Manager's code only: no accounts, watch history
-  or third-party add-on patches.
+**How do I remove it?**
+Uninstall it from **Add-ons → My add-ons → Services**. If you used cached rows, switch those rows
+back first; the [widget cache guide](docs/widget-cache.md#manage-and-undo) explains how.
 
 ## For developers
 

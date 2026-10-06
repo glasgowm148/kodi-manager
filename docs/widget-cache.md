@@ -7,6 +7,17 @@ about half a second, and refreshes them one at a time in the background.
 
 It works with any skin and any video add-on. It needs Kodi 20 or newer.
 
+![Without the cache, the skin asks the add-on for every row at once and waits 1–3 seconds per row. With Kodi Manager, rows come from a cache in about half a second, and a background refresher updates them one at a time, never during playback.](images/widget-cache.svg)
+
+Measured on an NVIDIA Shield (Kodi 22 beta 2, Bingie skin), from opening a page until its rows
+appeared:
+
+| Page | Without the cache | With the cache |
+| --- | --- | --- |
+| Movies | about 3 s | about 1 s |
+| TV shows | about 4 s | about 0.5 s |
+| Favourites | about 6 s | about 0.5 s |
+
 ## Add a row
 
 There are three ways. They all produce the same cached row.
@@ -81,6 +92,10 @@ item is never cut off. With 0, Kodi Manager uses Bingie's own limit
 (`Skin.String(WidgetsGlobalLimit)`) when it finds one.
 
 ## Limits
+
+- **Background work.** Refreshes run one row at a time and pause while anything plays. Rows refresh
+  only when stale, and each refresh is one call to the add-on, the same call the skin would have
+  made.
 
 - **Context menus.** Listings are read through Kodi's JSON-RPC. Titles, artwork, ratings, cast,
   resume points, watched state and IDs are kept, but an add-on's own context menu is not. Kodi
