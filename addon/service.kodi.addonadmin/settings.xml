@@ -11,7 +11,6 @@
     <setting id="log_level" type="enum" label="32007" default="info" values="info|debug"/>
     <setting id="backup_retention" type="integer" label="32008" default="20"/>
     <setting id="show_advanced_settings" type="bool" label="32009" default="false"/>
-    <setting id="allow_secret_replacement" type="bool" label="32010" default="false"/>
     <setting id="allowed_addons_csv" type="text" label="32011" default=""/>
     <setting id="stack_mode" type="enum" label="32012" default="bingie_stack" values="bingie_stack|generic"/>
     <setting id="delete_installer_result_after_first_login" type="bool" label="32013" default="false"/>

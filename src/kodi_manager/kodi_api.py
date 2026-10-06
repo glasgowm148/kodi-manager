@@ -149,18 +149,17 @@ class KodiAPI:
                 continue
         return []
 
-    def install_local_addon(self, source_path):
-        if not source_path:
-            raise ValueError("source_path required")
-        lower = source_path.lower()
-        if "://" in source_path and not source_path.startswith("special://"):
-            raise ValueError("Only local Kodi paths are allowed")
-        if lower.endswith(".zip"):
-            if xbmc:
-                xbmc.executebuiltin("InstallAddon(%s)" % source_path)
-                return {"started": True, "method": "InstallAddon", "source_path": source_path}
-            return {"started": False, "error": "xbmc unavailable"}
-        raise ValueError("Only local .zip add-on install is supported from service UI")
+    def open_install_from_zip(self):
+        """Open Kodi's own Install from zip file dialog on the TV.
+
+        Kodi exposes no API that installs a ZIP from a path: the InstallAddon
+        builtin takes an add-on ID and looks it up in repositories. The user
+        picks the ZIP on the TV, and Kodi applies its normal unknown-sources check.
+        """
+        if not xbmc:
+            return {"opened": False, "error": "Kodi APIs unavailable"}
+        xbmc.executebuiltin("InstallFromZip")
+        return {"opened": True, "next_step": "Choose the ZIP in the Install from zip file dialog on the TV."}
 
     def notify(self, title, message):
         if xbmcgui:

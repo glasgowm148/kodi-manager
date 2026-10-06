@@ -646,8 +646,8 @@ async function allAddons(){
   $("#filter").oninput = render; render();
 }
 async function installAddonView(){
-  out(`<div class="panel"><h2>Install Add-on / Repository</h2><p class="warn">Kodi repositories are add-ons too. Install a local repository ZIP here, then use Kodi's normal repository browser. Remote repository URLs are not supported here because Kodi JSON-RPC has no safe add-repo-url endpoint, and this tool avoids source/repo URL management.</p><label>Local ZIP path on Kodi filesystem<input id="zipPath" placeholder="special://home/addons/packages/repository.example.zip"></label><button class="primary" id="installZip">Install local ZIP</button><pre id="installOut"></pre></div>`);
-  $("#installZip").onclick = async()=>{ try { const r=await api("/api/addons/install",{source_path:$("#zipPath").value}); $("#installOut").textContent=JSON.stringify(r,null,2); } catch(e){ $("#installOut").textContent=e.message; } };
+  out(`<div class="panel"><h2>Install Add-on / Repository</h2><p class="warn">Kodi repositories are add-ons too. Kodi has no API to install a ZIP from a path, so this opens Kodi's own <b>Install from zip file</b> dialog on the TV. Choose the ZIP there with the remote; Kodi applies its normal unknown-sources check. Nothing opens while something is playing.</p><button class="primary" id="installZip">Open Install from zip on TV</button><pre id="installOut"></pre></div>`);
+  $("#installZip").onclick = async()=>{ try { const r=await api("/api/addons/install",{}); $("#installOut").textContent=r.opened ? r.next_step : (r.error || "Kodi did not open the dialog."); } catch(e){ $("#installOut").textContent=e.message; } };
 }
 async function serviceSetup(){ out(`<div class="panel"><h2>Setup</h2><p>Service URL: ${esc(location.origin)}</p><p>Token stored: ${badge(!!state.token)}</p><button class="action" onclick="localStorage.removeItem('bsa_token');location.reload()">Forget token</button></div>`); }
 async function diagnostics(){

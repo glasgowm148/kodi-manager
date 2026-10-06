@@ -609,6 +609,5 @@ def switch_player(kodi, index, target, apply_to=None, keep_current_as_fallback=T
     addon = index.get(target)
     if not addon or not (addon.get("installed") or addon.get("config_present")):
         raise ValueError("%s is not detected. Install/configure it first, then rescan." % target)
-    pipe = build_pipeline(kodi, index)
-    backup = pipeline_backup(index, kodi_version, pipe)
-    return {"supported": False, "backup_id": backup["backup_id"], "reason": "Routing appears player-file/native-helper based; use native helper settings or add a safe adapter.", "target_player_addon_id": target, "applied_changes": [], "keep_current_as_fallback": bool(keep_current_as_fallback), "apply_to": apply_to or ["movie", "episode"]}
+    # Nothing is changed here, so no snapshot is taken.
+    return {"supported": False, "backup_id": None, "reason": "Routing appears player-file/native-helper based; use native helper settings or add a safe adapter.", "target_player_addon_id": target, "applied_changes": [], "keep_current_as_fallback": bool(keep_current_as_fallback), "apply_to": apply_to or ["movie", "episode"]}

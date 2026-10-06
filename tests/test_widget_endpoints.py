@@ -19,7 +19,8 @@ class WidgetEndpointTests(unittest.TestCase):
         self.state.index.refresh.assert_not_called()
 
     def setUp(self):
-        self.state = SimpleNamespace(kodi=object(), index=SimpleNamespace(refresh=Mock()), config={"auth_token": "test-session", "host": "127.0.0.1", "write_enabled": False}, log=lambda *_: None)
+        self.players = []
+        self.state = SimpleNamespace(kodi=SimpleNamespace(jsonrpc=lambda method, params=None: {"result": self.players}, open_install_from_zip=Mock(return_value={"opened": True, "next_step": "Choose the ZIP"})), index=SimpleNamespace(refresh=Mock()), config={"auth_token": "test-session", "host": "127.0.0.1", "write_enabled": False}, log=lambda *_: None)
         self.http = ThreadingHTTPServer(("127.0.0.1", 0), server.make_handler(self.state))
         self.thread = threading.Thread(target=self.http.serve_forever, daemon=True)
         self.thread.start()
@@ -108,6 +109,35 @@ class WidgetEndpointTests(unittest.TestCase):
             self.assertTrue(payload["data"]["requested"])
             rebuild.assert_called_once_with(self.state.kodi, self.state.index)
             apply.assert_not_called()
+
+    def test_rebuild_is_refused_during_playback(self):
+        self.state.config["write_enabled"] = True
+        self.players = [{"playerid": 1}]
+        with patch.object(server, "request_rebuild") as rebuild:
+            status, payload = self.request("POST", "/api/widgets/layout/rebuild", {})
+        self.assertEqual(status, 400)
+        self.assertIn("Stop playback", payload["error"]["message"])
+        rebuild.assert_not_called()
+
+    def test_install_opens_kodi_zip_dialog_only_when_idle(self):
+        self.state.config["write_enabled"] = True
+        self.players = [{"playerid": 1}]
+        self.assertEqual(self.request("POST", "/api/addons/install", {})[0], 400)
+        self.state.kodi.open_install_from_zip.assert_not_called()
+        self.players = []
+        status, payload = self.request("POST", "/api/addons/install", {"source_path": "ignored.zip"})
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["data"]["opened"])
+        self.state.kodi.open_install_from_zip.assert_called_once_with()
+
+    def test_non_ascii_bearer_header_is_rejected_cleanly(self):
+        connection = http.client.HTTPConnection(*self.http.server_address)
+        connection.putrequest("GET", "/api/status")
+        connection.putheader("Authorization", "Bearer t\xf6ken".encode("latin-1"))
+        connection.endheaders()
+        response = connection.getresponse()
+        self.assertEqual(response.status, 401)
+        connection.close()
 
 
 if __name__ == "__main__":

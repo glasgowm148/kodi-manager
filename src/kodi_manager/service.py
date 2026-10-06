@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import time
@@ -41,12 +42,26 @@ def load_config(addon):
     flag = os.path.join(data_dir, "allow_lan_first_run.flag")
     seed_path = os.path.join(data_dir, "installer_seed.json")
     seed = {}
+    seed_digest = ""
     if os.path.exists(seed_path):
         try:
-            with open(seed_path, "r", encoding="utf-8") as fh:
-                seed = json.load(fh)
+            with open(seed_path, "rb") as fh:
+                raw = fh.read()
+            seed = json.loads(raw.decode("utf-8"))
+            seed_digest = hashlib.sha256(raw).hexdigest()
         except Exception:
             seed = {}
+    # The installer seed is a one-time handoff. Apply its network settings and
+    # write installer_result.json once per seed, so later changes the user makes
+    # in the add-on settings (for example switching LAN access off) persist.
+    applied_path = os.path.join(data_dir, "installer_seed.applied")
+    first_seed_run = False
+    if seed:
+        try:
+            with open(applied_path, "r", encoding="utf-8") as fh:
+                first_seed_run = fh.read().strip() != seed_digest
+        except OSError:
+            first_seed_run = True
     if os.path.exists(flag):
         try:
             addon.setSetting("allow_lan", "true")
@@ -55,7 +70,7 @@ def load_config(addon):
             os.remove(flag)
         except Exception:
             pass
-    if seed:
+    if first_seed_run:
         try:
             addon.setSetting("allow_lan", "true" if seed.get("allow_lan", True) else "false")
             addon.setSetting("host", seed.get("host", "0.0.0.0"))
@@ -76,13 +91,12 @@ def load_config(addon):
         "auth_token": token,
         "log_level": get("log_level", "info"),
         "backup_retention": int(get("backup_retention", "20")),
-        "allow_secret_replacement": _bool(get("allow_secret_replacement", "false")),
         "allowed_addons_csv": get("allowed_addons_csv", ""),
         "delete_installer_result_after_first_login": _bool(get("delete_installer_result_after_first_login", "false")),
         "installer_seed": seed,
         "addon_data_dir": data_dir,
     }
-    if seed and token:
+    if first_seed_run and token:
         try:
             os.makedirs(data_dir, exist_ok=True)
             result = {
@@ -94,6 +108,8 @@ def load_config(addon):
             }
             with open(os.path.join(data_dir, "installer_result.json"), "w", encoding="utf-8") as fh:
                 json.dump(result, fh, indent=2)
+            with open(applied_path, "w", encoding="utf-8") as fh:
+                fh.write(seed_digest)
         except Exception:
             pass
     return config

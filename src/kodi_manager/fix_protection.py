@@ -6,6 +6,7 @@ from pathlib import Path, PurePosixPath
 import shutil
 import threading
 import time
+import uuid
 import xml.etree.ElementTree as ET
 
 _LOCK = threading.Lock()
@@ -83,7 +84,8 @@ class FixProtection:
                     current = digest(target)
                     if current != file['sha256']:
                         plan.append((file, target, current))
-            backup = self.backups / time.strftime('%Y%m%d-%H%M%S')
+            # Unique per repair: two repairs in the same second must not collide.
+            backup = self.backups / (time.strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex)
             backup.mkdir(parents=True, exist_ok=False)
             originals = []
             applied = []

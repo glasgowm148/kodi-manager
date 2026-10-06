@@ -18,7 +18,7 @@ try:
     from .auth import authorized
     from .addon_index import AddonIndex
     from .adapters import adapter_for
-    from .backup import create_backup, create_stack_backup, list_backups, restore_backup, restore_stack_backup
+    from .backup import set_retention, create_backup, create_stack_backup, list_backups, restore_backup, restore_stack_backup
     from .settings_schema import parse_schema, flatten_settings, parse_user_settings
     from .stack_detector import detect_stack
     from .pipeline import build_pipeline, apply_pipeline_settings, pipeline_backup, switch_player, build_accounts, apply_account_settings, pretty_label, setting_description, DB_EDITABLE_TYPES
@@ -35,7 +35,7 @@ except ImportError:
     from auth import authorized
     from addon_index import AddonIndex
     from adapters import adapter_for
-    from backup import create_backup, create_stack_backup, list_backups, restore_backup, restore_stack_backup
+    from backup import set_retention, create_backup, create_stack_backup, list_backups, restore_backup, restore_stack_backup
     from settings_schema import parse_schema, flatten_settings, parse_user_settings
     from stack_detector import detect_stack
     from pipeline import build_pipeline, apply_pipeline_settings, pipeline_backup, switch_player, build_accounts, apply_account_settings, pretty_label, setting_description, DB_EDITABLE_TYPES
@@ -130,7 +130,8 @@ def _fenlight_db_settings(addon):
                 pass
 
 
-def settings_for_addon(addon, allow_secret_replacement=True):
+def settings_for_addon(addon):
+    """Dashboard settings show stored values, including tokens, so users can enter and repair them."""
     parsed = parse_schema(addon.get("settings_schema_path"), addon.get("path"), addon.get("user_settings_path"), True)
     if _setting_count(parsed.get("groups")) == 0 and addon.get("has_user_settings"):
         raw_group = _raw_settings_group(addon)
@@ -144,14 +145,14 @@ def settings_for_addon(addon, allow_secret_replacement=True):
     return parsed
 
 
-def integration_status(index, allow_secret_replacement=False):
+def integration_status(index):
     out = {"torbox": [], "trakt": [], "notes": []}
     scan_ids = ["plugin.video.fenlight", "plugin.video.fen", "plugin.video.pov", "plugin.video.tmdb.bingie.helper", "skin.bingie", "script.skinshortcuts", "shortcutmanager"]
     for aid in scan_ids:
         addon = index.get(aid)
         if not addon:
             continue
-        parsed = settings_for_addon(addon, allow_secret_replacement)
+        parsed = settings_for_addon(addon)
         for group in parsed.get("groups", []):
             for setting in group.get("settings", []):
                 hay = " ".join(str(x or "") for x in [setting.get("id"), setting.get("label"), setting.get("value")]).lower()
@@ -357,6 +358,11 @@ def make_handler(state):
             with open(full, "rb") as fh:
                 self._send(200, fh.read(), ctype)
 
+        def _require_idle(self, message):
+            players = state.kodi.jsonrpc("Player.GetActivePlayers")
+            if not isinstance(players, dict) or "error" in players or players.get("result") != []:
+                raise ValueError(message)
+
         def _addon(self, aid):
             state.index.refresh()
             addon = state.index.get(aid)
@@ -377,9 +383,7 @@ def make_handler(state):
             if path == "/api/fixes/repair" and method == "POST":
                 if not state.config.get("write_enabled"):
                     raise PermissionError("Write Mode is disabled")
-                players = state.kodi.jsonrpc("Player.GetActivePlayers")
-                if "error" in players or players.get("result") != []:
-                    raise ValueError("Stop playback before restoring fixes")
+                self._require_idle("Stop playback before restoring fixes")
                 self.ok(protection_for_kodi().repair())
                 return
             if path in ("/api/widgets/sources", "/api/widgets/layout") and method == "GET":
@@ -425,7 +429,12 @@ def make_handler(state):
                     write_enabled = bool(state.config.get("write_enabled"))
                     if not write_enabled:
                         raise PermissionError("Write Mode is disabled. Enable it in Kodi Manager service settings to apply this layout.")
-                    self.ok(request_rebuild(state.kodi, state.index) if path.endswith("/rebuild") else apply_layout(state.kodi, state.index, body, write_enabled))
+                    if path.endswith("/rebuild"):
+                        # Rebuilding reloads the skin, which interrupts whoever is watching.
+                        self._require_idle("Stop playback before rebuilding the TV menu")
+                        self.ok(request_rebuild(state.kodi, state.index))
+                    else:
+                        self.ok(apply_layout(state.kodi, state.index, body, write_enabled))
                 return
             if method == "GET" and path == "/api/status":
                 state.index.refresh()
@@ -454,7 +463,7 @@ def make_handler(state):
                 return
             if method == "GET" and path == "/api/integrations":
                 state.index.refresh()
-                self.ok(integration_status(state.index, state.config.get("allow_secret_replacement")))
+                self.ok(integration_status(state.index))
                 return
             if method == "GET" and path == "/api/accounts":
                 state.index.refresh()
@@ -537,7 +546,7 @@ def make_handler(state):
                     return
                 results = []
                 for addon in state.index.list():
-                    parsed = settings_for_addon(addon, True)
+                    parsed = settings_for_addon(addon)
                     for group in parsed.get("groups", []):
                         for setting in group.get("settings", []):
                             hay = " ".join(str(x or "") for x in [addon.get("addon_id"), addon.get("name"), group.get("label"), setting.get("id"), setting.get("label"), setting.get("value")]).lower()
@@ -571,8 +580,9 @@ def make_handler(state):
                 self.ok({"lines": state.kodi.get_log_lines(500)})
                 return
             if method == "POST" and path == "/api/addons/install":
-                body = self._json_body()
-                self.ok(state.kodi.install_local_addon(body.get("source_path", "")))
+                self._json_body()
+                self._require_idle("Stop playback before opening Install from zip on the TV")
+                self.ok(state.kodi.open_install_from_zip())
                 return
             if method == "POST" and path == "/api/stack/backup":
                 stack = detect_stack(state.kodi, state.index)
@@ -605,7 +615,7 @@ def make_handler(state):
                     return
                 action = parts[3] if len(parts) > 3 else ""
                 if action == "settings" and method == "GET":
-                    parsed = settings_for_addon(addon, True)
+                    parsed = settings_for_addon(addon)
                     parsed.update({"addon_id": aid, "name": addon.get("name"), "adapter": adapter.name, "warnings": parsed.get("warnings", []) + adapter.get_warnings(addon)})
                     self.ok(parsed)
                     return
@@ -695,6 +705,7 @@ class ServerThread(threading.Thread):
         self.daemon = True
         self.stopping = threading.Event()
         self.state = AdminState(kodi, config, web_root)
+        set_retention(config.get("backup_retention", 20))
         self.httpd = ThreadingHTTPServer((config["host"], int(config["port"])), make_handler(self.state))
         self.httpd.timeout = 0.2
 

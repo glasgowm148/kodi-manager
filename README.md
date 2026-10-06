@@ -23,7 +23,7 @@
 *Public dashboard captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
 > [!NOTE]
-> **Alpha / prerelease.** Use **0.4.1 or later** for the backup collision fix. The portable companion
+> **Alpha / prerelease.** Use **0.4.2 or later** for bounded backups and one-time installer setup. The portable companion
 > still needs live-TV verification; see [compatibility](docs/compatibility.md) and [recovery](docs/recovery.md).
 
 ## What you can do
@@ -31,7 +31,7 @@
 | Feature | What it helps you understand or change |
 | --- | --- |
 | **Setup dashboard** | Installation, enabled states and saved configuration, with explicit unknown states |
-| **Friendly settings** | Add-on schemas, current/default values, searchable controls and masked credentials |
+| **Friendly settings** | Add-on schemas, current/default values, searchable controls, and visible, editable account tokens so you can enter and repair them |
 | **Playback pipeline** | The selected player, helper routing and evidence for provider/account links |
 | **Bingie Studio** | Current menu/hubs, paginated add-on folders, row previews and reviewed layout changes |
 | **Configuration recovery** | Add-on/stack backups, restore and diagnostic logs |

@@ -31,8 +31,10 @@ network requests. Use them in bounded pages with permission to interact with tha
 Service settings changes are immediate; write mode does not promise every action is safe during
 viewing. Schedule disruptive operations while the TV is free.
 
-The default API returns masked schema credentials; account/debug/log responses and backups remain
-private diagnostics. Do not send raw diagnostics to an untrusted service. Bearer HTTP has no
+The dashboard API returns stored add-on values, including account tokens, unmasked so they can be
+entered and repaired from the web UI. Anyone with the bearer token can read them, so keep the token
+private and enable LAN access only on a network you trust. The `parse_schema` library function still
+masks secret-like values by default. Account/debug/log responses and backups are private diagnostics. Do not send raw diagnostics to an untrusted service. Bearer HTTP has no
 encryption; use only a trusted LAN or a user-managed secure tunnel.
 
 These APIs manage installed Kodi functionality. They do not create cloud accounts, migrate Trakt

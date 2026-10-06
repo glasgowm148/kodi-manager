@@ -9,4 +9,8 @@ def authorized(header, token):
     if not token:
         return False
     prefix = "Bearer "
-    return bool(header and header.startswith(prefix) and secrets.compare_digest(header[len(prefix):], token))
+    if not header or not header.startswith(prefix):
+        return False
+    # compare_digest rejects non-ASCII str input with TypeError; compare bytes instead.
+    supplied = header[len(prefix):].encode("utf-8", "surrogateescape")
+    return secrets.compare_digest(supplied, token.encode("utf-8"))
