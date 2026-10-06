@@ -127,7 +127,9 @@ def start_widget_refresher(kodi):
     home = xbmcgui.Window(10000)
     player = xbmc.Player()
     refresher = Refresher(cache, jsonrpc_via(xbmc), player.isPlayingVideo,
-                          lambda value: home.setProperty(RELOAD_PROPERTY, value), kodi.log)
+                          lambda value: home.setProperty(RELOAD_PROPERTY, value), kodi.log,
+                          external_reload=lambda: home.getProperty("TMDbBingieHelper.Widgets.Reload")
+                          + "|" + home.getProperty("TMDbHelper.Widgets.Reload"))
     refresher.stop = threading.Event()
 
     def run():

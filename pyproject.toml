@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kodi-manager"
-version = "0.5.1"
+version = "0.5.2"
 description = "Reusable Kodi management library and optional authenticated dashboard companion"
 readme = "README.md"
 license = "MIT"

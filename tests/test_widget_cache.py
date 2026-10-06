@@ -280,3 +280,55 @@ def test_cache_url_drops_skin_reload_counters_and_watchlists_refresh_fast():
     src = "plugin://plugin.video.pov/?mode=build_movie_list&action=trakt_watchlist&reload=$INFO[Window(Home).Property(widgetreload)]"
     assert wc.source_from_cache_url(wc.cache_url(src)) == "plugin://plugin.video.pov/?mode=build_movie_list&action=trakt_watchlist"
     assert wc.ttl_for(src) == wc.TTL_PROGRESS
+
+
+TMDB = "plugin://plugin.video.tmdb.bingie.helper/?info=trakt_trending&tmdb_type=movie&widget=true"
+
+
+def tmdb_item():
+    return {"label": "Up", "file": "plugin://plugin.video.tmdb.bingie.helper/?info=play&tmdb_type=movie&tmdb_id=14160",
+            "filetype": "file", "type": "movie", "uniqueid": {"tmdb": "14160", "imdb": "tt1049413"}}
+
+
+def test_tmdb_helper_rows_are_cacheable_and_personal_ones_refresh_fast():
+    assert wc.validate_source(TMDB) == TMDB
+    assert wc.ttl_for(TMDB) == wc.TTL_DEFAULT
+    assert wc.ttl_for("plugin://plugin.video.tmdb.bingie.helper/?info=trakt_ondeck_unwatched&tmdb_type=movie&widget=true") == wc.TTL_PROGRESS
+    src = TMDB + "&reload=$INFO[Window(Home).Property(TMDbBingieHelper.Widgets.Reload)]&reload=$INFO[Window(Home).Property(x)]"
+    assert wc.source_from_cache_url(wc.cache_url(src)) == TMDB
+
+
+def test_tmdb_helper_properties_and_playability_are_restored():
+    props, playable = wc.helper_item(tmdb_item(), TMDB)
+    assert playable is True
+    assert props["tmdb_id"] == "14160" and props["imdb_id"] == "tt1049413"
+    assert props["item.info"] == "play" and props["item.type"] == "movie" and props["widget"] == "true"
+    assert wc.helper_item(tmdb_item(), MOVIES) == ({}, False)
+    folder = dict(tmdb_item(), file="plugin://plugin.video.tmdb.bingie.helper/?info=details&tmdb_type=tv&tmdb_id=1")
+    assert wc.helper_item(folder, TMDB)[1] is False
+
+
+def test_render_marks_only_tmdb_play_leaves_playable():
+    plugin = FakePlugin()
+    pov = {"label": "Coco", "file": "plugin://plugin.video.pov/?mode=playback.media&tmdb_id=2", "filetype": "file", "type": "movie"}
+    wc.render(SimpleNamespace(), SimpleNamespace(ListItem=FakeListItem), plugin, 1,
+              {"source": TMDB, "files": [tmdb_item()], "content": "movies"})
+    wc.render(SimpleNamespace(), SimpleNamespace(ListItem=FakeListItem), plugin, 1,
+              {"source": MOVIES, "files": [pov], "content": "movies"})
+    tmdb_li, pov_li = plugin.items[0][1], plugin.items[1][1]
+    assert tmdb_li.props["IsPlayable"] == "true" and tmdb_li.props["tmdb_id"] == "14160"
+    assert "IsPlayable" not in pov_li.props and "tmdb_id" not in pov_li.props
+
+
+def test_external_reload_property_queues_personal_rows(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    clock = Clock(1000)
+    cache.save(CONTINUE, [], now=clock.t)
+    cache.save(MOVIES, [], now=clock.t)
+    token = ["a"]
+    rpc = FakeRPC(listing("Up"))
+    r = wc.Refresher(cache, rpc, lambda: False, lambda v: None, clock=clock, external_reload=lambda: token[0])
+    r.next_sweep = 10 ** 9
+    assert r.tick() == 0  # first value only primes
+    token[0] = "b"
+    assert r.tick() == 1 and rpc.calls[0][1]["directory"] == CONTINUE

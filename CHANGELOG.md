@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.2 — 2026-10-06 (prerelease)
+
+- Widget cache supports TMDb Helper rows (`plugin.video.themoviedb.helper` and
+  `plugin.video.tmdb.bingie.helper`). JSON-RPC drops the properties TMDb Helper sets, so the cache
+  restores the ones it derives from data: `<id>_id` for each unique id, `item.<param>` for each
+  item URL parameter, `item.type` and `widget`. `info=play` items stay playable (TMDb Helper
+  resolves them with setResolvedUrl).
+- Personal Trakt rows (`trakt_ondeck*`, `trakt_nextepisodes`, `trakt_history`, `trakt_upnext`,
+  watchlists, recommendations…) use the short refresh schedule, and are refreshed whenever
+  TMDb Helper bumps its own widget reload property after a Trakt sync.
+
 ## 0.5.1 — 2026-10-06 (prerelease)
 
 - Widget cache: Trakt watchlist rows refresh on the short (15 minute / after playback) schedule.

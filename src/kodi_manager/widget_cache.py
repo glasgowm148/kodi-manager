@@ -41,6 +41,12 @@ FIELDS = ["title", "genre", "year", "rating", "votes", "playcount", "director", 
 
 _ACTION_RE = re.compile(r"(?:^|[./_ -])(?:play\w*|resolve\w*|execute\w*|run|auth\w*|logout|delete\w*|remove\w*|set\w*|tools|search\w*|scrape\w*|clear\w*|download\w*|install\w*|uninstall\w*|reset\w*|sync\w*|update\w*|mark\w*|manager\w*)(?:$|[./_ -])", re.I)
 _PROGRESS_MODES = {"build_continue_episode", "build_next_episode", "build_in_progress_episode"}
+# TMDb Helper (and its Bingie fork) use ?info=... for routes and resolve
+# their play items through setResolvedUrl, so those leaves stay playable.
+TMDB_HELPERS = {"plugin.video.tmdb.bingie.helper", "plugin.video.themoviedb.helper"}
+_PROGRESS_INFOS = {"trakt_ondeck", "trakt_ondeck_unwatched", "trakt_nextepisodes", "trakt_history",
+                   "trakt_upnext", "trakt_inprogress", "trakt_watchlist", "trakt_recommendations",
+                   "trakt_calendar", "trakt_mostwatched_user"}
 _PROGRESS_ACTIONS = {"in_progress_movies", "in_progress_tvshows", "trakt_recommendations",
                      "trakt_watchlist", "trakt_watchlist_lists"}
 _STATIC_MODES = {"build_season_list", "build_episode_list"}
@@ -93,7 +99,32 @@ def _route(source):
 
 def is_progress(source):
     mode, action = _route(source)
-    return mode in _PROGRESS_MODES or action in _PROGRESS_ACTIONS
+    info = parse_qs(urlsplit(source).query).get("info", [""])[0]
+    return mode in _PROGRESS_MODES or action in _PROGRESS_ACTIONS or info in _PROGRESS_INFOS
+
+
+def helper_item(item, source):
+    """Rebuild the ListItem properties TMDb Helper sets but JSON-RPC drops.
+
+    Returns (properties, playable). TMDb Helper exposes every unique id as
+    ``<name>_id``, every item URL parameter as ``item.<name>``, the source's
+    ``widget`` flag, and marks ``info=play`` leaves playable (it resolves them
+    with setResolvedUrl unless its "only resolve strm" option is on).
+    """
+    if urlsplit(source).netloc not in TMDB_HELPERS:
+        return {}, False
+    props = {"%s_id" % k: str(v) for k, v in (item.get("uniqueid") or {}).items() if k and v}
+    query = parse_qs(urlsplit(item.get("file", "")).query)
+    for key, values in query.items():
+        if key and values and values[0]:
+            props["item." + key] = values[0]
+    if query.get("tmdb_type"):
+        props["item.type"] = query["tmdb_type"][0]
+    widget = parse_qs(urlsplit(source).query).get("widget")
+    if widget:
+        props["widget"] = widget[0]
+    playable = urlsplit(item.get("file", "")).netloc in TMDB_HELPERS and query.get("info") == ["play"]
+    return props, playable
 
 
 def ttl_for(source):
@@ -369,6 +400,8 @@ def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None):
         _set_info(xbmc, li, item, kind)
         li.setArt(item.get("art") or {})
         props, context = item_actions(item, kind, entry["source"])
+        extra, playable = helper_item(item, entry["source"])
+        props.update(extra)
         resume = item.get("resume") or {}
         if resume.get("position") and resume.get("total"):
             props["watchedprogress"] = str(int(100 * float(resume["position"]) / float(resume["total"])))
@@ -378,8 +411,10 @@ def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None):
             li.setProperties(props)
         if context:
             li.addContextMenuItems(context)
-        # Like the source add-on: folders browse, leaf items run the add-on's
-        # own play route. Never mark them playable (they don't resolve URLs).
+        # Like the source add-on: folders browse; POV leaves run POV's own play
+        # route (never playable); TMDb Helper play leaves resolve a URL.
+        if playable and not folder:
+            li.setProperty("IsPlayable", "true")
         items.append((url, li, folder))
     xbmcplugin.addDirectoryItems(handle, items, len(items))
     xbmcplugin.endOfDirectory(handle, succeeded=True, cacheToDisc=False)
@@ -422,10 +457,15 @@ def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
 class Refresher:
     """Background, one-at-a-time refresh of queued widget rows (service side)."""
 
-    def __init__(self, cache, jsonrpc, is_playing, bump, log=lambda msg: None, clock=time.time):
+    def __init__(self, cache, jsonrpc, is_playing, bump, log=lambda msg: None, clock=time.time,
+                 external_reload=lambda: ""):
         self.cache, self.jsonrpc, self.is_playing, self.bump, self.log, self.clock = cache, jsonrpc, is_playing, bump, log, clock
         self.next_sweep = clock() + 20
         self.after_playback = []
+        # Add-ons such as TMDb Helper bump their own reload property after a
+        # Trakt sync; follow it so personal rows refresh at the same time.
+        self.external_reload = external_reload
+        self.last_external = None
 
     def playback_stopped(self):
         now = self.clock()
@@ -437,6 +477,11 @@ class Refresher:
         now = self.clock()
         if self.is_playing():
             return 0
+        token = self.external_reload()
+        if token != self.last_external:
+            if self.last_external is not None:
+                self.cache.queue_stale(now, progress_only=True)
+            self.last_external = token
         due = [kind for at, kind in self.after_playback if at <= now]
         self.after_playback = [(at, kind) for at, kind in self.after_playback if at > now]
         for kind in due:
