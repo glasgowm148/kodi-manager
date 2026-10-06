@@ -28,6 +28,7 @@ try:
     from .widget_filters import filter_items
     from .widget_preview import row_preview
     from .skin_layout import inspect_layout, preview_layout, apply_layout, request_rebuild
+    from .widget_cache import WidgetCache
 except ImportError:
     from version import VERSION
     from client import READ_POSTS
@@ -45,6 +46,7 @@ except ImportError:
     from widget_filters import filter_items
     from widget_preview import row_preview
     from skin_layout import inspect_layout, preview_layout, apply_layout, request_rebuild
+    from widget_cache import WidgetCache
 
 
 class AdminState:
@@ -377,6 +379,14 @@ def make_handler(state):
             if method != "GET" and not (method == "POST" and path in READ_POSTS):
                 if not state.config.get("write_enabled"):
                     raise PermissionError("Write Mode is disabled")
+            if path in ("/api/widget-cache", "/api/widget-cache/refresh"):
+                cache = WidgetCache(translate("special://profile/addon_data/service.kodi.addonadmin/widget_cache"))
+                if method == "POST" and path.endswith("/refresh"):
+                    self.ok({"queued": cache.queue_stale(everything=True)})
+                    return
+                if method == "GET" and path == "/api/widget-cache":
+                    self.ok(cache.status())
+                    return
             if path == "/api/fixes" and method == "GET":
                 self.ok(protection_for_kodi().status())
                 return

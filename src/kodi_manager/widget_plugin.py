@@ -304,6 +304,16 @@ def main(argv=None):
     import xbmc
     import xbmcgui
     import xbmcplugin
+    argv = sys.argv if argv is None else argv
+    if parse_qs(argv[2].lstrip("?")).get("mode", [""])[0] == "cached":
+        # Fast path: no add-on index, no source add-on call when cached.
+        import xbmcvfs
+        try:
+            from .widget_cache import serve
+        except ImportError:
+            from widget_cache import serve
+        serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs)
+        return
     try:
         from .addon_index import AddonIndex
     except ImportError:

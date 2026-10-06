@@ -13,11 +13,13 @@ try:
     from .kodi_api import KodiAPI, service_addon, translate
     from .server import ServerThread
     from .shield_exit import ShieldExitGuard
+    from .widget_cache import Refresher, WidgetCache, jsonrpc_via, RELOAD_PROPERTY
 except ImportError:
     from auth import generate_token
     from kodi_api import KodiAPI, service_addon, translate
     from server import ServerThread
     from shield_exit import ShieldExitGuard
+    from widget_cache import Refresher, WidgetCache, jsonrpc_via, RELOAD_PROPERTY
 
 
 def _bool(v):
@@ -115,6 +117,32 @@ def load_config(addon):
     return config
 
 
+def start_widget_refresher(kodi):
+    """Refresh cached widget rows one at a time in the background."""
+    if not xbmc:
+        return None
+    import threading
+    import xbmcgui
+    cache = WidgetCache(translate("special://profile/addon_data/service.kodi.addonadmin/widget_cache"))
+    home = xbmcgui.Window(10000)
+    player = xbmc.Player()
+    refresher = Refresher(cache, jsonrpc_via(xbmc), player.isPlayingVideo,
+                          lambda value: home.setProperty(RELOAD_PROPERTY, value), kodi.log)
+    refresher.stop = threading.Event()
+
+    def run():
+        while not refresher.stop.is_set():
+            try:
+                refresher.tick(refresher.stop.is_set)
+            except Exception as error:
+                kodi.log("Widget cache refresh error: %s" % type(error).__name__)
+            refresher.stop.wait(2)
+
+    # Daemon: profile changes stop scripts while Kodi calls may block.
+    threading.Thread(target=run, name="km-widget-cache", daemon=True).start()
+    return refresher
+
+
 def main():
     addon = service_addon()
     kodi = KodiAPI()
@@ -143,9 +171,16 @@ def main():
                             os.path.join(os.path.dirname(__file__), 'shield_exit_guard.sh'),
                             translate('special://temp/shield-exit-result.json'))
     kodi.log('Shield exit workaround active=%s' % supported)
+    try:
+        refresher = start_widget_refresher(kodi)
+    except Exception as error:
+        refresher = None
+        kodi.log('Widget cache unavailable: %s' % type(error).__name__)
     if xbmc:
         class ServiceMonitor(xbmc.Monitor):
             def onNotification(self, sender, method, data):
+                if method == 'Player.OnStop' and refresher:
+                    refresher.playback_stopped()
                 if method == 'System.OnQuit':
                     try:
                         guard.arm()
@@ -163,6 +198,8 @@ def main():
             else:
                 time.sleep(1)
     finally:
+        if refresher:
+            refresher.stop.set()
         try:
             guard.on_abort()
             if supported:

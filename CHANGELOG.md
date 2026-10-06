@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0 — 2026-10-06 (prerelease)
+
+- **Widget cache.** Point a widget at
+  `plugin://service.kodi.addonadmin/?mode=cached&source=<encoded add-on directory>` and Kodi
+  Manager serves the row's last listing from disk without calling the source add-on, so rows
+  appear without waiting for each add-on call (POV takes 1–2 s per row). The service refreshes stale rows one at a time
+  in the background (continue-watching style rows every 15 minutes and after playback stops,
+  others every 6 hours, season lists daily), never during playback, and keeps the old listing if a
+  refresh fails. Add `&reload=$INFO[Window(Home).Property(km_widgets)]` so the skin reloads rows
+  when fresh data changes them. Items keep the source add-on's own URLs and metadata.
+- `GET /api/widget-cache` lists cached rows; `POST /api/widget-cache/refresh` queues them all.
+
 ## 0.4.2 — 2026-10-06 (prerelease)
 
 - The installer seed is applied once. LAN access, host and port changes made later in the add-on

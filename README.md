@@ -81,6 +81,19 @@ Keep write mode off. Do not interrupt playback.
 ```
  Prefer to install manually? The [setup guide](docs/setup.md) includes the release download, exact Kodi menus, token location and connection troubleshooting. A bare Kodi installation needs no Bingie skin for general discovery/settings features.
 
+## Faster widget rows
+
+Heavy add-ons can take 1–2 seconds per row before a hub shows anything. Point a skin widget at the
+cache instead of the add-on directory:
+
+```
+plugin://service.kodi.addonadmin/?mode=cached&source=<URL-encoded add-on directory>&reload=$INFO[Window(Home).Property(km_widgets)]
+```
+
+Kodi Manager serves the last listing from disk, refreshes stale rows one at a time in the
+background (never during playback), and bumps `Window(Home).Property(km_widgets)` when fresh data
+changes, so the skin reloads the row. `kodi_manager.widget_cache.cache_url(source)` builds the URL.
+
 ## Making changes
 
 **Write mode starts disabled.** Enable it in the service settings when ready to change configuration; Python clients also need `allow_writes=True`. Layout writes require reviewed **Bingie 2.0.2 / Skin Shortcuts 2.0.3 source hashes**. Unknown variants stay view-only.

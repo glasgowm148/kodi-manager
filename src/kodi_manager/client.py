@@ -8,6 +8,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 READ_POSTS = frozenset({
     "/api/widgets/browse", "/api/widgets/suggestions", "/api/widgets/row-preview",
     "/api/widgets/layout/preview", "/api/pipeline/rescan", "/api/playback/test",
+    "/api/widget-cache/refresh",
 })
 MAX_BYTES = 4_000_000
 
