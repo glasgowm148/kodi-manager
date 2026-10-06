@@ -1,8 +1,8 @@
 """Cached rows any skin can use as widgets.
 
 Skins differ in how widget rows are stored, but every skin's widget picker can
-browse a video add-on's folders. Kodi Manager's add-on root therefore lists
-the rows saved here; each entry is a folder whose path is the cached widget
+browse a video add-on's folders. Kodi Manager's "Cached rows" folder therefore
+lists the rows saved here; each entry is a folder whose path is the cached widget
 URL, so picking it in the skin gives a fast, cached row.
 
 Rows are added from the "Add to Kodi Manager cached rows" context menu on any
@@ -80,6 +80,35 @@ class RowStore:
                 for row in self.load()]
 
 
+ROWS_URL = "plugin://service.kodi.addonadmin/?mode=rows"
+DASHBOARD_URL = "plugin://service.kodi.addonadmin/?mode=dashboard"
+
+
+def dashboard_message(settings, ip_address):
+    """What to show on the TV so someone can open the dashboard: (heading, text)."""
+    port = settings.get("port") or "8765"
+    token = settings.get("auth_token") or ""
+    lan = str(settings.get("allow_lan", "")).lower() == "true" and settings.get("host") == "0.0.0.0"
+    if not lan or not ip_address or ip_address.startswith("127."):
+        return ("Turn on network access", "Network access is off, so other devices can't reach the dashboard.[CR]"
+                "Open Kodi Manager's settings, turn on LAN access, set host 0.0.0.0 and port %s, "
+                "then restart Kodi." % port)
+    return ("Open the dashboard", "On a phone or computer on your home network, open:[CR]"
+            "[B]http://%s:%s[/B][CR]Access token: [B]%s[/B]" % (ip_address, port, token or "(restart Kodi to create one)"))
+
+
+def render_home(xbmcgui, xbmcplugin, handle):
+    """Add-on root: how to reach the dashboard, and the cached rows folder."""
+    xbmcplugin.setContent(handle, "files")
+    dashboard = xbmcgui.ListItem(label="Open the dashboard on another device", offscreen=True)
+    dashboard.setArt({"icon": "DefaultAddonService.png", "thumb": "DefaultAddonService.png"})
+    rows = xbmcgui.ListItem(label="Cached rows", offscreen=True)
+    rows.setArt({"icon": "DefaultFolder.png", "thumb": "DefaultFolder.png"})
+    items = [(DASHBOARD_URL, dashboard, False), (ROWS_URL, rows, True)]
+    xbmcplugin.addDirectoryItems(handle, items, len(items))
+    xbmcplugin.endOfDirectory(handle, succeeded=True, cacheToDisc=False)
+
+
 def render_rows(xbmcgui, xbmcplugin, handle, store):
     xbmcplugin.setContent(handle, "videos")
     items = []
@@ -114,5 +143,5 @@ def add_from_context(xbmc, xbmcgui, xbmcvfs, listitem):
         return None
     row = RowStore(cache_root(xbmcvfs)).add(name, path)
     xbmcgui.Dialog().notification("Kodi Manager", "Added. In your skin's widget picker choose "
-                                                  "Kodi Manager > %s" % row["label"])
+                                                  "Kodi Manager > Cached rows > %s" % row["label"])
     return row

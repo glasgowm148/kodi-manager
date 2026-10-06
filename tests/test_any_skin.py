@@ -79,6 +79,10 @@ def test_row_store_and_plugin_root_list_rows_for_any_skin(tmp_path, monkeypatch)
         monkeypatch.setitem(sys.modules, name, SimpleNamespace(ListItem=FakeListItem) if name == "xbmcgui" else plugin)
     monkeypatch.setitem(sys.modules, "xbmcvfs", SimpleNamespace(translatePath=lambda p: str(tmp_path)))
     widget_plugin.main(["plugin://service.kodi.addonadmin/", "3", ""])
+    assert [(li.label, folder) for _, li, folder in plugin.items] == [
+        ("Open the dashboard on another device", False), ("Cached rows", True)]
+    plugin.items.clear()
+    widget_plugin.main(["plugin://service.kodi.addonadmin/", "3", "?mode=rows"])
     (path, li, folder), = plugin.items
     assert path == url and folder is True and li.label == "Popular films"
     store.remove(row["id"])
@@ -147,3 +151,12 @@ def test_rows_and_url_api(api):
     assert [r["label"] for r in rows["data"]] == ["Popular"] and "hide_watched=true" in rows["data"][0]["widget_url"]
     assert api("POST", "/api/widget-cache/rows/remove", {"id": row["data"]["id"]})[0] == 200
     assert api("POST", "/api/widget-cache/rows/remove", {"id": "nope"})[0] == 400
+
+
+def test_dashboard_message_shows_address_and_token_only_with_lan_access():
+    on = {"port": "8765", "auth_token": "abc", "allow_lan": "true", "host": "0.0.0.0"}
+    heading, text = wr.dashboard_message(on, "192.168.1.20")
+    assert heading == "Open the dashboard" and "http://192.168.1.20:8765" in text and "abc" in text
+    heading, text = wr.dashboard_message(dict(on, allow_lan="false"), "192.168.1.20")
+    assert heading == "Turn on network access" and "abc" not in text
+    assert wr.dashboard_message(on, "")[0] == "Turn on network access"

@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="330" viewBox="0 0 920 330" role="img" aria-labelledby="t d">
+  <title id="t">How the widget cache works</title>
+  <desc id="d">Without the cache, the skin asks the add-on for every row at once and waits 1 to 3 seconds per row. With Kodi Manager, the skin reads rows from a cache in about half a second, while a background refresher asks the add-on for one row at a time and never during playback.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#475569"/>
+    </marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#0f766e"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; fill: #0f172a; }
+      .h { font-size: 15px; font-weight: 700; }
+      .l { font-size: 14px; font-weight: 600; }
+      .s { font-size: 12.5px; fill: #475569; }
+      .slow { font-size: 12.5px; font-weight: 700; fill: #b45309; }
+      .fast { font-size: 12.5px; font-weight: 700; fill: #0f766e; }
+      .box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.5; }
+      .km { fill: #ecfeff; stroke: #0f766e; stroke-width: 1.5; }
+    </style>
+  </defs>
+  <rect width="920" height="330" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+
+  <text class="h" x="28" y="38">Without the cache</text>
+  <rect class="box" x="28" y="56" width="170" height="54" rx="10"/>
+  <text class="l" x="113" y="81" text-anchor="middle">Skin</text>
+  <text class="s" x="113" y="99" text-anchor="middle">opens a hub</text>
+  <path d="M202 74 H 420" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M202 84 H 420" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M202 94 H 420" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <text class="s" x="311" y="66" text-anchor="middle">every row at once</text>
+  <rect class="box" x="424" y="56" width="190" height="54" rx="10"/>
+  <text class="l" x="519" y="81" text-anchor="middle">Video add-on</text>
+  <text class="s" x="519" y="99" text-anchor="middle">builds each list</text>
+  <text class="slow" x="640" y="80">1–3 s per row</text>
+  <text class="s" x="640" y="98">blank rows until done</text>
+
+  <line x1="28" y1="140" x2="892" y2="140" stroke="#e2e8f0" stroke-width="1.5"/>
+
+  <text class="h" x="28" y="174">With Kodi Manager</text>
+  <rect class="box" x="28" y="192" width="170" height="54" rx="10"/>
+  <text class="l" x="113" y="217" text-anchor="middle">Skin</text>
+  <text class="s" x="113" y="235" text-anchor="middle">opens a hub</text>
+  <path d="M202 219 H 330" stroke="#0f766e" stroke-width="2" marker-end="url(#g)"/>
+  <rect class="km" x="334" y="192" width="190" height="54" rx="10"/>
+  <text class="l" x="429" y="217" text-anchor="middle">Kodi Manager cache</text>
+  <text class="s" x="429" y="235" text-anchor="middle">last listing, on disk</text>
+  <text class="fast" x="208" y="210">≈0.5 s per row</text>
+
+  <rect class="km" x="334" y="262" width="190" height="48" rx="10"/>
+  <text class="l" x="429" y="284" text-anchor="middle">Background refresher</text>
+  <text class="s" x="429" y="301" text-anchor="middle">one row at a time</text>
+  <path d="M429 258 V 250" stroke="#0f766e" stroke-width="2" marker-end="url(#g)"/>
+  <path d="M528 286 H 650" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <rect class="box" x="654" y="262" width="190" height="48" rx="10"/>
+  <text class="l" x="749" y="284" text-anchor="middle">Video add-on</text>
+  <text class="s" x="749" y="301" text-anchor="middle">never during playback</text>
+  <text class="s" x="540" y="215">Adds View more · reloads rows</text>
+  <text class="s" x="540" y="233">when fresh data changes them</text>
+</svg>

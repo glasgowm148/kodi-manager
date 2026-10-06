@@ -16,9 +16,10 @@ There are three ways. They all produce the same cached row.
 1. In Kodi, open the add-on folder you want as a row: a film list, a Trakt list, a genre.
 2. Open the context menu (long-press OK, or `C`) and choose **Add to Kodi Manager cached rows**.
    Give the row a name.
-3. In your skin's widget or row picker, browse to **Add-ons → Kodi Manager** and pick the row.
+3. In your skin's widget or row picker, browse to **Add-ons → Kodi Manager → Cached rows** and
+   pick the row.
 
-The Kodi Manager add-on folder lists every saved row for the current profile.
+The **Cached rows** folder lists every saved row for the current profile.
 
 ### By pasting a path
 

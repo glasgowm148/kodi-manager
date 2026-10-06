@@ -306,16 +306,26 @@ def main(argv=None):
     import xbmcplugin
     argv = sys.argv if argv is None else argv
     mode = parse_qs(argv[2].lstrip("?")).get("mode", [""])[0]
-    if mode in ("", "rows"):
-        # Add-on root: the cached rows any skin's widget picker can choose.
-        import xbmcvfs
+    if mode in ("", "rows", "dashboard"):
         try:
-            from .widget_rows import RowStore, render_rows
+            from . import widget_rows
             from .widget_cache import cache_root
         except ImportError:
-            from widget_rows import RowStore, render_rows
+            import widget_rows
             from widget_cache import cache_root
-        render_rows(xbmcgui, xbmcplugin, int(argv[1]), RowStore(cache_root(xbmcvfs)))
+        if mode == "":
+            # Add-on root: how to reach the dashboard, and the cached rows folder.
+            widget_rows.render_home(xbmcgui, xbmcplugin, int(argv[1]))
+        elif mode == "rows":
+            # The cached rows any skin's widget picker can choose.
+            import xbmcvfs
+            widget_rows.render_rows(xbmcgui, xbmcplugin, int(argv[1]), widget_rows.RowStore(cache_root(xbmcvfs)))
+        else:
+            import xbmcaddon
+            addon = xbmcaddon.Addon("service.kodi.addonadmin")
+            settings = {key: addon.getSetting(key) for key in ("port", "auth_token", "allow_lan", "host")}
+            heading, text = widget_rows.dashboard_message(settings, xbmc.getInfoLabel("Network.IPAddress"))
+            xbmcgui.Dialog().ok("Kodi Manager: " + heading, text)
         return
     if mode == "cached":
         # Fast path: no add-on index, no source add-on call when cached.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1 — 2026-10-06 (prerelease)
+
+- **Find the dashboard from the TV.** Kodi Manager's add-on folder now opens with **Open the
+  dashboard on another device**, which shows the address and access token (or how to turn on LAN
+  access). No more reading the token out of `settings.xml`.
+- Cached rows moved into a **Cached rows** folder inside the add-on.
+- README rewritten around what the add-on does, with measured timings, a diagram and an FAQ.
+
 ## 0.6.0 — 2026-10-06 (prerelease)
 
 The widget cache now works with any skin and any video add-on.
