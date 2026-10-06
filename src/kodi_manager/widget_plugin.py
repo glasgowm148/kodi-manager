@@ -324,8 +324,9 @@ def main(argv=None):
             import xbmcaddon
             addon = xbmcaddon.Addon("service.kodi.addonadmin")
             settings = {key: addon.getSetting(key) for key in ("port", "auth_token", "allow_lan", "host")}
-            heading, text = widget_rows.dashboard_message(settings, xbmc.getInfoLabel("Network.IPAddress"))
-            xbmcgui.Dialog().ok("Kodi Manager: " + heading, text)
+            heading, text = widget_rows.dashboard_message(settings, widget_rows.local_ip(xbmc))
+            # A text viewer, not an OK dialog: the token is long and must not be cut off.
+            xbmcgui.Dialog().textviewer("Kodi Manager: " + heading, text)
         return
     if mode == "cached":
         # Fast path: no add-on index, no source add-on call when cached.

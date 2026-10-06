@@ -160,3 +160,11 @@ def test_dashboard_message_shows_address_and_token_only_with_lan_access():
     heading, text = wr.dashboard_message(dict(on, allow_lan="false"), "192.168.1.20")
     assert heading == "Turn on network access" and "abc" not in text
     assert wr.dashboard_message(on, "")[0] == "Turn on network access"
+
+
+def test_local_ip_waits_for_kodi_then_falls_back():
+    answers = iter(["Busy", "Busy", "192.168.1.30"])
+    xbmc = SimpleNamespace(getInfoLabel=lambda label: next(answers), sleep=lambda ms: None)
+    assert wr.local_ip(xbmc) == "192.168.1.30"
+    busy = SimpleNamespace(getInfoLabel=lambda label: "Busy", sleep=lambda ms: None)
+    assert wr.local_ip(busy, attempts=2) != "Busy"

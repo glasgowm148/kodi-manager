@@ -31,7 +31,7 @@ It works with any skin and any video add-on. Nothing is uploaded anywhere: the a
 dashboard stay on your home network.
 
 > [!NOTE]
-> **Prerelease.** 0.6.1 is in use on an NVIDIA Shield with Kodi 22 beta 2 and the Bingie
+> **Prerelease.** 0.6.2 is in use on an NVIDIA Shield with Kodi 22 beta 2 and the Bingie
 > skin. Other skins and devices are covered by automated tests rather than live use so far; see
 > [compatibility](docs/compatibility.md).
 

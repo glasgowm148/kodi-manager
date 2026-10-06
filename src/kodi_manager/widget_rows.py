@@ -84,6 +84,25 @@ ROWS_URL = "plugin://service.kodi.addonadmin/?mode=rows"
 DASHBOARD_URL = "plugin://service.kodi.addonadmin/?mode=dashboard"
 
 
+def local_ip(xbmc, attempts=30):
+    """This device's LAN address. Kodi answers "Busy" while it looks the value up."""
+    for _ in range(attempts):
+        value = xbmc.getInfoLabel("Network.IPAddress")
+        if value and value != "Busy" and not value.startswith("127."):
+            return value
+        xbmc.sleep(100)
+    try:
+        import socket
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect(("192.0.2.1", 9))  # No packet is sent for UDP connect.
+            return probe.getsockname()[0]
+        finally:
+            probe.close()
+    except OSError:
+        return ""
+
+
 def dashboard_message(settings, ip_address):
     """What to show on the TV so someone can open the dashboard: (heading, text)."""
     port = settings.get("port") or "8765"
@@ -93,8 +112,9 @@ def dashboard_message(settings, ip_address):
         return ("Turn on network access", "Network access is off, so other devices can't reach the dashboard.[CR]"
                 "Open Kodi Manager's settings, turn on LAN access, set host 0.0.0.0 and port %s, "
                 "then restart Kodi." % port)
-    return ("Open the dashboard", "On a phone or computer on your home network, open:[CR]"
-            "[B]http://%s:%s[/B][CR]Access token: [B]%s[/B]" % (ip_address, port, token or "(restart Kodi to create one)"))
+    return ("Open the dashboard", "On a phone or computer on your home network, open this address:[CR][CR]"
+            "[B]http://%s:%s[/B][CR][CR]When the dashboard asks for the access token, enter:[CR][CR]"
+            "[B]%s[/B]" % (ip_address, port, token or "(none yet: restart Kodi to create one)"))
 
 
 def render_home(xbmcgui, xbmcplugin, handle):

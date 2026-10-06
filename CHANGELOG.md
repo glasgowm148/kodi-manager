@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2 — 2026-10-06 (prerelease)
+
+- Fixed the **Open the dashboard** screen from 0.6.1, found on a real TV: it showed "Busy" instead of
+  the address (Kodi answers that while it looks the address up), and the long token was cut off.
+  It now waits for the address and shows everything in a full-height text window.
+
 ## 0.6.1 — 2026-10-06 (prerelease)
 
 - **Find the dashboard from the TV.** Kodi Manager's add-on folder now opens with **Open the
