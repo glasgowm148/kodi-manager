@@ -93,6 +93,7 @@ def load_config(addon):
         "auth_token": token,
         "log_level": get("log_level", "info"),
         "backup_retention": int(get("backup_retention", "20")),
+        "widget_cache_auto": _bool(get("widget_cache_auto", "false")),
         "allowed_addons_csv": get("allowed_addons_csv", ""),
         "delete_installer_result_after_first_login": _bool(get("delete_installer_result_after_first_login", "false")),
         "installer_seed": seed,
@@ -173,6 +174,18 @@ def main():
                             os.path.join(os.path.dirname(__file__), 'shield_exit_guard.sh'),
                             translate('special://temp/shield-exit-result.json'))
     kodi.log('Shield exit workaround active=%s' % supported)
+    if config.get("widget_cache_auto"):
+        try:
+            try:
+                from .widget_autocache import autocache
+            except ImportError:
+                from widget_autocache import autocache
+            changed = autocache(translate("special://profile/addon_data/script.skinshortcuts"))
+            if changed:
+                kodi.log("Widget cache: routed %d new rows through the cache (%s); active after the menu rebuilds"
+                         % (sum(changed.values()), ", ".join(sorted(changed))))
+        except Exception as error:
+            kodi.log("Widget cache auto-routing failed: %s" % type(error).__name__)
     try:
         refresher = start_widget_refresher(kodi)
     except Exception as error:

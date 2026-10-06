@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.3 — 2026-10-06 (prerelease)
+
+- Cached TMDb Helper rows follow its **Only resolve strm** setting: when it is on, play items are
+  no longer marked playable, matching what TMDb Helper itself does.
+- New opt-in setting **Route new skin widget rows through the widget cache**. On start, the
+  service rewrites direct POV (`build_*`) and TMDb Helper widget rows in Skin Shortcuts' widget
+  groups (`*-10000-1`, `*hub`) to cached URLs, backing up the original files to
+  `kodi-manager-backups/autocache-<time>/`. Menus and other add-ons are left alone. Rows switch
+  over when Skin Shortcuts next rebuilds the menu.
+
 ## 0.5.2 — 2026-10-06 (prerelease)
 
 - Widget cache supports TMDb Helper rows (`plugin.video.themoviedb.helper` and

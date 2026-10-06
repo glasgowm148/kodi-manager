@@ -93,6 +93,8 @@ plugin://service.kodi.addonadmin/?mode=cached&source=<URL-encoded add-on directo
 Kodi Manager serves the last listing from disk, refreshes stale rows one at a time in the
 background (never during playback), and bumps `Window(Home).Property(km_widgets)` when fresh data
 changes, so the skin reloads the row. `kodi_manager.widget_cache.cache_url(source)` builds the URL.
+Turn on **Route new skin widget rows through the widget cache** to have rows added later in the
+skin's menu editor switched over automatically on the next start (Skin Shortcuts / Bingie layout).
 
 ## Making changes
 

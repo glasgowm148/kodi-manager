@@ -383,7 +383,7 @@ def _set_info(xbmc, li, item, kind):
             pass
 
 
-def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None):
+def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable=True):
     content = entry.get("content") or content_for(entry["source"], entry["files"])
     xbmcplugin.setContent(handle, content)
     today = today or time.strftime("%Y-%m-%d")
@@ -401,6 +401,7 @@ def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None):
         li.setArt(item.get("art") or {})
         props, context = item_actions(item, kind, entry["source"])
         extra, playable = helper_item(item, entry["source"])
+        playable = playable and helper_playable
         props.update(extra)
         resume = item.get("resume") or {}
         if resume.get("position") and resume.get("total"):
@@ -418,6 +419,18 @@ def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None):
         items.append((url, li, folder))
     xbmcplugin.addDirectoryItems(handle, items, len(items))
     xbmcplugin.endOfDirectory(handle, succeeded=True, cacheToDisc=False)
+
+
+def helper_resolves(source):
+    """TMDb Helper marks play items playable unless "only resolve strm" is on."""
+    helper = urlsplit(source).netloc
+    if helper not in TMDB_HELPERS:
+        return True
+    try:
+        import xbmcaddon
+        return xbmcaddon.Addon(helper).getSetting("only_resolve_strm") != "true"
+    except Exception:
+        return True
 
 
 def jsonrpc_via(xbmc):
@@ -448,7 +461,7 @@ def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
             if cache.is_stale(entry):
                 cache.request(source, priority=is_progress(source))
             cache.touch(source)
-        render(xbmc, xbmcgui, xbmcplugin, handle, entry)
+        render(xbmc, xbmcgui, xbmcplugin, handle, entry, helper_playable=helper_resolves(source))
     except Exception as exc:
         xbmc.log("Kodi Manager widget cache: %s" % type(exc).__name__, xbmc.LOGWARNING)
         xbmcplugin.endOfDirectory(handle, succeeded=False, cacheToDisc=False)

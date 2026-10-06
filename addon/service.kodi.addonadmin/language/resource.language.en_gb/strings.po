@@ -49,3 +49,7 @@ msgstr ""
 msgctxt "#32014"
 msgid "Shield: prevent graphics-driver crash on exit (Kodi 22 beta 2)"
 msgstr ""
+
+msgctxt "#32015"
+msgid "Route new skin widget rows through the widget cache (on start)"
+msgstr ""
