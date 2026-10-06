@@ -16,7 +16,7 @@ node --test tests/*.js
 python -m build
 python scripts/build_addon.py
 python scripts/test_wheel.py
-python scripts/check_release.py dist/kodi_manager-0.4.1-py3-none-any.whl dist/kodi_manager-0.4.1.tar.gz dist/service.kodi.addonadmin-0.4.1.zip --write-checksums dist/SHA256SUMS
+python scripts/check_release.py dist/*.whl dist/*.tar.gz dist/service.kodi.addonadmin-*.zip --write-checksums dist/SHA256SUMS
 ```
 
 Update library/add-on/pyproject versions together, add a changelog entry and document compatibility.
