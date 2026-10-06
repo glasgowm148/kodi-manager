@@ -94,6 +94,7 @@ def load_config(addon):
         "log_level": get("log_level", "info"),
         "backup_retention": int(get("backup_retention", "20")),
         "widget_cache_auto": _bool(get("widget_cache_auto", "false")),
+        "widget_cache_auto_addons": [a.strip() for a in get("widget_cache_auto_addons", "").split(",") if a.strip()],
         "allowed_addons_csv": get("allowed_addons_csv", ""),
         "delete_installer_result_after_first_login": _bool(get("delete_installer_result_after_first_login", "false")),
         "installer_seed": seed,
@@ -180,7 +181,8 @@ def main():
                 from .widget_autocache import autocache
             except ImportError:
                 from widget_autocache import autocache
-            changed = autocache(translate("special://profile/addon_data/script.skinshortcuts"))
+            changed = autocache(translate("special://profile/addon_data/script.skinshortcuts"),
+                                extra_addons=config.get("widget_cache_auto_addons") or ())
             if changed:
                 kodi.log("Widget cache: routed %d new rows through the cache (%s); active after the menu rebuilds"
                          % (sum(changed.values()), ", ".join(sorted(changed))))

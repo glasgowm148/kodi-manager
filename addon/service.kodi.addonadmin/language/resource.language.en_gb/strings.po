@@ -53,3 +53,15 @@ msgstr ""
 msgctxt "#32015"
 msgid "Route new skin widget rows through the widget cache (on start)"
 msgstr ""
+
+msgctxt "#32016"
+msgid "Also route rows from these add-ons (comma-separated IDs)"
+msgstr ""
+
+msgctxt "#32017"
+msgid "Row item limit (0 = detect from skin)"
+msgstr ""
+
+msgctxt "#32018"
+msgid "Add to Kodi Manager cached rows"
+msgstr ""

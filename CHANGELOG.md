@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.0 — 2026-10-06 (prerelease)
+
+The widget cache now works with any skin and any video add-on.
+
+- **Cached rows for any skin.** A new **Add to Kodi Manager cached rows** context-menu item on video
+  add-on folders saves a row; the Kodi Manager add-on root lists saved rows, so any skin's widget
+  picker can choose them. Also `GET/POST /api/widget-cache/rows`, `POST /api/widget-cache/rows/remove`
+  and `GET /api/widget-cache/url`.
+- **View more for any add-on** whose listing offers another page, using that add-on's own Next page
+  artwork. Fen and Fen Light `build_*` list routes are recognised like POV's.
+- **Automatic routing for more skins:** Skin Shortcuts `widgetPath` properties are converted as well
+  as Bingie widget groups, and **Also route rows from these add-ons** opts other add-ons in.
+- **Row item limit** setting for skins that cap rows (0 keeps Bingie detection).
+- Fixed: the `port`, `backup_retention` and new numeric settings used an invalid type (`integer`),
+  so Kodi ignored their definitions and logged warnings.
+
 ## 0.5.5 — 2026-10-06 (prerelease)
 
 - View more stays visible when the skin caps widget rows: Bingie shows at most

@@ -81,20 +81,57 @@ Keep write mode off. Do not interrupt playback.
 ```
  Prefer to install manually? The [setup guide](docs/setup.md) includes the release download, exact Kodi menus, token location and connection troubleshooting. A bare Kodi installation needs no Bingie skin for general discovery/settings features.
 
-## Faster widget rows
+## Faster widget rows (any skin, any video add-on)
 
-Heavy add-ons can take 1–2 seconds per row before a hub shows anything. Point a skin widget at the
-cache instead of the add-on directory:
+Heavy add-ons can take 1–3 seconds per row before a home screen shows anything. Kodi Manager can
+serve each row from its last listing on disk instead, refreshing stale rows one at a time in the
+background (never during playback). Rows show up in about half a second.
+
+**Add a cached row in any skin**
+
+1. Open the add-on folder you want as a row (a list of films, a Trakt list, …).
+2. Open its context menu and choose **Add to Kodi Manager cached rows**, and give it a name.
+3. In your skin's widget/row picker, browse to **Kodi Manager** and pick the row.
+
+The same rows can be managed with `GET/POST /api/widget-cache/rows`. To paste a path into a skin's
+"custom widget path" field instead, `GET /api/widget-cache/url?source=<add-on folder>` returns it:
 
 ```
-plugin://service.kodi.addonadmin/?mode=cached&source=<URL-encoded add-on directory>&reload=$INFO[Window(Home).Property(km_widgets)]
+plugin://service.kodi.addonadmin/?mode=cached&source=<URL-encoded add-on folder>&reload=$INFO[Window(Home).Property(km_widgets)]
 ```
 
-Kodi Manager serves the last listing from disk, refreshes stale rows one at a time in the
-background (never during playback), and bumps `Window(Home).Property(km_widgets)` when fresh data
-changes, so the skin reloads the row. `kodi_manager.widget_cache.cache_url(source)` builds the URL.
-Turn on **Route new skin widget rows through the widget cache** to have rows added later in the
-skin's menu editor switched over automatically on the next start (Skin Shortcuts / Bingie layout).
+Optional parameters: `&pages=N` (1–5) reads more pages by following the add-on's own Next page item,
+and `&hide_watched=true` drops watched items from that row only.
+
+**What every cached row gets**
+
+- A **View more** item at the end that opens the add-on's full, paged list, whenever the add-on
+  offered another page (always for known list routes).
+- A reload when fresh data changes it: the service bumps `Window(Home).Property(km_widgets)`.
+- Refreshes on a schedule: progress rows (continue watching, watchlists, recommendations) every 15
+  minutes and after playback stops, other rows every 6 hours, season and episode lists daily.
+
+**Switch existing rows over automatically (Skin Shortcuts skins)**
+
+Turn on **Route new skin widget rows through the widget cache**. On start, Kodi Manager rewrites
+direct rows to cached ones, after backing up the originals to
+`script.skinshortcuts/kodi-manager-backups/autocache-<time>/`. It understands skins that keep
+`widgetPath` properties (most Skin Shortcuts skins) and Bingie-style widget groups. By default it
+only routes list routes it knows (Fen, Fen Light, POV `build_*` lists and TMDb Helper widget rows);
+add other add-on IDs under **Also route rows from these add-ons**. Live TV, music and library rows
+are never touched.
+
+**Row item limit**
+
+Many skins cap how many items a row shows. Set **Row item limit** to that number so View more stays
+visible; with 0, Kodi Manager uses Bingie's limit when it detects Bingie.
+
+**Known add-ons**
+
+Results are fetched through Kodi's JSON-RPC, which keeps titles, artwork, ratings, resume points
+and IDs but not an add-on's own context menu. For TMDb Helper, Kodi Manager also restores the
+`<id>_id`, `item.*` and `widget` properties skins read, keeps play items playable (following its
+"only resolve strm" setting), and refreshes personal rows when TMDb Helper signals a Trakt sync.
 
 ## Making changes
 

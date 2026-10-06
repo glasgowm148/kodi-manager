@@ -28,7 +28,8 @@ try:
     from .widget_filters import filter_items
     from .widget_preview import row_preview
     from .skin_layout import inspect_layout, preview_layout, apply_layout, request_rebuild
-    from .widget_cache import WidgetCache
+    from .widget_cache import WidgetCache, cache_url
+    from .widget_rows import RowStore
 except ImportError:
     from version import VERSION
     from client import READ_POSTS
@@ -46,7 +47,8 @@ except ImportError:
     from widget_filters import filter_items
     from widget_preview import row_preview
     from skin_layout import inspect_layout, preview_layout, apply_layout, request_rebuild
-    from widget_cache import WidgetCache
+    from widget_cache import WidgetCache, cache_url
+    from widget_rows import RowStore
 
 
 class AdminState:
@@ -379,6 +381,33 @@ def make_handler(state):
             if method != "GET" and not (method == "POST" and path in READ_POSTS):
                 if not state.config.get("write_enabled"):
                     raise PermissionError("Write Mode is disabled")
+            if path == "/api/widget-cache/url" and method == "GET":
+                q = parse_qs(urlparse(self.path).query)
+                pages = (q.get("pages") or [""])[0]
+                try:
+                    url = cache_url((q.get("source") or [""])[0], pages=int(pages) if pages.isdigit() else None,
+                                    hide_watched=(q.get("hide_watched") or [""])[0] == "true")
+                except ValueError as exc:
+                    self.err(400, "bad_request", str(exc))
+                    return
+                self.ok({"url": url})
+                return
+            if path in ("/api/widget-cache/rows", "/api/widget-cache/rows/remove"):
+                rows = RowStore(translate("special://profile/addon_data/service.kodi.addonadmin/widget_cache"))
+                if method == "GET" and path == "/api/widget-cache/rows":
+                    self.ok(rows.listing())
+                    return
+                if method == "POST" and path == "/api/widget-cache/rows":
+                    body = self._json_body()
+                    pages = body.get("pages")
+                    self.ok(rows.add(body.get("label", ""), body.get("source", ""),
+                                     pages=int(pages) if str(pages or "").isdigit() else None,
+                                     hide_watched=bool(body.get("hide_watched"))))
+                    return
+                if method == "POST" and path.endswith("/remove"):
+                    rows.remove(str(self._json_body().get("id", "")))
+                    self.ok({"removed": True})
+                    return
             if path in ("/api/widget-cache", "/api/widget-cache/refresh"):
                 cache = WidgetCache(translate("special://profile/addon_data/service.kodi.addonadmin/widget_cache"))
                 if method == "POST" and path.endswith("/refresh"):

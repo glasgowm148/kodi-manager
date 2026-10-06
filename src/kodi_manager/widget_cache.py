@@ -111,27 +111,36 @@ def _clamp_pages(value):
 
 
 def is_list_row(source):
-    """Movie/show lists (not progress rows, seasons or episodes)."""
+    """Known movie/show list routes (not progress rows, seasons or episodes).
+
+    ``build_*_list`` routes are shared by POV and the Fen family; TMDb Helper
+    lists are its widget rows. Other add-ons are recognised from their own
+    listing instead (see ``view_more_url``).
+    """
     parsed = urlsplit(source)
     query = parse_qs(parsed.query)
     if is_progress(source):
         return False
-    if parsed.netloc == "plugin.video.pov":
-        return query.get("mode", [""])[0] in _LIST_MODES
+    if query.get("mode", [""])[0] in _LIST_MODES:
+        return True
     if parsed.netloc in TMDB_HELPERS:
         return query.get("widget") == ["true"] or query.get("info") == ["trakt_userlist"]
     return False
 
 
 def default_pages(source):
-    """POV lists show 20 items per page; read two so rows are not sparse."""
-    return 2 if urlsplit(source).netloc == "plugin.video.pov" and is_list_row(source) else 1
+    """Known list routes show about 20 items per page; read two so rows are not sparse."""
+    return 2 if is_list_row(source) and urlsplit(source).netloc not in TMDB_HELPERS else 1
 
 
-def view_more_url(source):
-    """The full, paged listing behind a row, or None for rows without one."""
+def view_more_url(source, has_more=False):
+    """The full, paged listing behind a row, or None for rows without one.
+
+    Known list routes always get one; any other add-on's row gets one when its
+    listing offered a further page.
+    """
     if not is_list_row(source):
-        return None
+        return source if has_more and not is_progress(source) else None
     parsed = urlsplit(source)
     if parsed.netloc in TMDB_HELPERS:
         pairs = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k != "widget"]
@@ -267,12 +276,17 @@ def _next_page_url(source, current, item):
 
 
 def fetch(jsonrpc, source, pages=1):
-    """Read the source directory through Kodi JSON-RPC. Raises on any failure.
+    """Read the source directory through Kodi JSON-RPC. Raises on any failure."""
+    return fetch_listing(jsonrpc, source, pages)[0]
 
-    With ``pages`` > 1, follows the add-on's own Next page item. A failure on a
-    later page keeps the pages already read.
+
+def fetch_listing(jsonrpc, source, pages=1):
+    """Read up to ``pages`` pages. Returns (items, has_more, next_page_art).
+
+    Follows the add-on's own Next page item; a failure on a later page keeps
+    the pages already read. ``has_more`` says the add-on offered another page.
     """
-    current, out = validate_source(source), []
+    current, out, more, art = validate_source(source), [], False, None
     for page in range(_clamp_pages(pages)):
         reply = jsonrpc("Files.GetDirectory", {"directory": current, "media": "video", "properties": FIELDS})
         if not isinstance(reply, dict) or reply.get("error") or not isinstance(reply.get("result"), dict):
@@ -285,9 +299,13 @@ def fetch(jsonrpc, source, pages=1):
         out.extend(item for item in normalise(files) if item["file"] not in seen)
         nxt = [item for item in files if isinstance(item, dict) and _next_page(item)]
         current = _next_page_url(source, current, nxt[0]) if len(nxt) == 1 else None
+        more = bool(current)
+        if nxt and not art:
+            item_art = nxt[0].get("art") or {}
+            art = _unwrap_image(item_art.get("thumb") or item_art.get("icon") or nxt[0].get("thumbnail") or "") or None
         if not current or len(out) >= MAX_ITEMS:
             break
-    return out[:MAX_ITEMS]
+    return out[:MAX_ITEMS], more, art
 
 
 def _digest(files):
@@ -319,13 +337,14 @@ class WidgetCache:
             return None
         return entry if isinstance(entry, dict) and entry.get("source") == source and isinstance(entry.get("files"), list) else None
 
-    def save(self, source, files, now=None, pages=1):
+    def save(self, source, files, now=None, pages=1, more=False, next_art=None):
         """Store a listing. Returns True when it differs from the previous one."""
         now = time.time() if now is None else now
         old = self.load(source)
         digest = _digest(files)
         self._write(self.entry_path(source), {"source": source, "fetched_at": now, "digest": digest,
-                                              "pages": _clamp_pages(pages),
+                                              "pages": _clamp_pages(pages), "more": bool(more),
+                                              "next_art": next_art,
                                               "content": content_for(source, files), "files": files})
         return old is None or old.get("digest") != digest
 
@@ -486,7 +505,7 @@ def _set_info(xbmc, li, item, kind):
 
 
 def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable=True,
-           hide_watched=False, view_more=None, limit=0):
+           hide_watched=False, view_more=None, limit=0, view_more_art=None):
     content = entry.get("content") or content_for(entry["source"], entry["files"])
     xbmcplugin.setContent(handle, content)
     today = today or time.strftime("%Y-%m-%d")
@@ -527,7 +546,7 @@ def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable
         items = items[:limit - 1]
     if view_more:
         li = xbmcgui.ListItem(label="View more", path=view_more, offscreen=True)
-        art = POV_NEXT_ART
+        art = view_more_art or (POV_NEXT_ART if urlsplit(view_more).netloc == "plugin.video.pov" else "DefaultFolder.png")
         li.setArt({"thumb": art, "poster": art, "icon": art})
         li.setProperties({"specialsort": "bottom", "km_view_more": "true"})
         items.append((view_more, li, True))
@@ -547,11 +566,28 @@ def helper_resolves(source):
         return True
 
 
-def skin_widget_limit(xbmc):
-    """Bingie caps every widget at Skin.String(WidgetsGlobalLimit) items (0 = unknown)."""
+def skin_widget_limit(xbmc, configured=0):
+    """Most items a skin shows in one row (0 = no known limit).
+
+    The "Row item limit" setting wins; otherwise use Bingie's
+    Skin.String(WidgetsGlobalLimit) when the skin defines it.
+    """
+    try:
+        if int(configured or 0) > 0:
+            return int(configured)
+    except (TypeError, ValueError):
+        pass
     try:
         return int(xbmc.getInfoLabel("Skin.String(WidgetsGlobalLimit)") or 0)
     except (ValueError, TypeError, AttributeError):
+        return 0
+
+
+def configured_row_limit():
+    try:
+        import xbmcaddon
+        return int(xbmcaddon.Addon("service.kodi.addonadmin").getSetting("widget_row_limit") or 0)
+    except Exception:
         return 0
 
 
@@ -574,10 +610,11 @@ def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
         cache = WidgetCache(cache_root(xbmcvfs))
         entry = cache.load(source)
         if entry is None:
-            files = fetch(jsonrpc_via(xbmc), source, pages)
-            entry = {"source": source, "files": files, "content": content_for(source, files)}
+            files, more, next_art = fetch_listing(jsonrpc_via(xbmc), source, pages)
+            entry = {"source": source, "files": files, "content": content_for(source, files),
+                     "more": more, "next_art": next_art}
             try:
-                cache.save(source, files, pages=pages)
+                cache.save(source, files, pages=pages, more=more, next_art=next_art)
             except OSError:
                 pass
         else:
@@ -587,7 +624,8 @@ def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
                 cache.request(source, priority=is_progress(source))
             cache.touch(source)
         render(xbmc, xbmcgui, xbmcplugin, handle, entry, helper_playable=helper_resolves(source),
-               hide_watched=hide_watched, view_more=view_more_url(source), limit=skin_widget_limit(xbmc))
+               hide_watched=hide_watched, view_more=view_more_url(source, entry.get("more")),
+               limit=skin_widget_limit(xbmc, configured_row_limit()), view_more_art=entry.get("next_art"))
     except Exception as exc:
         xbmc.log("Kodi Manager widget cache: %s" % type(exc).__name__, xbmc.LOGWARNING)
         xbmcplugin.endOfDirectory(handle, succeeded=False, cacheToDisc=False)
@@ -637,7 +675,8 @@ class Refresher:
             try:
                 validate_source(source)
                 pages = self.cache.pages_for(source)
-                changed += bool(self.cache.save(source, fetch(self.jsonrpc, source, pages), self.clock(), pages=pages))
+                files, more, next_art = fetch_listing(self.jsonrpc, source, pages)
+                changed += bool(self.cache.save(source, files, self.clock(), pages=pages, more=more, next_art=next_art))
                 done += 1
             except Exception as exc:
                 self.log("Widget refresh failed (%s)" % type(exc).__name__)

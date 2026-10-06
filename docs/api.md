@@ -17,6 +17,8 @@ The HTML/JS dashboard is public but its data/actions are authenticated.
 | Layout preview/apply | `POST /api/widgets/layout/preview`, `POST /api/widgets/layout/apply` |
 | Request menu rebuild | `POST /api/widgets/layout/rebuild` |
 | Cached widget rows | `GET /api/widget-cache`, `POST /api/widget-cache/refresh` (queues every cached row) |
+| Cached URL for a source | `GET /api/widget-cache/url?source=plugin://…&pages=2&hide_watched=true` |
+| Rows any skin can pick | `GET /api/widget-cache/rows`, `POST /api/widget-cache/rows` `{"label","source","pages","hide_watched"}`, `POST /api/widget-cache/rows/remove` `{"id"}` |
 | Health/logs/backups | `GET /api/health`, `/api/logs`, `/api/kodi/logs`, `/api/backups/timeline` |
 | Stack backup/restore | `POST /api/stack/backup`, `POST /api/stack/restore` |
 

@@ -305,7 +305,19 @@ def main(argv=None):
     import xbmcgui
     import xbmcplugin
     argv = sys.argv if argv is None else argv
-    if parse_qs(argv[2].lstrip("?")).get("mode", [""])[0] == "cached":
+    mode = parse_qs(argv[2].lstrip("?")).get("mode", [""])[0]
+    if mode in ("", "rows"):
+        # Add-on root: the cached rows any skin's widget picker can choose.
+        import xbmcvfs
+        try:
+            from .widget_rows import RowStore, render_rows
+            from .widget_cache import cache_root
+        except ImportError:
+            from widget_rows import RowStore, render_rows
+            from widget_cache import cache_root
+        render_rows(xbmcgui, xbmcplugin, int(argv[1]), RowStore(cache_root(xbmcvfs)))
+        return
+    if mode == "cached":
         # Fast path: no add-on index, no source add-on call when cached.
         import xbmcvfs
         try:
