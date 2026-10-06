@@ -195,10 +195,11 @@ def test_serve_miss_fetches_then_hit_skips_source(tmp_path):
     xbmc, gui, plugin, vfs = kodi_modules(tmp_path, rpc)
     argv = ["plugin://service.kodi.addonadmin/", "1", "?" + wc.cache_url(MOVIES).split("?", 1)[1]]
     wc.serve(argv, xbmc, gui, plugin, vfs)
-    assert len(rpc.calls) == 1 and len(plugin.items) == 1
+    # Two pages read (list rows default to 2); one film plus the View more item.
+    assert len(rpc.calls) == 2 and len(plugin.items) == 2
     plugin2 = FakePlugin()
     wc.serve(argv, xbmc, gui, plugin2, vfs)
-    assert len(rpc.calls) == 1 and len(plugin2.items) == 1 and plugin2.ended is True
+    assert len(rpc.calls) == 2 and len(plugin2.items) == 2 and plugin2.ended is True
 
 
 def test_serve_stale_hit_queues_refresh(tmp_path):
@@ -243,7 +244,7 @@ def test_refresher_refreshes_serially_and_bumps_on_change(tmp_path):
     r = wc.Refresher(cache, rpc, lambda: False, bumps.append, clock=clock)
     r.next_sweep = 0
     assert r.tick() == 1  # first sweep queues the stale row
-    assert len(rpc.calls) == 1 and bumps == [str(10 ** 6)]
+    assert len(rpc.calls) == 2 and bumps == [str(10 ** 6)]  # two pages
     clock.t += 1
     cache.request(MOVIES)
     assert r.tick() == 1 and len(bumps) == 1  # unchanged data: no skin reload
@@ -332,3 +333,85 @@ def test_external_reload_property_queues_personal_rows(tmp_path):
     assert r.tick() == 0  # first value only primes
     token[0] = "b"
     assert r.tick() == 1 and rpc.calls[0][1]["directory"] == CONTINUE
+
+
+
+class PagedRPC:
+    """Serves page N of a source with a Next page item until the last page."""
+
+    def __init__(self, pages, fail_on=None):
+        self.pages, self.fail_on, self.calls = pages, fail_on, []
+
+    def __call__(self, method, params=None):
+        directory = params["directory"]
+        self.calls.append(directory)
+        page = int(parse_qs(urlsplit(directory).query).get("new_page", ["1"])[0])
+        if page == self.fail_on:
+            return {"error": {"code": -1}}
+        files = [{"label": "Film %d-%d" % (page, i), "file": "plugin://plugin.video.pov/?mode=playback.media&tmdb_id=%d%d" % (page, i),
+                  "filetype": "file", "type": "movie", "playcount": i % 2} for i in range(3)]
+        if page < self.pages:
+            files.append({"label": "[B]Next Page >>[/B]", "filetype": "directory",
+                          "file": MOVIES + "&new_page=%d&exit_list_params=x" % (page + 1)})
+        return {"result": {"files": files}}
+
+
+def test_fetch_follows_next_page_up_to_the_requested_pages():
+    rpc = PagedRPC(pages=5)
+    files = wc.fetch(rpc, MOVIES, pages=3)
+    assert [f["label"] for f in files][::3] == ["Film 1-0", "Film 2-0", "Film 3-0"] and len(files) == 9
+    assert len(rpc.calls) == 3 and "new_page=3" in rpc.calls[-1]
+    assert len(wc.fetch(PagedRPC(pages=1), MOVIES, pages=3)) == 3  # stops on the last page
+    assert len(wc.fetch(PagedRPC(pages=5, fail_on=2), MOVIES, pages=3)) == 3  # keeps page 1
+
+
+def test_fetch_ignores_next_page_items_to_other_routes():
+    class Odd(PagedRPC):
+        def __call__(self, method, params=None):
+            reply = super().__call__(method, params)
+            reply["result"]["files"][-1]["file"] = "plugin://plugin.video.pov/?mode=build_tvshow_list&action=x&new_page=2"
+            return reply
+    rpc = Odd(pages=3)
+    assert len(wc.fetch(rpc, MOVIES, pages=3)) == 3 and len(rpc.calls) == 1
+
+
+def test_list_rows_get_view_more_and_default_pages():
+    assert wc.default_pages(MOVIES) == 2 and wc.default_pages(CONTINUE) == 1 and wc.default_pages(SEASONS) == 1
+    assert wc.view_more_url(MOVIES) == MOVIES
+    assert wc.view_more_url(CONTINUE) is None and wc.view_more_url(SEASONS) is None
+    assert wc.view_more_url(TMDB) == "plugin://plugin.video.tmdb.bingie.helper/?info=trakt_trending&tmdb_type=movie"
+    assert wc.view_more_url("plugin://plugin.video.tmdb.bingie.helper/?info=trakt_ondeck_unwatched&tmdb_type=movie&widget=true") is None
+    url = wc.cache_url(MOVIES, pages=9, hide_watched=True)
+    q = parse_qs(urlsplit(url).query)
+    assert wc.row_options(q) == (wc.MAX_PAGES, True)
+    assert wc.row_options(parse_qs(urlsplit(wc.cache_url(MOVIES)).query)) == (2, False)
+
+
+def test_render_hides_watched_on_request_and_appends_view_more():
+    files = wc.fetch(PagedRPC(pages=1), MOVIES)
+    plugin = FakePlugin()
+    wc.render(SimpleNamespace(), SimpleNamespace(ListItem=FakeListItem), plugin, 1,
+              {"source": MOVIES, "files": files, "content": "movies"}, hide_watched=True, view_more=MOVIES)
+    labels = [li.label for _, li, _ in plugin.items]
+    assert labels == ["Film 1-0", "Film 1-2", "View more"]
+    url, li, folder = plugin.items[-1]
+    assert url == MOVIES and folder is True and li.props["specialsort"] == "bottom"
+    plugin = FakePlugin()
+    wc.render(SimpleNamespace(), SimpleNamespace(ListItem=FakeListItem), plugin, 1,
+              {"source": MOVIES, "files": files, "content": "movies"})
+    assert [li.label for _, li, _ in plugin.items] == ["Film 1-0", "Film 1-1", "Film 1-2"]
+
+
+def test_serve_with_more_pages_than_cached_queues_a_deeper_refresh(tmp_path):
+    rpc = PagedRPC(pages=5)
+    xbmc, gui, plugin, vfs = kodi_modules(tmp_path, rpc)
+    cache = wc.WidgetCache(str(tmp_path))
+    cache.save(MOVIES, wc.fetch(rpc, MOVIES, 2), pages=2)
+    rpc.calls.clear()
+    wc.serve(["x", "1", "?" + wc.cache_url(MOVIES, pages=4).split("?", 1)[1]], xbmc, gui, plugin, vfs)
+    assert rpc.calls == [] and plugin.ended is True
+    assert cache.take_queue() == [MOVIES] and cache.pages_for(MOVIES) == 4
+    r = wc.Refresher(cache, rpc, lambda: False, lambda v: None, clock=Clock(10 ** 6))
+    r.next_sweep = 10 ** 9
+    cache.request(MOVIES, pages=4)
+    assert r.tick() == 1 and len(rpc.calls) == 4 and cache.load(MOVIES)["pages"] == 4

@@ -20,7 +20,7 @@ import json
 import os
 import re
 import time
-from urllib.parse import parse_qs, unquote, urlencode, urlsplit
+from urllib.parse import parse_qs, parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 PLUGIN_URL = "plugin://service.kodi.addonadmin/"
 RELOAD_PROPERTY = "km_widgets"
@@ -78,8 +78,14 @@ def strip_skin_reload(source):
     return re.sub(r"&reload=\$INFO\[[^\]]*\]", "", source)
 
 
-def cache_url(source, reload=True):
+def cache_url(source, reload=True, pages=None, hide_watched=False):
+    """Cached widget URL. ``pages`` reads that many source pages (following the
+    add-on's Next page item); ``hide_watched`` drops watched items when shown."""
     params = {"mode": "cached", "source": validate_source(strip_skin_reload(source))}
+    if pages:
+        params["pages"] = str(_clamp_pages(pages))
+    if hide_watched:
+        params["hide_watched"] = "true"
     url = PLUGIN_URL + "?" + urlencode(params)
     return url + "&reload=" + RELOAD_INFO if reload else url
 
@@ -90,6 +96,55 @@ def source_from_cache_url(url):
     if parsed.netloc != "service.kodi.addonadmin" or query.get("mode") != ["cached"]:
         return None
     return query.get("source", [None])[0]
+
+
+MAX_PAGES = 5
+_LIST_MODES = {"build_movie_list", "build_tvshow_list", "build_trakt_list"}
+POV_NEXT_ART = "special://home/addons/plugin.video.pov/resources/skins/Default/media/item_next.png"
+
+
+def _clamp_pages(value):
+    try:
+        return max(1, min(MAX_PAGES, int(value)))
+    except (TypeError, ValueError):
+        return 1
+
+
+def is_list_row(source):
+    """Movie/show lists (not progress rows, seasons or episodes)."""
+    parsed = urlsplit(source)
+    query = parse_qs(parsed.query)
+    if is_progress(source):
+        return False
+    if parsed.netloc == "plugin.video.pov":
+        return query.get("mode", [""])[0] in _LIST_MODES
+    if parsed.netloc in TMDB_HELPERS:
+        return query.get("widget") == ["true"] or query.get("info") == ["trakt_userlist"]
+    return False
+
+
+def default_pages(source):
+    """POV lists show 20 items per page; read two so rows are not sparse."""
+    return 2 if urlsplit(source).netloc == "plugin.video.pov" and is_list_row(source) else 1
+
+
+def view_more_url(source):
+    """The full, paged listing behind a row, or None for rows without one."""
+    if not is_list_row(source):
+        return None
+    parsed = urlsplit(source)
+    if parsed.netloc in TMDB_HELPERS:
+        pairs = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k != "widget"]
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(pairs), ""))
+    return source
+
+
+def row_options(query):
+    """(pages, hide_watched) from a cached widget URL's query."""
+    source = query.get("source", [""])[0]
+    pages = query.get("pages", [None])[0]
+    pages = _clamp_pages(pages) if pages else default_pages(source)
+    return pages, query.get("hide_watched", ["false"])[0] == "true"
 
 
 def _route(source):
@@ -192,13 +247,47 @@ def normalise(files):
     return out
 
 
-def fetch(jsonrpc, source):
-    """Read the source directory through Kodi JSON-RPC. Raises on any failure."""
-    reply = jsonrpc("Files.GetDirectory", {"directory": validate_source(source), "media": "video", "properties": FIELDS})
-    if not isinstance(reply, dict) or reply.get("error") or not isinstance(reply.get("result"), dict):
-        raise ValueError("Source directory could not be read")
-    files = reply["result"].get("files")
-    return normalise(files if isinstance(files, list) else [])
+def _next_page_url(source, current, item):
+    """Accept only the same add-on route on a later page."""
+    path = item.get("file")
+    if not isinstance(path, str):
+        return None
+    try:
+        validate_source(path)
+    except ValueError:
+        return None
+    want, got = urlsplit(source), urlsplit(path)
+    wq, gq = parse_qs(want.query), parse_qs(got.query)
+    if got.netloc != want.netloc or path == current:
+        return None
+    for key in ("mode", "action", "info"):
+        if wq.get(key) != gq.get(key):
+            return None
+    return path if gq.get("new_page") or gq.get("page") else None
+
+
+def fetch(jsonrpc, source, pages=1):
+    """Read the source directory through Kodi JSON-RPC. Raises on any failure.
+
+    With ``pages`` > 1, follows the add-on's own Next page item. A failure on a
+    later page keeps the pages already read.
+    """
+    current, out = validate_source(source), []
+    for page in range(_clamp_pages(pages)):
+        reply = jsonrpc("Files.GetDirectory", {"directory": current, "media": "video", "properties": FIELDS})
+        if not isinstance(reply, dict) or reply.get("error") or not isinstance(reply.get("result"), dict):
+            if page:
+                break
+            raise ValueError("Source directory could not be read")
+        files = reply["result"].get("files")
+        files = files if isinstance(files, list) else []
+        seen = {item["file"] for item in out}
+        out.extend(item for item in normalise(files) if item["file"] not in seen)
+        nxt = [item for item in files if isinstance(item, dict) and _next_page(item)]
+        current = _next_page_url(source, current, nxt[0]) if len(nxt) == 1 else None
+        if not current or len(out) >= MAX_ITEMS:
+            break
+    return out[:MAX_ITEMS]
 
 
 def _digest(files):
@@ -210,6 +299,7 @@ class WidgetCache:
         self.root = root
         self.entries = os.path.join(root, "entries")
         self.queue = os.path.join(root, "queue")
+        self.queued_pages = {}
 
     def _write(self, path, data):
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -229,12 +319,13 @@ class WidgetCache:
             return None
         return entry if isinstance(entry, dict) and entry.get("source") == source and isinstance(entry.get("files"), list) else None
 
-    def save(self, source, files, now=None):
+    def save(self, source, files, now=None, pages=1):
         """Store a listing. Returns True when it differs from the previous one."""
         now = time.time() if now is None else now
         old = self.load(source)
         digest = _digest(files)
         self._write(self.entry_path(source), {"source": source, "fetched_at": now, "digest": digest,
+                                              "pages": _clamp_pages(pages),
                                               "content": content_for(source, files), "files": files})
         return old is None or old.get("digest") != digest
 
@@ -252,10 +343,18 @@ class WidgetCache:
         except OSError:
             pass
 
-    def request(self, source, priority=False):
+    def request(self, source, priority=False, pages=None):
         path = os.path.join(self.queue, cache_key(source) + ".json")
-        if priority or not os.path.exists(path):
-            self._write(path, {"source": source, "priority": bool(priority), "at": time.time()})
+        if priority or pages or not os.path.exists(path):
+            job = {"source": source, "priority": bool(priority), "at": time.time()}
+            if pages:
+                job["pages"] = _clamp_pages(pages)
+            self._write(path, job)
+
+    def pages_for(self, source):
+        """Pages to read when refreshing: whatever a row asked for, at least the default."""
+        entry = self.load(source) or {}
+        return max(self.queued_pages.get(source, 1), _clamp_pages(entry.get("pages", 1)), default_pages(source))
 
     def take_queue(self):
         """Remove and return queued sources, priority (progress) rows first."""
@@ -275,6 +374,9 @@ class WidgetCache:
             if isinstance(job, dict) and isinstance(job.get("source"), str):
                 jobs.append(job)
         jobs.sort(key=lambda j: (not j.get("priority"), j.get("at", 0)))
+        for job in jobs:
+            if job.get("pages"):
+                self.queued_pages[job["source"]] = max(self.queued_pages.get(job["source"], 1), _clamp_pages(job["pages"]))
         seen, out = set(), []
         for job in jobs:
             if job["source"] not in seen:
@@ -383,7 +485,8 @@ def _set_info(xbmc, li, item, kind):
             pass
 
 
-def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable=True):
+def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable=True,
+           hide_watched=False, view_more=None):
     content = entry.get("content") or content_for(entry["source"], entry["files"])
     xbmcplugin.setContent(handle, content)
     today = today or time.strftime("%Y-%m-%d")
@@ -393,6 +496,8 @@ def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable
         from item_actions import item_actions
     items = []
     for item in entry["files"]:
+        if hide_watched and int(item.get("playcount") or 0) > 0:
+            continue
         url = item["file"]
         folder = item.get("filetype") == "directory"
         kind = media_type(item, content)
@@ -417,6 +522,12 @@ def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable
         if playable and not folder:
             li.setProperty("IsPlayable", "true")
         items.append((url, li, folder))
+    if view_more:
+        li = xbmcgui.ListItem(label="View more", path=view_more, offscreen=True)
+        art = POV_NEXT_ART
+        li.setArt({"thumb": art, "poster": art, "icon": art})
+        li.setProperties({"specialsort": "bottom", "km_view_more": "true"})
+        items.append((view_more, li, True))
     xbmcplugin.addDirectoryItems(handle, items, len(items))
     xbmcplugin.endOfDirectory(handle, succeeded=True, cacheToDisc=False)
 
@@ -448,20 +559,24 @@ def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
     try:
         query = parse_qs(argv[2].lstrip("?"))
         source = validate_source(query.get("source", [""])[0])
+        pages, hide_watched = row_options(query)
         cache = WidgetCache(cache_root(xbmcvfs))
         entry = cache.load(source)
         if entry is None:
-            files = fetch(jsonrpc_via(xbmc), source)
+            files = fetch(jsonrpc_via(xbmc), source, pages)
             entry = {"source": source, "files": files, "content": content_for(source, files)}
             try:
-                cache.save(source, files)
+                cache.save(source, files, pages=pages)
             except OSError:
                 pass
         else:
-            if cache.is_stale(entry):
+            if _clamp_pages(entry.get("pages", 1)) < pages:
+                cache.request(source, priority=is_progress(source), pages=pages)
+            elif cache.is_stale(entry):
                 cache.request(source, priority=is_progress(source))
             cache.touch(source)
-        render(xbmc, xbmcgui, xbmcplugin, handle, entry, helper_playable=helper_resolves(source))
+        render(xbmc, xbmcgui, xbmcplugin, handle, entry, helper_playable=helper_resolves(source),
+               hide_watched=hide_watched, view_more=view_more_url(source))
     except Exception as exc:
         xbmc.log("Kodi Manager widget cache: %s" % type(exc).__name__, xbmc.LOGWARNING)
         xbmcplugin.endOfDirectory(handle, succeeded=False, cacheToDisc=False)
@@ -510,7 +625,8 @@ class Refresher:
                 continue
             try:
                 validate_source(source)
-                changed += bool(self.cache.save(source, fetch(self.jsonrpc, source), self.clock()))
+                pages = self.cache.pages_for(source)
+                changed += bool(self.cache.save(source, fetch(self.jsonrpc, source, pages), self.clock(), pages=pages))
                 done += 1
             except Exception as exc:
                 self.log("Widget refresh failed (%s)" % type(exc).__name__)

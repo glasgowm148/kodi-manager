@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.4 — 2026-10-06 (prerelease)
+
+- Cached list rows end with a **View more** item that opens the add-on's full, paged listing
+  (for TMDb Helper rows, the same list without `widget=true`).
+- POV list rows read two pages by default by following POV's own Next page item; a row can ask for
+  up to five with `&pages=N` on the cached URL. A failure on a later page keeps the earlier pages.
+- `&hide_watched=true` on a cached URL drops watched items for that row only, so "unseen" rows and
+  "show everything" rows (a studio, a show's seasons) can live in the same profile.
+
 ## 0.5.3 — 2026-10-06 (prerelease)
 
 - Cached TMDb Helper rows follow its **Only resolve strm** setting: when it is on, play items are
