@@ -41,7 +41,8 @@ FIELDS = ["title", "genre", "year", "rating", "votes", "playcount", "director", 
 
 _ACTION_RE = re.compile(r"(?:^|[./_ -])(?:play\w*|resolve\w*|execute\w*|run|auth\w*|logout|delete\w*|remove\w*|set\w*|tools|search\w*|scrape\w*|clear\w*|download\w*|install\w*|uninstall\w*|reset\w*|sync\w*|update\w*|mark\w*|manager\w*)(?:$|[./_ -])", re.I)
 _PROGRESS_MODES = {"build_continue_episode", "build_next_episode", "build_in_progress_episode"}
-_PROGRESS_ACTIONS = {"in_progress_movies", "in_progress_tvshows", "trakt_recommendations"}
+_PROGRESS_ACTIONS = {"in_progress_movies", "in_progress_tvshows", "trakt_recommendations",
+                     "trakt_watchlist", "trakt_watchlist_lists"}
 _STATIC_MODES = {"build_season_list", "build_episode_list"}
 _CONTENT = {"build_season_list": "seasons", "build_episode_list": "episodes",
             "build_continue_episode": "episodes", "build_next_episode": "episodes",
@@ -66,8 +67,13 @@ def validate_source(source):
     return source
 
 
+def strip_skin_reload(source):
+    """Drop skin reload counters ($INFO[...]) from a source: the cache has its own."""
+    return re.sub(r"&reload=\$INFO\[[^\]]*\]", "", source)
+
+
 def cache_url(source, reload=True):
-    params = {"mode": "cached", "source": validate_source(source)}
+    params = {"mode": "cached", "source": validate_source(strip_skin_reload(source))}
     url = PLUGIN_URL + "?" + urlencode(params)
     return url + "&reload=" + RELOAD_INFO if reload else url
 

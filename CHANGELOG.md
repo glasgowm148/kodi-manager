@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 — 2026-10-06 (prerelease)
+
+- Widget cache: Trakt watchlist rows refresh on the short (15 minute / after playback) schedule.
+- `cache_url()` drops skin reload counters such as `&reload=$INFO[...]` from the source, so the
+  cache key stays stable; the cache's own `km_widgets` counter reloads rows instead.
+
 ## 0.5.0 — 2026-10-06 (prerelease)
 
 - **Widget cache.** Point a widget at

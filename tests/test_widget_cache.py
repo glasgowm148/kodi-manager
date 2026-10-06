@@ -274,3 +274,9 @@ def test_refresher_keeps_old_rows_when_source_fails(tmp_path):
     r.next_sweep = 0
     r.tick()
     assert cache.load(MOVIES)["files"][0]["label"] == "Up"
+
+
+def test_cache_url_drops_skin_reload_counters_and_watchlists_refresh_fast():
+    src = "plugin://plugin.video.pov/?mode=build_movie_list&action=trakt_watchlist&reload=$INFO[Window(Home).Property(widgetreload)]"
+    assert wc.source_from_cache_url(wc.cache_url(src)) == "plugin://plugin.video.pov/?mode=build_movie_list&action=trakt_watchlist"
+    assert wc.ttl_for(src) == wc.TTL_PROGRESS
