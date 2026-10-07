@@ -13,7 +13,6 @@ import hashlib
 import json
 import os
 import re
-import tempfile
 import threading
 import uuid
 import xml.etree.ElementTree as ET
@@ -21,8 +20,10 @@ from urllib.parse import urlsplit, parse_qs
 
 try:
     from .kodi_api import translate
+    from .fsutil import atomic_write_bytes
 except ImportError:
     from kodi_api import translate
+    from fsutil import atomic_write_bytes
 
 SKIN = "skin.bingie"
 SHORTCUTS = "script.skinshortcuts"
@@ -229,7 +230,7 @@ def _sections(kodi, index, state, root, snapshots):
         for include in includes.iter('include'):
             text = (include.text or '').strip()
             match = re.fullmatch(r'Window.IsActive\((\d+)\)', include.get('condition', ''))
-            group = text.removeprefix('skinshortcuts-template-')
+            group = text[len('skinshortcuts-template-'):] if text.startswith('skinshortcuts-template-') else text
             if match and text.startswith('skinshortcuts-template-') and group in groups:
                 mappings[group] = int(match.group(1))
     except (OSError, ValueError, ET.ParseError) as exc:
@@ -689,18 +690,7 @@ def preview_layout(kodi, index, body):
 
 
 def _atomic(path, raw):
-    fd, temporary = tempfile.mkstemp(prefix=".kodi-manager-", dir=os.path.dirname(path))
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(raw)
-            handle.flush()
-            os.fsync(handle.fileno())
-        if os.path.isfile(path):
-            os.chmod(temporary, os.stat(path).st_mode & 0o777)
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    atomic_write_bytes(path, raw)
 
 
 def _check_snapshots(root, snapshots, staged=None):

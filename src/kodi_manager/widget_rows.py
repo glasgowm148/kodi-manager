@@ -15,8 +15,10 @@ import re
 import uuid
 
 try:
+    from .fsutil import atomic_write_json, path_lock
     from .widget_cache import cache_url, validate_source, strip_skin_reload
 except ImportError:
+    from fsutil import atomic_write_json, path_lock
     from widget_cache import cache_url, validate_source, strip_skin_reload
 
 MAX_ROWS = 200
@@ -44,34 +46,34 @@ class RowStore:
             if isinstance(rows, list) else []
 
     def _save(self, rows):
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        tmp = "%s.%d.tmp" % (self.path, os.getpid())
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(rows, fh, indent=1)
-        os.replace(tmp, self.path)
+        atomic_write_json(self.path, rows, indent=1)
 
     def add(self, label, source, pages=None, hide_watched=False):
         source = validate_source(strip_skin_reload(source))
-        rows = self.load()
-        for row in rows:
-            if row["source"] == source:
-                row.update({"label": _clean_label(label), "pages": pages, "hide_watched": bool(hide_watched)})
-                self._save(rows)
-                return row
-        if len(rows) >= MAX_ROWS:
-            raise ValueError("Too many cached rows")
-        row = {"id": uuid.uuid4().hex[:12], "label": _clean_label(label), "source": source,
-               "pages": pages, "hide_watched": bool(hide_watched)}
-        rows.append(row)
-        self._save(rows)
-        return row
+        label = _clean_label(label)
+        # Read-modify-write under a per-file lock so concurrent adds keep each other's rows.
+        with path_lock(self.path):
+            rows = self.load()
+            for row in rows:
+                if row["source"] == source:
+                    row.update({"label": label, "pages": pages, "hide_watched": bool(hide_watched)})
+                    self._save(rows)
+                    return row
+            if len(rows) >= MAX_ROWS:
+                raise ValueError("Too many cached rows")
+            row = {"id": uuid.uuid4().hex[:12], "label": label, "source": source,
+                   "pages": pages, "hide_watched": bool(hide_watched)}
+            rows.append(row)
+            self._save(rows)
+            return row
 
     def remove(self, row_id):
-        rows = self.load()
-        kept = [r for r in rows if r["id"] != row_id]
-        if len(kept) == len(rows):
-            raise ValueError("Unknown cached row")
-        self._save(kept)
+        with path_lock(self.path):
+            rows = self.load()
+            kept = [r for r in rows if r["id"] != row_id]
+            if len(kept) == len(rows):
+                raise ValueError("Unknown cached row")
+            self._save(kept)
 
     def listing(self):
         """Rows with the URL a skin should use for each."""

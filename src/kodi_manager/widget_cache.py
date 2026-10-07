@@ -319,12 +319,12 @@ class WidgetCache:
         self.queue = os.path.join(root, "queue")
         self.queued_pages = {}
 
-    def _write(self, path, data):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = "%s.%d.tmp" % (path, os.getpid())
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, separators=(",", ":"))
-        os.replace(tmp, path)
+    def _write(self, path, data, fsync=True):
+        try:
+            from .fsutil import atomic_write_json
+        except ImportError:
+            from fsutil import atomic_write_json
+        atomic_write_json(path, data, fsync=fsync, separators=(",", ":"))
 
     def entry_path(self, source):
         return os.path.join(self.entries, cache_key(source) + ".json")
@@ -368,7 +368,7 @@ class WidgetCache:
             job = {"source": source, "priority": bool(priority), "at": time.time()}
             if pages:
                 job["pages"] = _clamp_pages(pages)
-            self._write(path, job)
+            self._write(path, job, fsync=False)  # A lost job is re-queued by the next sweep.
 
     def pages_for(self, source):
         """Pages to read when refreshing: whatever a row asked for, at least the default."""
@@ -458,50 +458,37 @@ class WidgetCache:
         return {"root": self.root, "entries": rows, "queued": queued}
 
 
+_INFO_KEYS = {"title": "title", "year": "year", "mpaa": "mpaa", "plot": "plot", "tagline": "tagline",
+              "originaltitle": "originaltitle", "imdbnumber": "imdbnumber", "premiered": "premiered",
+              "firstaired": "aired", "trailer": "trailer", "lastplayed": "lastplayed",
+              "dateadded": "dateadded", "playcount": "playcount", "showtitle": "tvshowtitle",
+              "runtime": "duration", "genre": "genre", "director": "director", "writer": "writer",
+              "studio": "studio", "country": "country", "tag": "tag"}
+
+
 def _set_info(xbmc, li, item, kind):
-    tag = li.getVideoInfoTag()
-    simple = {"title": "setTitle", "year": "setYear", "mpaa": "setMpaa", "plot": "setPlot",
-              "tagline": "setTagLine", "originaltitle": "setOriginalTitle", "imdbnumber": "setIMDBNumber",
-              "premiered": "setPremiered", "firstaired": "setFirstAired", "trailer": "setTrailer",
-              "lastplayed": "setLastPlayed", "dateadded": "setDateAdded", "playcount": "setPlaycount",
-              "showtitle": "setTvShowTitle", "runtime": "setDuration"}
-    lists = {"genre": "setGenres", "director": "setDirectors", "writer": "setWriters",
-             "studio": "setStudios", "country": "setCountries", "tag": "setTags"}
-    for key, name in simple.items():
-        if key in item:
-            try:
-                getattr(tag, name)(item[key])
-            except (TypeError, ValueError, AttributeError):
-                pass
-    for key, name in lists.items():
-        if key in item:
-            value = item[key] if isinstance(item[key], list) else [item[key]]
-            try:
-                getattr(tag, name)([str(v) for v in value if v])
-            except (TypeError, AttributeError):
-                pass
-    for key, name in (("season", "setSeason"), ("episode", "setEpisode")):
+    """JSON-RPC item fields to ListItem metadata on Kodi 19 and 20+ (see kodi_compat)."""
+    try:
+        from .kodi_compat import set_video_info
+    except ImportError:
+        from kodi_compat import set_video_info
+    info = {label: item[key] for key, label in _INFO_KEYS.items() if key in item}
+    for key in ("season", "episode"):
         if isinstance(item.get(key), int) and item[key] >= 0:
-            getattr(tag, name)(item[key])
+            info[key] = item[key]
     if kind:
-        tag.setMediaType(kind)
+        info["mediatype"] = kind
+    rating = votes = None
     if item.get("rating"):
         try:
-            tag.setRating(float(item["rating"]), int(str(item.get("votes", 0)).replace(",", "") or 0), "", True)
+            rating = float(item["rating"])
+            votes = int(str(item.get("votes", 0)).replace(",", "") or 0)
         except (TypeError, ValueError):
-            pass
-    if isinstance(item.get("uniqueid"), dict) and item["uniqueid"]:
-        ids = {str(k): str(v) for k, v in item["uniqueid"].items() if v}
-        tag.setUniqueIDs(ids, "tmdb" if "tmdb" in ids else next(iter(ids)))
-    resume = item.get("resume") or {}
-    if resume.get("position"):
-        tag.setResumePoint(float(resume["position"]), float(resume.get("total") or 0))
-    if item.get("cast") and hasattr(xbmc, "Actor"):
-        try:
-            tag.setCast([xbmc.Actor(c.get("name", ""), c.get("role", ""), int(c.get("order", i)), c.get("thumbnail", ""))
-                         for i, c in enumerate(item["cast"])])
-        except (TypeError, ValueError):
-            pass
+            rating = None
+    unique_ids = item.get("uniqueid") if isinstance(item.get("uniqueid"), dict) else None
+    set_video_info(li, info, resume=item.get("resume") or {}, unique_ids=unique_ids, default_id="tmdb",
+                   rating=rating, votes=votes, cast=item.get("cast") if isinstance(item.get("cast"), list) else None,
+                   actor=getattr(xbmc, "Actor", None))
 
 
 def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable=True,

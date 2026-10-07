@@ -178,33 +178,13 @@ def directory_content(result):
     return "videos"
 
 
-def _set_video_info(li, info, resume):
-    # Kodi 20+ has native metadata/resume setters. Keep compatibility with
-    # older Kodi and lightweight clients without emitting deprecated calls.
-    setters = {"title": "setTitle", "genre": "setGenres", "year": "setYear",
-               "mpaa": "setMpaa", "plot": "setPlot", "tvshowtitle": "setTvShowTitle",
-               "season": "setSeason", "episode": "setEpisode", "playcount": "setPlaycount",
-               "mediatype": "setMediaType", "imdbnumber": "setIMDBNumber",
-               "originaltitle": "setOriginalTitle", "duration": "setDuration", "lastplayed": "setLastPlayed",
-               "studio": "setStudios", "director": "setDirectors", "tagline": "setTagLine"}
-    tag = li.getVideoInfoTag() if hasattr(li, "getVideoInfoTag") else None
-    remaining = {}
-    for key, value in info.items():
-        setter = getattr(tag, setters.get(key, ""), None)
-        if setter is None:
-            remaining[key] = value
-            continue
-        if key in ("genre", "studio", "director") and isinstance(value, str):
-            value = [value]
-        setter(value)
-    if remaining:
-        li.setInfo("video", remaining)
-    if resume.get("position"):
-        if tag is not None and hasattr(tag, "setResumePoint"):
-            tag.setResumePoint(float(resume["position"]), float(resume.get("total", 0)))
-        else:
-            li.setProperty("ResumeTime", str(resume["position"]))
-            li.setProperty("TotalTime", str(resume.get("total", 0)))
+def _set_video_info(li, info, resume, unique_ids=None):
+    # Kodi 20+ has native metadata/resume setters; Kodi 19 only has setInfo.
+    try:
+        from .kodi_compat import set_video_info
+    except ImportError:
+        from kodi_compat import set_video_info
+    set_video_info(li, info, resume=resume, unique_ids=unique_ids)
 
 
 def render_directory(xbmcgui, xbmcplugin, handle, result):
@@ -236,9 +216,8 @@ def render_directory(xbmcgui, xbmcplugin, handle, result):
                                          "seasons": "season", "episodes": "episode"}.get(content)
         if "mediatype" not in info and media_type:
             info["mediatype"] = media_type
-        _set_video_info(li, info, item.get("resume") or {})
-        if item.get("uniqueid") and hasattr(li, "setUniqueIDs"):
-            li.setUniqueIDs(item["uniqueid"])
+        _set_video_info(li, info, item.get("resume") or {},
+                        item.get("uniqueid") if isinstance(item.get("uniqueid"), dict) else None)
         art = dict(item.get("art") or {})
         if item.get("thumbnail"):
             art.setdefault("thumb", item["thumbnail"])

@@ -124,19 +124,36 @@ def test_prune_removes_unused_rows(tmp_path):
     assert cache.load(MOVIES) is None and cache.load(CONTINUE) is not None
 
 
+# Setters InfoTagVideo has on Kodi 20+; Kodi 19's tag has none of them.
+KODI20_SETTERS = ("setTitle", "setYear", "setMpaa", "setPlot", "setTagLine", "setOriginalTitle", "setIMDBNumber",
+                  "setPremiered", "setFirstAired", "setTrailer", "setLastPlayed", "setDateAdded", "setPlaycount",
+                  "setTvShowTitle", "setDuration", "setGenres", "setDirectors", "setWriters", "setStudios",
+                  "setCountries", "setTags", "setSeason", "setEpisode", "setMediaType", "setRating",
+                  "setUniqueIDs", "setResumePoint", "setCast")
+
+
 class FakeTag:
+    """Kodi 20+ InfoTagVideo: only the real setters exist."""
+
     def __init__(self):
         self.calls = {}
+        for name in KODI20_SETTERS:
+            setattr(self, name, (lambda n: lambda *args: self.calls.__setitem__(n, args))(name))
 
-    def __getattr__(self, name):
-        if not name.startswith("set"):
-            raise AttributeError(name)
-        return lambda *args: self.calls.__setitem__(name, args)
+
+class Kodi19Tag:
+    """Kodi 19 InfoTagVideo: getters only."""
+
+    def getTitle(self):
+        return ""
 
 
 class FakeListItem:
+    tag_class = FakeTag
+
     def __init__(self, label="", path="", offscreen=False):
-        self.label, self.path, self.tag, self.art, self.props, self.context = label, path, FakeTag(), {}, {}, []
+        self.label, self.path, self.tag, self.art, self.props, self.context = label, path, self.tag_class(), {}, {}, []
+        self.info, self.unique_ids, self.cast = {}, None, None
 
     def getVideoInfoTag(self):
         return self.tag
@@ -152,6 +169,20 @@ class FakeListItem:
 
     def addContextMenuItems(self, items):
         self.context = items
+
+
+class Kodi19ListItem(FakeListItem):
+    tag_class = Kodi19Tag
+
+    def setInfo(self, kind, info):
+        assert kind == "video"
+        self.info.update(info)
+
+    def setUniqueIDs(self, ids, default=""):
+        self.unique_ids = (ids, default)
+
+    def setCast(self, cast):
+        self.cast = cast
 
 
 class FakePlugin:
@@ -188,6 +219,31 @@ def test_render_keeps_source_urls_and_metadata(tmp_path):
     assert li.tag.calls["setRating"][:2] == (7.5, 1234)
     assert li.tag.calls["setResumePoint"] == (30.0, 120.0)
     assert li.art["poster"].startswith("https://")
+
+
+def test_render_on_kodi19_falls_back_to_setinfo(tmp_path):
+    files = wc.fetch(FakeRPC(listing("Up")), MOVIES)
+    files[0].update(resume={"position": 30, "total": 120}, season=1, episode=2, showtitle="Show",
+                    cast=[{"name": "A", "role": "B"}])
+    plugin = FakePlugin()
+    wc.render(SimpleNamespace(), SimpleNamespace(ListItem=Kodi19ListItem), plugin, 1,
+              {"source": MOVIES, "files": files, "content": "movies"})
+    li = plugin.items[0][1]
+    assert li.info["title"] == "Up" and li.info["season"] == 1 and li.info["episode"] == 2
+    assert li.info["tvshowtitle"] == "Show" and li.info["mediatype"] == "movie"
+    assert li.info["rating"] == 7.5
+    assert li.unique_ids[1] == "tmdb"
+    assert li.props["ResumeTime"] == "30" and li.props["TotalTime"] == "120"
+    assert li.cast[0]["name"] == "A"
+
+
+def test_render_on_kodi20_never_calls_setinfo():
+    files = wc.fetch(FakeRPC(listing("Up")), MOVIES)
+    plugin = FakePlugin()
+    wc.render(SimpleNamespace(Actor=lambda *a: a), SimpleNamespace(ListItem=FakeListItem), plugin, 1,
+              {"source": MOVIES, "files": files, "content": "movies"})
+    li = plugin.items[0][1]
+    assert not hasattr(li, "setInfo") and li.tag.calls["setMediaType"] == ("movie",)
 
 
 def test_serve_miss_fetches_then_hit_skips_source(tmp_path):
