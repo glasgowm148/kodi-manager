@@ -39,7 +39,6 @@ FIELDS = ["title", "genre", "year", "rating", "votes", "playcount", "director", 
           "episode", "showtitle", "thumbnail", "fanart", "art", "resume", "uniqueid",
           "dateadded", "tag"]
 
-_ACTION_RE = re.compile(r"(?:^|[./_ -])(?:play\w*|resolve\w*|execute\w*|run|auth\w*|logout|delete\w*|remove\w*|set\w*|tools|search\w*|scrape\w*|clear\w*|download\w*|install\w*|uninstall\w*|reset\w*|sync\w*|update\w*|mark\w*|manager\w*)(?:$|[./_ -])", re.I)
 _PROGRESS_MODES = {"build_continue_episode", "build_next_episode", "build_in_progress_episode"}
 # TMDb Helper (and its Bingie fork) use ?info=... for routes and resolve
 # their play items through setResolvedUrl, so those leaves stay playable.
@@ -58,19 +57,12 @@ _MEDIA = {"movie", "tvshow", "season", "episode", "musicvideo"}
 
 
 def validate_source(source):
-    """Accept only browseable video add-on directories, never action endpoints."""
-    if not isinstance(source, str) or not source or len(source) > 12000 or any(ord(c) < 32 for c in source):
-        raise ValueError("Invalid source directory URL")
-    parsed = urlsplit(source)
-    if parsed.scheme != "plugin" or not re.fullmatch(r"plugin\.video\.[A-Za-z0-9_.-]+", parsed.netloc) or parsed.fragment:
-        raise ValueError("Source must be a video add-on directory URL")
-    if parsed.path not in ("", "/") and _ACTION_RE.search(unquote(parsed.path).strip("/")):
-        raise ValueError("Action endpoints cannot be cached")
-    for key, values in parse_qs(parsed.query).items():
-        if key.lower() in ("mode", "action", "info", "do", "command") and any(
-                _ACTION_RE.search(unquote(v)) and not unquote(v).startswith("build_") for v in values):
-            raise ValueError("Action endpoints cannot be cached")
-    return source
+    """Accept only browseable video add-on directories, never action endpoints (see route_guard)."""
+    try:
+        from .route_guard import check_directory
+    except ImportError:
+        from route_guard import check_directory
+    return check_directory(source, "Action endpoints cannot be cached")
 
 
 def strip_skin_reload(source):

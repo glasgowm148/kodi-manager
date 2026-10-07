@@ -530,3 +530,87 @@ def test_redact_masks_secrets_inside_strings():
     for secret in ("abc123", "s3cr3t", "xyz", "hunter2"):
         assert secret not in joined
     assert out["plain"] == "Server started at http://0.0.0.0:8765" and "x=1" in out["msg"]
+
+
+# --- One validator for read-only directory routes ------------------------------------
+
+from kodi_manager import route_guard, widget_cache, widget_catalog, widget_plugin  # noqa: E402
+
+ACTION_ROUTES = [
+    "plugin://plugin.video.pov/?mode=toggle_language_invoker",
+    "plugin://plugin.video.pov/?mode=refresh_widgets",
+    "plugin://plugin.video.fenlight/?mode=kodi_refresh",
+    "plugin://plugin.video.example/?route=play",
+    "plugin://plugin.video.example/?route=play&name=Popular",
+    "plugin://plugin.video.pov/?mode=playNextEpisode",
+    "plugin://plugin.video.pov/?mode=navigator.settings",
+    "plugin://plugin.video.pov/?mode=clear_cache",
+    "plugin://plugin.video.pov/?mode=trakt_sign_in",
+    "plugin://plugin.video.pov/?mode=trakt_logout",
+    "plugin://plugin.video.pov/?mode=uninstall_module",
+    "plugin://plugin.video.pov/?mode=maintenance",
+    "plugin://plugin.video.pov/?mode=rescan_library",
+    "plugin://plugin.video.pov/?mode=reset_settings",
+    "plugin://plugin.video.pov/?mode=build_movie_list&action=delete_list",
+    "plugin://plugin.video.tmdb.bingie.helper/?info=play&tmdb_type=movie&tmdb_id=1",
+    "plugin://plugin.video.tmdb.bingie.helper/?info=authenticate_trakt",
+    "plugin://plugin.video.pov/play/123",
+    "plugin://plugin.video.pov/%70lay/123",
+    "plugin://plugin.video.pov/tools/",
+    "plugin://plugin.video.pov/?isFolder=false",
+]
+LISTING_ROUTES = [
+    "plugin://plugin.video.pov/",
+    "plugin://plugin.video.pov/?mode=navigator.main",
+    "plugin://plugin.video.pov/?mode=build_movie_list&action=tmdb_movies_popular",
+    "plugin://plugin.video.pov/?mode=build_movie_list&action=trakt_watchlist&reload=$INFO[Window(Home).Property(km_widgets)]",
+    "plugin://plugin.video.pov/?mode=build_tvshow_list&action=trakt_tv_popular",
+    "plugin://plugin.video.pov/?name=In+Progress&iconImage=in_progress_tvshow.png&mode=build_tvshow_list&action=in_progress_tvshows",
+    "plugin://plugin.video.pov/?mode=build_season_list&tmdb_id=1399",
+    "plugin://plugin.video.pov/?mode=build_episode_list&tmdb_id=1399&season=1",
+    "plugin://plugin.video.pov/?mode=build_continue_episode",
+    "plugin://plugin.video.pov/?mode=build_trakt_list&slug=little-favourites&list_type=my_lists",
+    # Free-text values that merely start with an action word are not routes.
+    "plugin://plugin.video.pov/?mode=build_trakt_list&slug=x&list_id=1&user=markus-kids-1&list_type=my_lists",
+    "plugin://plugin.video.example/?mode=list&genre=playful&studio=Playground+Ltd",
+    "plugin://plugin.video.pov/?mode=build_movie_list&action=tmdb_media_discover&name=Hidden+gems",
+    "plugin://plugin.video.pov/?mode=trakt_lists&action=popular",
+    "plugin://plugin.video.fenlight/?mode=build_movie_list&action=tmdb_movies_latest_releases",
+    "plugin://plugin.video.tmdb.bingie.helper/?info=trakt_trending&tmdb_type=movie&widget=true",
+    "plugin://plugin.video.tmdb.bingie.helper/?info=trakt_ondeck_unwatched&tmdb_type=movie&widget=true",
+    "plugin://plugin.video.tmdb.bingie.helper/?info=details&tmdb_type=tv&tmdb_id=1",
+    "plugin://plugin.video.tmdb.bingie.helper/?info=trakt_userlist&list_slug=play-time&user_slug=me",
+    "plugin://plugin.video.themoviedb.helper/?info=trending_week&tmdb_type=movie&reload=$INFO[Window(Home).Property(TMDbHelper.Widgets.Reload)]",
+]
+
+
+class _Installed:
+    def get(self, aid):
+        return {"addon_id": aid, "installed": True, "enabled": True}
+
+
+@pytest.mark.parametrize("source", ACTION_ROUTES)
+def test_action_routes_are_refused_by_every_validator(source):
+    with pytest.raises(ValueError):
+        route_guard.check_directory(source)
+    with pytest.raises(ValueError):
+        widget_cache.validate_source(source)
+    with pytest.raises(ValueError):
+        widget_plugin.validate_source(_Installed(), source)
+    with pytest.raises(ValueError):
+        widget_catalog.listing_path(source, _Installed())
+
+
+@pytest.mark.parametrize("source", LISTING_ROUTES)
+def test_listing_routes_of_the_stack_stay_accepted(source):
+    assert route_guard.check_directory(source) == source
+    assert widget_plugin.validate_source(_Installed(), source) == source
+    assert widget_catalog.listing_path(source, _Installed()) == source
+
+
+def test_browse_never_calls_kodi_for_an_action_route():
+    kodi = SimpleNamespace(jsonrpc=Mock())
+    for source in ACTION_ROUTES[:4]:
+        with pytest.raises(ValueError):
+            widget_catalog.browse_directory(kodi, _Installed(), source)
+    kodi.jsonrpc.assert_not_called()

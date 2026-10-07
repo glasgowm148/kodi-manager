@@ -11,7 +11,6 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 try:
     from .version import VERSION
-    from .client import READ_POSTS
     from .fix_protection import protection_for_kodi
     from .auth import authorized
     from .adapters import adapter_for
@@ -32,7 +31,6 @@ try:
     from .write_policy import WriteRefused, check_writable, read_only_reason
 except ImportError:
     from version import VERSION
-    from client import READ_POSTS
     from fix_protection import protection_for_kodi
     from auth import authorized
     from adapters import adapter_for

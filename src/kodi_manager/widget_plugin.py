@@ -8,14 +8,13 @@ import json
 import re
 import sys
 from datetime import datetime
-from urllib.parse import parse_qs, urlsplit, unquote, urlencode
+from urllib.parse import parse_qs, urlsplit, urlencode
 
 try:
     from .widget_filters import filter_items
 except ImportError:
     from widget_filters import filter_items
 
-_ACTION_RE = re.compile(r"(?:^|[./_ -])(?:play\w*|resolve\w*|execute\w*|run|auth\w*|logout|delete\w*|remove\w*|set\w*|tools|search\w*|scrape\w*|clear\w*|download\w*|install\w*|uninstall\w*|reset\w*|sync\w*|update\w*)(?:$|[./_ -])", re.I)
 _PROGRESS_ROUTES = {('build_tvshow_list', 'in_progress_tvshows'),
                     ('build_continue_episode', ''), ('build_next_episode', ''), ('build_in_progress_episode', '')}
 _MAX_PROGRESS_PAGES = 6
@@ -62,20 +61,13 @@ def _next_progress_page(index, original, current, candidate, visited):
 
 
 def validate_source(index, source):
-    if not isinstance(source, str) or not source or len(source) > 12000 or any(ord(c) < 32 for c in source):
-        raise ValueError("Invalid source directory URL")
-    parsed = urlsplit(source)
-    aid = parsed.netloc
-    if parsed.scheme != "plugin" or not re.fullmatch(r"plugin\.video\.[A-Za-z0-9_.-]+", aid) or parsed.fragment:
-        raise ValueError("Source must be an installed video add-on directory URL")
-    if parsed.path not in ("", "/") and _ACTION_RE.search(unquote(parsed.path).strip("/")):
-        raise ValueError("Playback or action endpoints cannot be directory sources")
-    for key, values in parse_qs(parsed.query).items():
-        if key.lower() in ("mode", "action", "info", "do", "command") and any(_ACTION_RE.search(unquote(value)) for value in values):
-            raise ValueError("Playback or action endpoints cannot be directory sources")
-        if key.casefold() == "isfolder" and any(value.casefold() == "false" for value in values):
-            raise ValueError("This item is not a browseable folder")
-    addon = index.get(aid)
+    """An installed, enabled video add-on's directory; never an action route (see route_guard)."""
+    try:
+        from .route_guard import check_directory
+    except ImportError:
+        from route_guard import check_directory
+    check_directory(source)
+    addon = index.get(urlsplit(source).netloc)
     if not addon or addon.get("installed") is not True or addon.get("enabled") is not True:
         raise ValueError("Source video add-on must be installed and enabled")
     return source

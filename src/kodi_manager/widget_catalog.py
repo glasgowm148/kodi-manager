@@ -4,15 +4,18 @@ import copy
 import threading
 import time
 from collections import OrderedDict
-from urllib.parse import parse_qs, urlparse, unquote
+from urllib.parse import parse_qs, urlparse
 
 try:
     from .widget_plugin import validate_source
+    from .route_guard import blocked_reason
 except ImportError:
     from widget_plugin import validate_source
+    from route_guard import blocked_reason
 
 
 PROPERTIES = ["title", "thumbnail", "art", "year", "genre", "plot", "mpaa", "showtitle", "season", "episode"]
+# Folder *labels* that read as utilities (ranking/traversal hints only; routes are checked by route_guard).
 UTILITY = re.compile(r"(?:^|[._ /-])(settings|setup|tools|accounts?|login|authorize|auth|logout|delete|remove|clear|reset|download|play|playback|resolve|scrape|search)(?:$|[._ /-])", re.I)
 _PAGINATION = re.compile(r"^(?:next page|previous page|load more|more results|next|previous)(?:\s*[<>»«→←]*|\s*\(\d+\))$", re.I)
 _MEDIA_TYPES = {"movie", "tvshow", "season", "episode", "musicvideo"}
@@ -100,11 +103,11 @@ def listing_path(path, index):
     addon = index.get(parsed.netloc)
     if not addon or addon.get("installed") is not True or addon.get("enabled") is not True:
         raise ValueError("This video add-on is not confirmed installed and enabled")
-    params = parse_qs(parsed.query)
-    if any(UTILITY.search(unquote(value)) for key in ("mode", "action", "info", "do", "command") for value in params.get(key, [])):
-        raise ValueError("This is an interactive action. Use its native Kodi screen instead.")
-    if any(value.lower() == "false" for value in params.get("isFolder", [])):
+    reason = blocked_reason(path)
+    if reason == "not a folder":
         raise ValueError("This item is not a browseable folder")
+    if reason:
+        raise ValueError("This is an interactive action. Use its native Kodi screen instead.")
     return validate_source(index, path)
 
 
