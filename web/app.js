@@ -770,12 +770,28 @@ function cachedRowMarkup(row, entry, index){
   const status = cachedRowStatus(entry);
   return `<tr><th scope="row"><b>${esc(row.label)}</b><br><span class="muted cached-source">${esc(row.source)}</span>${row.hide_watched ? '<br><span class="badge">hides watched</span>' : ""}</th><td data-label="Status">${dashboardPill(status.tone, status.label, status.icon)}</td><td data-label="Items">${esc(entry ? entry.items : "—")}</td><td data-label="Updated">${esc(entry ? formatAge(entry.age_seconds) : "—")}</td><td class="row-actions"><button type="button" class="action" data-copy-row="${index}">Copy URL</button><button type="button" class="action" data-remove-row="${esc(row.id)}" ${writeAttrs()}>Remove</button></td></tr>`;
 }
+function cacheSourceLabel(source){
+  try {
+    const url = new URL(String(source).replace(/^plugin:/, "http:"));
+    const name = url.searchParams.get("name") || url.searchParams.get("list_name") || url.searchParams.get("title");
+    if (name) return name;
+    const mode = url.searchParams.get("mode") || url.searchParams.get("action") || url.searchParams.get("info") || url.pathname.replace(/\//g, " ").trim();
+    return `${url.hostname}${mode ? ` · ${mode}` : ""}`;
+  } catch (_) { return String(source); }
+}
+function cachedEntryMarkup(entry){
+  const status = cachedRowStatus(entry);
+  return `<tr><th scope="row"><b>${esc(cacheSourceLabel(entry.source))}</b><br><span class="muted cached-source">${esc(entry.source)}</span></th><td data-label="Status">${dashboardPill(status.tone, status.label, status.icon)}</td><td data-label="Items">${esc(entry.items)}</td><td data-label="Updated">${esc(formatAge(entry.age_seconds))}</td></tr>`;
+}
 async function cachedRowsView(){
   const [rowData, cache] = await Promise.all([api("/api/widget-cache/rows"), api("/api/widget-cache").catch(() => null)]);
   const rows = Array.isArray(rowData) ? rowData : [];
   const entries = new Map((cache?.entries || []).map(entry => [entry.source, entry]));
+  const listed = new Set(rows.map(row => row.source));
+  const others = (cache?.entries || []).filter(entry => !listed.has(entry.source));
+  const othersPanel = others.length ? `<div class="panel"><h3>Cached for your skin's widgets</h3><p>Widgets already pointed at Kodi Manager's cached URL (by you, by automatic row caching, or by a skin setting). Kodi Manager refreshes these in the background.</p><table class="addon-table cached-rows"><thead><tr><th scope="col">Row</th><th scope="col">Status</th><th scope="col">Items</th><th scope="col">Updated</th></tr></thead><tbody>${others.map(cachedEntryMarkup).join("")}</tbody></table></div>` : "";
   out(`<div class="panel"><h2>Cached rows</h2><p>Optional. Kodi Manager can keep a local copy of an add-on folder so a home-screen widget shows it straight away instead of waiting for the add-on. Point a widget at a row’s cached URL, or choose it in your skin’s widget picker under <b>Video add-ons → Kodi Manager → Cached rows</b>.</p><div class="toolbar"><button type="button" class="action" id="cacheRefresh">Refresh all now</button><span class="muted">${cache ? `${esc(cache.queued ?? 0)} queued for refresh` : "Cache status unavailable"}</span></div>
-  <table class="addon-table cached-rows"><thead><tr><th scope="col">Row</th><th scope="col">Status</th><th scope="col">Items</th><th scope="col">Updated</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>${rows.map((row, i) => cachedRowMarkup(row, entries.get(row.source), i)).join("") || '<tr><td colspan="5" class="muted">No cached rows yet.</td></tr>'}</tbody></table></div>
+  <table class="addon-table cached-rows"><thead><tr><th scope="col">Row</th><th scope="col">Status</th><th scope="col">Items</th><th scope="col">Updated</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>${rows.map((row, i) => cachedRowMarkup(row, entries.get(row.source), i)).join("") || `<tr><td colspan="5" class="muted">${others.length ? "No rows added here yet. Your skin's cached widgets are listed below." : "No cached rows yet."}</td></tr>`}</tbody></table></div>${othersPanel}
   <div class="panel"><h3>Add a row</h3><p>Paste an add-on folder path (it starts with <code>plugin://</code>). In Kodi you can also open any video add-on folder and choose <b>Add to Kodi Manager cached rows</b> from its context menu.</p>${state.writeEnabled ? "" : `<p class="warn">${esc(WRITE_HINT)}</p>`}<form id="cacheAdd" class="grid"><label>Name<input id="cacheLabel" required maxlength="80"></label><label>Add-on folder path<input id="cacheSource" required placeholder="plugin://plugin.video.example/?mode=…" spellcheck="false"></label><label>Pages to cache<input id="cachePages" type="number" min="1" max="50" placeholder="Automatic"></label><label class="check-label"><span><input id="cacheHideWatched" type="checkbox"> Hide watched items</span></label><div><button class="primary" type="submit" ${writeAttrs()}>Add row</button></div></form></div>`);
   $("#cacheRefresh").onclick = withErrors(async () => {
     const r = await api("/api/widget-cache/refresh", {});

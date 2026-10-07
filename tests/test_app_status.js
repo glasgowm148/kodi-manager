@@ -74,3 +74,14 @@ test('accounts cannot submit writes when writes are off', async () => {
   await elements.get('#saveAccounts').onclick();
   assert.deepEqual(calls, ['/api/status','/api/accounts']);
 });
+
+test('cached rows page names skin-cached sources readably and escapes them', () => {
+  const {ui} = harness();
+  ui.URL = URL;
+  assert.equal(ui.cacheSourceLabel('plugin://plugin.video.pov/?mode=build_movie_list&name=Family+movie+night'), 'Family movie night');
+  assert.equal(ui.cacheSourceLabel('plugin://plugin.video.themoviedb.helper/?info=trakt_trending&tmdb_type=movie'), 'plugin.video.themoviedb.helper · trakt_trending');
+  assert.equal(ui.cacheSourceLabel('not a url'), 'not a url');
+  const row = ui.cachedEntryMarkup({source:'plugin://x/?name=%3Cimg%20src%3Dx%3E', items:3, age_seconds:7200, stale:false});
+  assert.doesNotMatch(row, /<img/);
+  assert.match(row, /2 h ago/);
+});

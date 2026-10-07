@@ -53,7 +53,8 @@ allows LAN access.
   reload or closing the tab).
 - **Read-only add-ons** show their settings disabled with the reason Kodi Manager gives.
 - **Cached rows page** for the optional widget cache: each row's status, item count and age, refresh,
-  add a row from a pasted path, remove a row and copy its cached URL.
+  add a row from a pasted path, remove a row and copy its cached URL. Rows your skin already reads
+  from the cache are listed too.
 - **Sign in on other devices:** Setup offers a `http://IP:PORT/#token=…` link. Tokens are only
   accepted from the `#` part of the address and are removed from it straight away.
 - **Copy works over plain HTTP** on the LAN, with a select-the-text fallback.
