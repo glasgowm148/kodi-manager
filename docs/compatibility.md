@@ -5,9 +5,9 @@ These are alpha releases. Passing a fixture test does not establish live TV comp
 | Component | Evidence | Limit |
 | --- | --- | --- |
 | Library/client | Python 3.9+; Linux/Windows CI on 3.9, 3.11, 3.13; macOS local tests | A computer install does not install the TV service |
-| Published 0.4.0 wheel | Fresh macOS venv: import/client and synthetic local HTTP checks | Same-second recovery bug fixed in 0.4.1 |
-| 0.4.1 library/ZIP | 158 Python and 47 UI tests; deterministic ZIP, fresh-wheel smoke and restore/undo | Portable companion not yet installed/tested on a live TV |
-| 0.6.2 library/ZIP | 223 Python and 47 UI tests; Linux/Windows CI; deterministic ZIP and fresh-wheel smoke | — |
+| Service code on Kodi's Python | CI runs the test suite on Python 3.8, the version Kodi 19–21 embeds on Android | The library package itself still needs 3.9+ |
+| 0.6.2 library/ZIP (current release) | 223 Python and 47 UI tests; Linux/Windows CI; deterministic ZIP and fresh-wheel smoke | — |
+| Unreleased (next: 0.7.0) | UI tests for error handling, clipboard fallback, read-only settings, restore undo and a no-inline-handler check; tagged releases rebuild the ZIP and compare bytes | Not yet installed on a live TV |
 | Kodi service, live | 0.4.2–0.6.0 installed and used on an NVIDIA Shield (Kodi 22 beta 2), two profiles, Bingie 2.0.2, POV and TMDb Bingie Helper | One device; other skins and devices are tested in CI only |
 | Widget cache | Live on the Shield above: cached rows, View more, multi-page rows, per-row hide watched, background refresh, TMDb Helper playback from a cached row | Needs Kodi 20+ (ListItem info tags). Other skins' `widgetPath` routing and the cached-rows picker are covered by tests, not yet live |
 | Kodi service | Requires Kodi `xbmc.python` API 3.0.0 | No universal Kodi/firmware guarantee |
@@ -20,6 +20,7 @@ contain separate fixes absent here: back it up before replacing it. Confirm the 
 before TV navigation, restarts or writes. See [recovery](recovery.md), [API](api.md) and
 [private security reporting](../SECURITY.md).
 
-Before broad promotion, verify the portable service on a spare or backed-up Shield: install through
-Kodi, authenticate, inspect both profiles, check settings/pipeline/provider rows, then test one
-reversible layout edit and restore. Record model, Android/Kodi/skin versions and actual results.
+Before broad promotion, verify the service on a spare or backed-up device: install through Kodi,
+sign in to the dashboard, inspect each profile, check settings, playback setup and backups, then test
+one reversible settings change and its undo. Record the device, Android/Kodi/skin versions and actual
+results.

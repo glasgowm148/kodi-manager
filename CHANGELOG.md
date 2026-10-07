@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+Dashboard, packaging and release work. Backend changes are listed separately.
+
+- **Errors are visible.** Every button and form now shows a notice when something fails, instead of
+  doing nothing. Network failures and unexpected replies get a plain message, and a rejected token
+  brings up a sign-in form instead of a blank page. Browser alert/confirm/prompt boxes are replaced by
+  in-page notices and dialogs.
+- **Restore with undo.** Each add-on's settings page has a **Backups** tab; the Backups page lists
+  per-add-on backups as well as checkpoints. After any restore, a notice lists the undo backups with an
+  **Undo restore** button. When Kodi is busy, the dashboard asks before restoring anyway.
+- **Saving settings offers Undo**, and leaving a page with unsaved changes now asks first (also on
+  reload or closing the tab).
+- **Read-only add-ons** show their settings disabled with the reason Kodi Manager gives.
+- **Cached rows page** for the optional widget cache: each row's status, item count and age, refresh,
+  add a row from a pasted path, remove a row and copy its cached URL.
+- **Sign in on other devices:** Setup offers a `http://IP:PORT/#token=…` link. Tokens are only
+  accepted from the `#` part of the address and are removed from it straight away.
+- **Copy works over plain HTTP** on the LAN, with a select-the-text fallback.
+- **Works the same on any setup:** the menu lists only the add-ons found on this Kodi; **Home layout**
+  (formerly Bingie Studio) appears only for a skin it supports; Shield- and Bingie-specific wording is
+  gone; setting names match Kodi (**Enable writes**, **Allow LAN access**).
+- **Security:** no inline event handlers (this fixes script injection through a crafted add-on id on
+  the search and All add-ons pages); the page sets a `script-src 'self'` content security policy.
+- **Phones and keyboards:** a Menu button replaces the long navigation strip under 760px, tables turn
+  into cards, the search box is labelled, the current page and pressed filters are announced, and
+  focus moves to each page's heading.
+- Fixed: Health showed a literal `\n` between log lines; dead code removed.
+- **Add-on:** new icon and fanart; fuller description (it opens Kodi's own Install from zip dialog
+  rather than installing ZIPs itself); website, source and disclaimer. Settings are grouped into
+  Dashboard, Backups, Cached rows (optional) and Advanced, with every setting id kept; the unused
+  **Stack mode** and **Show advanced settings** are gone.
+- **Releases:** one version source (`src/kodi_manager/version.py`); `check_release.py` checks every
+  archive's version and the add-on ZIP's required files; CI runs all Node tests on Node 20 and the
+  test suite on Python 3.8 (Kodi's Python on Android); pushing a `v*` tag builds, checks
+  reproducibility and publishes a prerelease with checksums.
+- Docs: the [API guide](docs/api.md) lists every endpoint; recovery, compatibility, setup and security
+  notes updated.
+
 ## 0.6.2 — 2026-10-06 (prerelease)
 
 - Fixed the **Open the dashboard** screen from 0.6.1, found on a real TV: it showed "Busy" instead of
