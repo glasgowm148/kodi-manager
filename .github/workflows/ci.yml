@@ -22,12 +22,34 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 20
       - run: python -m pip install -e ".[dev]"
       - run: ruff check .
       - run: pytest -q
-      - run: node --test tests/test_settings_ui.js tests/test_app_status.js tests/test_dashboard.js tests/test_widgets_ui.js
+      - run: for f in web/*.js; do node --check "$f"; done
+        shell: bash
+      - run: node --test tests/*.js
+        shell: bash
       - run: python -m build
+      # Builds the add-on ZIP; fails if addon.xml and src/kodi_manager/version.py differ.
       - run: python scripts/build_addon.py
       - run: python scripts/test_wheel.py
+      # Inspects all three archives and checks each one's version against version.py.
       - run: python scripts/check_release.py dist/*.whl dist/*.tar.gz dist/service.kodi.addonadmin-*.zip
         shell: bash
+
+  # Kodi 19-21 on Android embeds Python 3.8, which runs the service code. The library itself
+  # needs 3.9+, so this job runs the test suite against the sources rather than installing them.
+  kodi-python:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.8'
+      - run: python -m pip install "pytest>=8,<8.4"
+      - run: python -m pytest -q
+        env:
+          PYTHONPATH: src
