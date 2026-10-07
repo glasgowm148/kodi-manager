@@ -481,3 +481,49 @@ def test_view_more_stays_inside_the_skin_widget_limit():
     assert [li.label for _, li, _ in plugin.items] == ["Film 1-0", "Film 1-1", "Film 1-2", "Film 2-0", "View more"]
     assert wc.skin_widget_limit(SimpleNamespace(getInfoLabel=lambda label: "21")) == 21
     assert wc.skin_widget_limit(SimpleNamespace(getInfoLabel=lambda label: "")) == 0
+
+
+class _Q:
+    def __init__(self):
+        self.calls = []
+    def queue_stale(self, now, progress_only=False, everything=False):
+        self.calls.append("progress" if progress_only else "everything" if everything else "stale")
+        return 0
+    def prune(self, now):
+        return 0
+    def take_queue(self):
+        return []
+
+
+def test_refresher_waits_while_kodi_is_busy_and_skips_full_refresh_after_failed_start():
+    clock = Clock(10 ** 6)
+    cache, busy = _Q(), [True]
+    r = wc.Refresher(cache, FakeRPC({}), lambda: False, lambda v: None, clock=clock, is_busy=lambda: busy[0])
+    r.playback_started()
+    clock.t += 20  # a failed start: stopped after 20 seconds
+    r.playback_stopped()
+    clock.t += 500
+    assert r.tick() == 0 and cache.calls == []  # busy (e.g. POV searching): nothing runs
+    busy[0] = False
+    r.tick()
+    assert "everything" not in cache.calls and "progress" in cache.calls
+
+
+def test_refresher_rate_limits_full_refreshes():
+    clock = Clock(10 ** 6)
+    cache = _Q()
+    r = wc.Refresher(cache, FakeRPC({}), lambda: False, lambda v: None, clock=clock)
+    for _ in range(2):
+        r.playback_started()
+        clock.t += 300
+        r.playback_stopped()
+        clock.t += 200
+        r.tick()
+    assert cache.calls.count("everything") == 1
+
+
+def test_refresher_treats_busy_errors_as_busy():
+    def broken():
+        raise RuntimeError("kodi shutting down")
+    r = wc.Refresher(_Q(), FakeRPC({}), lambda: False, lambda v: None, clock=Clock(10 ** 6), is_busy=broken)
+    assert r.tick() == 0

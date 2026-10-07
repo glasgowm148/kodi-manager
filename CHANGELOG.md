@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.1 — 2026-10-07 (prerelease)
+
+- **Cached rows refresh only while the TV is quiet.** Refreshing runs the source add-on once per row,
+  which on a 3 GB device competes with playback start-up. The refresher now waits while anything is
+  loaded in the player, while a busy or progress dialog is open (POV searching for sources), while a
+  modal dialog is open and for a minute after the last remote press. It pauses between rows, skips the
+  full refresh after a failed or very short playback, and runs a full refresh at most every 30 minutes.
+- **Long-press on a cached POV title offers Select source, Options… and Extras… again.** JSON-RPC drops
+  an add-on's own context menu, so these are rebuilt from the item: Select source opens POV's source
+  list instead of auto-playing.
+- **Health shows memory pressure:** Kodi's memory use and free memory/swap, with a warning when the
+  device is low enough for add-ons to start timing out.
+
 ## 0.7.0 — 2026-10-07 (prerelease)
 
 A security, safety and usability release from a full audit. Upgrading is recommended for anyone who

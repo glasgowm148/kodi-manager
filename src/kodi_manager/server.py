@@ -30,6 +30,7 @@ try:
     from . import fenlight_db
     from .write_policy import WriteRefused, check_writable, read_only_reason
     from .netconfig import is_loopback
+    from .memstat import memory_status
 except ImportError:
     from version import VERSION
     from fix_protection import protection_for_kodi
@@ -51,6 +52,7 @@ except ImportError:
     import fenlight_db
     from write_policy import WriteRefused, check_writable, read_only_reason
     from netconfig import is_loopback
+    from memstat import memory_status
 
 MAX_HANDLERS = 16
 WIDGET_CACHE_DIR = "special://profile/addon_data/service.kodi.addonadmin/widget_cache"
@@ -169,6 +171,7 @@ def health_summary(kodi, index, config):
     errors = [line for line in logs if "error" in line.lower() or "exception" in line.lower() or "traceback" in line.lower()]
     warnings = [line for line in logs if "warning" in line.lower() or "warn:" in line.lower()]
     core = ["skin", "tmdbhelper", "fenlight", "fen", "pov", "cocoscrapers"]
+    memory = memory_status()
     found = sum(1 for key in core if stack.get(key, {}).get("found") or stack.get(key, {}).get("active"))
     checks = [
         {"id": "jsonrpc", "label": "Kodi JSON-RPC", "status": "ok" if kodi.get_kodi_version() else "warning", "detail": kodi.get_kodi_version()},
@@ -176,8 +179,10 @@ def health_summary(kodi, index, config):
         {"id": "addon_data", "label": "Addon config path", "status": "ok" if paths.get("addon_data_probe", {}).get("selected_path") else "error", "detail": paths.get("addon_data_probe", {}).get("selected_path", "")},
         {"id": "addons_path", "label": "Installed add-ons path", "status": "ok" if paths.get("addons_probe", {}).get("selected_path") else "warning", "detail": paths.get("addons_probe", {}).get("selected_path", "")},
         {"id": "write_mode", "label": "Write mode", "status": "ok" if config.get("write_enabled") else "warning", "detail": "enabled" if config.get("write_enabled") else "disabled"},
+        dict({"id": "memory", "label": "Memory"}, **{k: v for k, v in memory.items() if k in ("status", "detail")}),
         {"id": "logs", "label": "Kodi log scan", "status": "error" if errors else ("warning" if warnings else "ok"), "detail": "%s errors · %s warnings in last 200 lines" % (len(errors), len(warnings))},
     ]
+    checks = [c for c in checks if c.get("status") != "unknown"]
     status = "error" if any(c["status"] == "error" for c in checks) else ("warning" if any(c["status"] == "warning" for c in checks) else "ok")
     return {
         "status": status,
@@ -189,6 +194,7 @@ def health_summary(kodi, index, config):
             "stack_detected": found,
             "kodi_log_errors": len(errors),
             "kodi_log_warnings": len(warnings),
+            "kodi_memory_mb": memory.get("kodi_mb"),
         },
         "recent_errors": errors[-20:],
         "recent_warnings": warnings[-20:],

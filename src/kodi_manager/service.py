@@ -123,6 +123,14 @@ def load_config(addon):
     return config
 
 
+# Refresh cached rows only while the TV is quiet: no media loaded, no busy or
+# progress dialog (POV searching for sources), no modal dialog and no remote
+# press for a minute.
+BUSY_CONDITION = ("Player.HasMedia | Window.IsActive(busydialog) | Window.IsActive(busydialognocancel)"
+                  " | Window.IsActive(progressdialog) | Window.IsActive(extendedprogressdialog)"
+                  " | Window.IsActive(progress_media.xml) | System.HasModalDialog | !System.IdleTime(60)")
+
+
 def start_widget_refresher(kodi):
     """Refresh cached widget rows one at a time in the background."""
     if not xbmc:
@@ -135,8 +143,10 @@ def start_widget_refresher(kodi):
     refresher = Refresher(cache, jsonrpc_via(xbmc), player.isPlayingVideo,
                           lambda value: home.setProperty(RELOAD_PROPERTY, value), kodi.log,
                           external_reload=lambda: home.getProperty("TMDbBingieHelper.Widgets.Reload")
-                          + "|" + home.getProperty("TMDbHelper.Widgets.Reload"))
+                          + "|" + home.getProperty("TMDbHelper.Widgets.Reload"),
+                          is_busy=lambda: xbmc.getCondVisibility(BUSY_CONDITION))
     refresher.stop = threading.Event()
+    refresher.sleep = refresher.stop.wait
 
     def run():
         while not refresher.stop.is_set():
@@ -242,6 +252,9 @@ def main():
                     kodi.log("Settings reload failed: %s" % type(error).__name__)
 
             def onNotification(self, sender, method, data):
+                if method in ('Player.OnPlay', 'Player.OnAVStart') and refresher:
+                    if refresher.playback_started_at is None:
+                        refresher.playback_started()
                 if method == 'Player.OnStop' and refresher:
                     refresher.playback_stopped()
                 if method == 'System.OnQuit':

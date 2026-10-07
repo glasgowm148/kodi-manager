@@ -19,8 +19,23 @@ class WrappedItemActionsTests(unittest.TestCase):
 
     def test_movie_discovery_adds_to_same_cloud_list_without_show_action(self):
         props, actions = item_actions({'file': 'plugin://plugin.video.pov/?mode=play_media&tmdb_id=345'}, 'movie', 'plugin://plugin.video.pov/?action=trending')
-        self.assertEqual(len(actions), 1)
-        self.assertEqual(actions[0][0], 'Add to watchlist')
+        self.assertEqual([a[0] for a in actions], ['Add to watchlist', 'Select source', 'Options...', 'Extras...'])
+
+    def test_select_source_turns_autoplay_off_for_movies_and_episodes(self):
+        _, movie = item_actions({'file': 'plugin://plugin.video.pov/?mode=play_media&mediatype=movie&tmdb_id=337703'}, 'movie', '')
+        select = dict(movie)['Select source']
+        self.assertTrue(select.startswith('RunPlugin(plugin://plugin.video.pov/?'))
+        for part in ('mode=play_media', 'mediatype=movie', 'tmdb_id=337703', 'autoplay=false'):
+            self.assertIn(part, select)
+        _, episode = item_actions({'file': 'plugin://plugin.video.pov/?mode=play_media&mediatype=episode&tmdb_id=82728&season=1&episode=4'}, 'episode', '')
+        select = dict(episode)['Select source']
+        for part in ('mediatype=episode', 'season=1', 'episode=4', 'autoplay=false'):
+            self.assertIn(part, select)
+        self.assertIn('content=episode', dict(episode)['Options...'])
+
+    def test_tmdb_helper_items_get_no_pov_play_actions(self):
+        _, actions = item_actions({'file': 'plugin://plugin.video.tmdb.bingie.helper/?info=play&tmdb_id=5&tmdb_type=movie'}, 'movie', '')
+        self.assertNotIn('Select source', [a[0] for a in actions])
 
     def test_missing_or_foreign_ids_never_create_an_action(self):
         for url in ['plugin://plugin.video.pov/?tmdb_id=None', 'plugin://other.addon/?tmdb_id=345']:
