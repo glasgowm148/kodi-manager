@@ -614,3 +614,59 @@ def test_browse_never_calls_kodi_for_an_action_route():
         with pytest.raises(ValueError):
             widget_catalog.browse_directory(kodi, _Installed(), source)
     kodi.jsonrpc.assert_not_called()
+
+
+# --- Add-on index refresh and kodi.log tail ------------------------------------------------
+
+from kodi_manager import addon_index, kodi_api  # noqa: E402
+
+
+def test_addon_index_refresh_is_rate_limited_and_swapped_atomically(monkeypatch):
+    monkeypatch.setattr(addon_index, "probe_all", lambda seed: {})
+    monkeypatch.setattr(addon_index, "safe_listdir", lambda root: {"dirs": []})
+    monkeypatch.setattr(addon_index, "enrich_addon", lambda addon, kodi=None, index=None: dict(addon))
+    calls = []
+    clock = [100.0]
+
+    def list_addons():
+        calls.append(1)
+        return [{"addon_id": "plugin.video.pov"}, {"addon_id": "plugin.video.fen"}]
+
+    kodi = SimpleNamespace(list_addons=list_addons, get_addon_details=lambda aid: {})
+    index = addon_index.AddonIndex(kodi, clock=lambda: clock[0])
+    assert len(calls) == 1 and set(index.addons) == {"plugin.video.pov", "plugin.video.fen"}
+    index.refresh()
+    assert len(calls) == 1  # within 5 s: no rescan
+    index.refresh(force=True)
+    assert len(calls) == 2
+    clock[0] += 6
+    before = index.addons
+    index.refresh()
+    assert len(calls) == 3 and index.addons is not before and before  # a new dict replaced the old one
+
+    seen_sizes = []
+    stop = threading.Event()
+
+    def reader():
+        while not stop.is_set():
+            seen_sizes.append(len(index.addons))
+
+    thread = threading.Thread(target=reader)
+    thread.start()
+    for _ in range(50):
+        index.refresh(force=True)
+    stop.set()
+    thread.join()
+    assert seen_sizes and min(seen_sizes) == 2  # never observed a half-built index
+
+
+def test_kodi_log_reads_only_the_tail(tmp_path, monkeypatch):
+    log = tmp_path / "kodi.log"
+    lines = ["line %06d %s" % (i, "x" * 80) for i in range(20000)]  # about 1.8 MB
+    log.write_text("\n".join(lines) + "\n")
+    monkeypatch.setattr(kodi_api, "xbmcvfs", None)
+    text = kodi_api.read_tail(str(log), 64 * 1024)
+    assert len(text.encode()) <= 64 * 1024 and text.splitlines()[0].startswith("line ")
+    assert text.splitlines()[-1] == lines[-1]
+    monkeypatch.setattr(kodi_api, "translate", lambda p: str(log) if p.endswith("kodi.log") else p)
+    assert kodi_api.KodiAPI().get_log_lines(3) == lines[-3:]

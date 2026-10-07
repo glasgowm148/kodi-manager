@@ -1,4 +1,6 @@
 import os
+import threading
+import time
 import xml.etree.ElementTree as ET
 
 try:
@@ -90,58 +92,83 @@ def enrich_addon(addon, kodi=None, index=None):
 
 
 class AddonIndex:
-    def __init__(self, kodi):
+    """Merged view of installed add-ons and addon_data folders.
+
+    ``refresh`` builds a new dict and swaps it in under a lock, so readers
+    never see a half-built index, and full rescans run at most once every
+    REFRESH_INTERVAL seconds unless ``force=True``.
+    """
+    REFRESH_INTERVAL = 5.0
+
+    def __init__(self, kodi, clock=time.monotonic):
         self.kodi = kodi
         self.addons = {}
         self.probe = {}
-        self.refresh()
+        self._clock = clock
+        self._lock = threading.RLock()
+        self._refreshed_at = None
+        self.refresh(force=True)
 
-    def refresh(self):
-        self.addons = {}
+    def refresh(self, force=False):
+        with self._lock:
+            now = self._clock()
+            if not force and self._refreshed_at is not None and now - self._refreshed_at < self.REFRESH_INTERVAL:
+                return self.addons
+            addons, probe = self._build()
+            self.addons, self.probe = addons, probe
+            self._refreshed_at = self._clock()
+            return addons
+
+    def _build(self):
+        addons = {}
         for addon in self.kodi.list_addons():
             aid = addon.get("addon_id")
             if aid:
                 addon["jsonrpc_present"] = True
-                self.addons[aid] = enrich_addon(addon, self.kodi, self.addons)
+                addons[aid] = enrich_addon(addon, self.kodi, addons)
         seed = getattr(self.kodi, "installer_seed", {}) if self.kodi else {}
-        self.probe = probe_all(seed)
-        root = self.probe.get("addons_probe", {}).get("selected_path") or addons_root()
+        probe = probe_all(seed)
+        root = probe.get("addons_probe", {}).get("selected_path") or addons_root()
         for aid in safe_listdir(root)["dirs"]:
-                folder = root + ("" if root.endswith(("/", "\\")) else "/") + aid
-                meta = addon_xml_meta(folder)
-                aid = meta.get("addon_id") or aid
-                base = self.addons.get(aid, {"addon_id": aid})
-                base.update({k: v for k, v in meta.items() if v})
-                base["path"] = base.get("path") or folder
-                base["home_addons_present"] = True
-                base["home_addon_path"] = folder
-                self.addons[aid] = enrich_addon(base, self.kodi, self.addons)
+            folder = root + ("" if root.endswith(("/", "\\")) else "/") + aid
+            meta = addon_xml_meta(folder)
+            aid = meta.get("addon_id") or aid
+            base = addons.get(aid, {"addon_id": aid})
+            base.update({k: v for k, v in meta.items() if v})
+            base["path"] = base.get("path") or folder
+            base["home_addons_present"] = True
+            base["home_addon_path"] = folder
+            addons[aid] = enrich_addon(base, self.kodi, addons)
         root = builtin_root()
         for aid in safe_listdir(root)["dirs"]:
-                folder = root + aid
-                meta = addon_xml_meta(folder)
-                aid = meta.get("addon_id") or aid
-                base = self.addons.get(aid, {"addon_id": aid})
-                base.update({k: v for k, v in meta.items() if v})
-                base["path"] = base.get("path") or folder
-                base["builtin_addons_present"] = True
-                base["builtin_addon_path"] = folder
-                self.addons[aid] = enrich_addon(base, self.kodi, self.addons)
-        data_root = self.probe.get("addon_data_probe", {}).get("selected_path") or "special://profile/addon_data/"
+            folder = root + aid
+            meta = addon_xml_meta(folder)
+            aid = meta.get("addon_id") or aid
+            base = addons.get(aid, {"addon_id": aid})
+            base.update({k: v for k, v in meta.items() if v})
+            base["path"] = base.get("path") or folder
+            base["builtin_addons_present"] = True
+            base["builtin_addon_path"] = folder
+            addons[aid] = enrich_addon(base, self.kodi, addons)
+        data_root = probe.get("addon_data_probe", {}).get("selected_path") or "special://profile/addon_data/"
         for aid in safe_listdir(data_root)["dirs"]:
-                base = self.addons.get(aid, {"addon_id": aid, "name": aid, "enabled": None, "type": ""})
-                base["addon_data_present"] = True
-                base["addon_data_path_override"] = data_root + ("" if data_root.endswith(("/", "\\")) else "/") + aid
-                self.addons[aid] = enrich_addon(base, self.kodi, self.addons)
-        return self.addons
+            base = addons.get(aid, {"addon_id": aid, "name": aid, "enabled": None, "type": ""})
+            base["addon_data_present"] = True
+            base["addon_data_path_override"] = data_root + ("" if data_root.endswith(("/", "\\")) else "/") + aid
+            addons[aid] = enrich_addon(base, self.kodi, addons)
+        return addons, probe
 
     def get(self, addon_id):
-        if addon_id not in self.addons:
+        addons = self.addons
+        if addon_id not in addons:
             details = self.kodi.get_addon_details(addon_id)
             if details:
                 details["jsonrpc_present"] = True
-                self.addons[addon_id] = enrich_addon(details, self.kodi, self.addons)
-        return self.addons.get(addon_id)
+                with self._lock:
+                    self.addons = dict(self.addons)
+                    self.addons[addon_id] = enrich_addon(details, self.kodi, self.addons)
+                    addons = self.addons
+        return addons.get(addon_id)
 
     def list(self):
         return list(self.addons.values())

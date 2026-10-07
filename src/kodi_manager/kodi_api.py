@@ -1,6 +1,5 @@
 import json
 import os
-import zipfile
 
 try:
     from .path_probe import translate_special, listdir_xbmcvfs, listdir_os, probe_all
@@ -56,6 +55,45 @@ def read_text(path):
             pass
     with open(translate(path), "r", encoding="utf-8", errors="replace") as fh:
         return fh.read()
+
+
+LOG_TAIL_BYTES = 512 * 1024
+
+
+def read_tail(path, max_bytes=LOG_TAIL_BYTES):
+    """The last ``max_bytes`` of a file as text, without reading the whole file.
+
+    A line cut by the seek is dropped.
+    """
+    data, cut = None, False
+    if xbmcvfs:
+        try:
+            fh = xbmcvfs.File(path)
+            try:
+                size = fh.size()
+                if size > max_bytes:
+                    fh.seek(size - max_bytes, 0)
+                    cut = True
+                data = fh.readBytes(max_bytes)
+            finally:
+                fh.close()
+            data = bytes(data)
+        except Exception:
+            data, cut = None, False
+    if data is None:
+        with open(translate(path), "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            if size > max_bytes:
+                fh.seek(size - max_bytes)
+                cut = True
+            else:
+                fh.seek(0)
+            data = fh.read(max_bytes)
+    text = data.decode("utf-8", "replace")
+    if cut and "\n" in text:
+        text = text.split("\n", 1)[1]
+    return text
 
 
 def debug_paths(seed=None):
@@ -143,7 +181,8 @@ class KodiAPI:
         ]
         for path in candidates:
             try:
-                text = read_text(path)
+                # kodi.log can be tens of MB: read only its tail.
+                text = read_tail(path)
                 return text.splitlines()[-int(n):]
             except Exception:
                 continue
