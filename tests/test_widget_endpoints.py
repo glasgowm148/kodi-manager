@@ -139,10 +139,6 @@ class WidgetEndpointTests(unittest.TestCase):
         self.assertEqual(response.status, 401)
         connection.close()
 
-
-if __name__ == "__main__":
-    unittest.main()
-
     def test_fix_checks_require_auth_and_repairs_require_idle_write_mode(self):
         for method, path in [('GET', '/api/fixes'), ('POST', '/api/fixes/repair')]:
             self.assertEqual(self.request(method, path, {} if method == 'POST' else None, auth=False)[0], 401)
@@ -161,3 +157,7 @@ if __name__ == "__main__":
             self.state.kodi.jsonrpc.return_value = {'result': []}
             self.assertEqual(self.request('POST', '/api/fixes/repair', {})[0], 200)
             protection.repair.assert_called_once()
+
+
+if __name__ == "__main__":
+    unittest.main()

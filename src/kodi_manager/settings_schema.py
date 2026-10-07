@@ -20,26 +20,70 @@ except ImportError:
 
 def setting_description(setting_id="", label=""):
     sid = (setting_id or "").lower()
-    if sid.endswith(".priority"):
-        return "Order used when choosing this provider. Lower number usually means higher priority."
-    if sid.endswith(".enabled"):
-        return "Turn this integration on or off."
-    if sid.endswith(".token"):
-        return "Access token used by the add-on."
-    if sid.endswith(".refresh"):
-        return "Refresh token used to renew access."
-    if sid.endswith(".secret"):
-        return "Client secret used for authorization."
-    if "tmdb" in sid:
-        return "TMDb metadata/account setting."
-    if "trakt" in sid:
-        return "Trakt account or playback-history integration setting."
-    if "debrid" in sid or sid.startswith(("rd.", "ad.", "pm.", "tb.", "ed.", "oc.")):
-        return "Debrid/account integration setting."
-    if "scraper" in sid or "provider" in sid:
-        return "Provider/scraper behavior setting."
-    if "autoplay" in sid:
-        return "Automatic playback behavior."
+    provider = ""
+    if sid.startswith("rd."):
+        provider = "Real-Debrid"
+    elif sid.startswith("ad."):
+        provider = "AllDebrid"
+    elif sid.startswith("pm."):
+        provider = "Premiumize"
+    elif sid.startswith("tb."):
+        provider = "TorBox"
+    elif sid.startswith("ed."):
+        provider = "EasyDebrid"
+    elif sid.startswith("oc."):
+        provider = "OffCloud"
+    if provider:
+        if sid.endswith(".enabled"):
+            return "Turn %s account integration on or off." % provider
+        if sid.endswith(".priority"):
+            return "Order used when choosing %s results. Lower number usually means higher priority." % provider
+        if sid.endswith(".token"):
+            return "%s access token used by the add-on." % provider
+        if sid.endswith(".refresh"):
+            return "%s refresh token used to renew access." % provider
+        if sid.endswith(".secret"):
+            return "%s client secret used for authorization." % provider
+        if sid.endswith(".client_id"):
+            return "%s client ID used for authorization." % provider
+        if sid.endswith(".account_id"):
+            return "%s account name or account ID currently linked." % provider
+        if sid.endswith(".alt_api"):
+            return "Alternative %s API key/token." % provider
+    generic = ((".priority", "Order used when choosing this provider. Lower number usually means higher priority."),
+               (".enabled", "Turn this integration on or off."),
+               (".token", "Access token used by the add-on."),
+               (".refresh", "Refresh token used to renew access."),
+               (".secret", "Client secret used for authorization."))
+    for suffix, desc in generic:
+        if sid.endswith(suffix):
+            return desc
+    rules = [
+        ("tmdb", "TMDb API/account credential used for metadata and lists."),
+        ("trakt", "Trakt account credential or authorization setting."),
+        ("easynews_user", "EasyNews username."),
+        ("easynews_password", "EasyNews password."),
+        ("omdb", "OMDb API key used for ratings/metadata."),
+        ("fanart", "Fanart.tv API key used for artwork."),
+        ("tvdb", "TVDb token used for TV metadata."),
+        ("mdblist", "MDBList API key used for list metadata."),
+        ("prowlarr", "Prowlarr token used by scraper integration."),
+        ("furk", "Furk account/API credential."),
+        ("debrid", "Debrid/account integration setting."),
+        ("default_addon_fanart", "Artwork shown when Fen Light has no specific background."),
+        ("autoplay", "Controls automatic playback behavior."),
+        ("external", "Connects this add-on to an external helper/module."),
+        ("scraper", "Controls scraper/provider integration."),
+        ("provider", "Controls provider behavior or appearance."),
+        ("timeout", "How long to wait before giving up."),
+        ("thread", "Concurrency/performance setting."),
+        ("quality", "Playback/source quality preference."),
+        ("cache", "Cache behavior."),
+        ("resume", "Resume playback behavior."),
+    ]
+    for key, desc in rules:
+        if key in sid:
+            return desc
     return "Kodi add-on setting. Change only if you know this behavior."
 
 

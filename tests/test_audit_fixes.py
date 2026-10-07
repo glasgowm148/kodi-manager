@@ -172,3 +172,361 @@ def test_stack_restore_checks_every_component_before_replacing_any(store):
     with pytest.raises(ValueError):
         backup.restore_stack_backup(index, stack["backup_id"])
     assert (live / "settings.xml").read_text() == "current"
+
+
+# --- HTTP server: routing, auth, CORS, headers --------------------------------------
+
+import http.client  # noqa: E402
+import socket  # noqa: E402
+from unittest.mock import Mock, patch  # noqa: E402
+
+from kodi_manager import server  # noqa: E402
+from kodi_manager.client import READ_POSTS  # noqa: E402
+
+
+@pytest.fixture
+def api_server():
+    logs = []
+    players = {"result": []}
+    addons = {
+        "plugin.video.pov": {"addon_id": "plugin.video.pov", "name": "POV", "is_stack_addon": True},
+        "plugin.video.other": {"addon_id": "plugin.video.other", "name": "Other", "is_stack_addon": False},
+        "service.kodi.addonadmin": {"addon_id": "service.kodi.addonadmin", "name": "Kodi Manager", "is_stack_addon": False},
+    }
+    state = SimpleNamespace(
+        kodi=SimpleNamespace(jsonrpc=lambda method, params=None: players, get_kodi_version=lambda: "21.0"),
+        index=SimpleNamespace(refresh=Mock(), get=addons.get, addons=addons),
+        config={"auth_token": "tok", "host": "127.0.0.1", "write_enabled": True, "allowed_addons_csv": ""},
+        log=logs.append, logs=[])
+    httpd = server.BoundedThreadingHTTPServer(("127.0.0.1", 0), server.make_handler(state))
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+
+    def call(method, target, body=None, token="tok", headers=None):
+        conn = http.client.HTTPConnection(*httpd.server_address, timeout=5)
+        conn.putrequest(method, target, skip_host=True, skip_accept_encoding=True)
+        sent = {"Host": "%s:%s" % httpd.server_address, "Content-Type": "application/json"}
+        if token:
+            sent["Authorization"] = "Bearer " + token
+        sent.update(headers or {})
+        data = json.dumps(body).encode() if body is not None else b""
+        sent["Content-Length"] = str(len(data))
+        for key, value in sent.items():
+            conn.putheader(key, value)
+        conn.endheaders(data)
+        response = conn.getresponse()
+        raw = response.read()
+        conn.close()
+        return response.status, (json.loads(raw) if raw else None), dict(response.getheaders())
+
+    yield SimpleNamespace(call=call, state=state, logs=logs, players=players, httpd=httpd)
+    httpd.shutdown()
+    httpd.server_close()
+    thread.join()
+
+
+def test_writes_outside_api_prefix_are_not_routed_and_need_no_token(api_server):
+    with patch.object(server, "restore_backup") as restore:
+        for target in ("/x/addons/plugin.video.pov/restore", "/api2/addons/plugin.video.pov/restore",
+                       "/x/api/addons/plugin.video.pov/restore"):
+            assert api_server.call("POST", target, {"backup_id": "b"}, token=None)[0] == 404
+        restore.assert_not_called()
+
+
+def test_absolute_form_and_unnormalised_targets_are_rejected(api_server):
+    with patch.object(server, "restore_backup") as restore:
+        for target in ("http://evil/api/addons/plugin.video.pov/restore",
+                       "/api/addons/../addons/plugin.video.pov/restore", "/api//status", "/api/%2e%2e/status"):
+            status, body, _ = api_server.call("POST", target, {"backup_id": "b"}, token=None)
+            assert status == 400, target
+        # Python 3.12+ collapses a leading "//" before the handler sees it; either way nothing runs.
+        assert api_server.call("POST", "//evil/api/addons/plugin.video.pov/restore", {}, token=None)[0] in (400, 404)
+        restore.assert_not_called()
+
+
+def test_api_still_requires_token(api_server):
+    status, body, _ = api_server.call("POST", "/api/addons/plugin.video.pov/restore", {"backup_id": "b"}, token=None)
+    assert status == 401 and body["code"] == "unauthorized" and body["error"]["code"] == "unauthorized"
+
+
+def test_no_wildcard_cors_and_security_headers(api_server):
+    status, _, headers = api_server.call("OPTIONS", "/api/status", token=None)
+    assert status == 204 and "Access-Control-Allow-Origin" not in headers
+    status, _, headers = api_server.call("GET", "/api/logs")
+    assert status == 200 and "Access-Control-Allow-Origin" not in headers
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    assert headers["Referrer-Policy"] == "no-referrer"
+    assert headers["X-Frame-Options"] == "DENY"
+    assert "Content-Security-Policy" not in headers
+
+
+def test_cross_origin_writes_are_refused(api_server):
+    host = "%s:%s" % api_server.httpd.server_address
+    with patch.object(server, "create_stack_backup", return_value={"backup_id": "x"}), \
+            patch.object(server, "detect_stack", return_value={k: {} for k in ("tmdbhelper", "fenlight", "fen", "pov", "cocoscrapers", "trakt", "skin")}):
+        status, body, _ = api_server.call("POST", "/api/stack/backup", {}, headers={"Origin": "http://evil.example"})
+        assert status == 403 and body["error"]["code"] == "origin_mismatch"
+        assert api_server.call("POST", "/api/stack/backup", {}, headers={"Origin": "null"})[0] == 403
+        assert api_server.call("POST", "/api/stack/backup", {}, headers={"Origin": "http://" + host})[0] == 200
+        assert api_server.call("POST", "/api/stack/backup", {})[0] == 200
+
+
+def test_private_client_check_applies_to_any_non_loopback_bind(api_server):
+    api_server.state.config["host"] = "192.168.1.10"
+    with patch.object(server, "_private_client", return_value=False):
+        assert api_server.call("GET", "/api/logs")[0] == 403
+    api_server.state.config["host"] = "127.0.0.1"
+    with patch.object(server, "_private_client", return_value=False):
+        assert api_server.call("GET", "/api/logs")[0] == 200
+    assert not server._loopback_host("0.0.0.0") and server._loopback_host("localhost")
+
+
+def test_non_object_json_body_is_a_400(api_server):
+    status, body, _ = api_server.call("POST", "/api/stack/restore", ["not", "an", "object"])
+    assert status == 400 and body["code"] == "bad_request"
+
+
+def test_route_table_write_flags_match_read_posts():
+    for method, pattern, _name, needs_write, _code in server.ROUTES:
+        if method == "GET":
+            assert not needs_write, pattern
+        elif "(?P<" not in pattern:
+            assert needs_write == (pattern not in READ_POSTS), pattern
+
+
+def test_request_line_token_is_masked_in_logs(api_server):
+    api_server.call("GET", "/index.html?token=supersecret&x=1", token=None)
+    api_server.call("GET", "/api/logs?access_token=othersecret")
+    joined = " ".join(api_server.logs)
+    assert "supersecret" not in joined and "othersecret" not in joined and "token=***" in joined
+
+
+def test_restores_require_idle_unless_forced(api_server):
+    api_server.players["result"] = [{"playerid": 1}]
+    with patch.object(server, "restore_backup", return_value={"restored": True}) as restore, \
+            patch.object(server, "restore_stack_backup", return_value={"restored": []}) as stack:
+        status, body, _ = api_server.call("POST", "/api/addons/plugin.video.pov/restore", {"backup_id": "b"})
+        assert status == 400 and "Stop playback" in body["error"]["message"]
+        assert api_server.call("POST", "/api/stack/restore", {"backup_id": "b"})[0] == 400
+        restore.assert_not_called()
+        stack.assert_not_called()
+        assert api_server.call("POST", "/api/addons/plugin.video.pov/restore", {"backup_id": "b", "force": True})[0] == 200
+        assert api_server.call("POST", "/api/stack/restore", {"backup_id": "b", "force": True})[0] == 200
+    api_server.players["result"] = []
+    with patch.object(server, "restore_backup", return_value={"restored": True}):
+        assert api_server.call("POST", "/api/addons/plugin.video.pov/restore", {"backup_id": "b"})[0] == 200
+
+
+def test_settings_report_editable_and_read_only_reason(api_server):
+    adapter = SimpleNamespace(name="Generic", get_warnings=lambda addon: [])
+    with patch.object(server, "settings_for_addon", return_value={"groups": []}), \
+            patch.object(server, "adapter_for", return_value=adapter):
+        get = lambda aid: api_server.call("GET", "/api/addons/%s/settings" % aid)[1]["data"]  # noqa: E731
+        assert get("plugin.video.pov")["editable"] is True and get("plugin.video.pov")["read_only_reason"] is None
+        other = get("plugin.video.other")
+        assert other["editable"] is False and "Add plugin.video.other to 'Allowed add-ons'" in other["read_only_reason"]
+        assert get("service.kodi.addonadmin")["read_only_reason"] == "Kodi Manager's own settings are edited in Kodi"
+        api_server.state.config["allowed_addons_csv"] = "plugin.video.other"
+        assert get("plugin.video.other")["editable"] is True
+        api_server.state.config["write_enabled"] = False
+        assert get("plugin.video.pov")["read_only_reason"] == "Enable writes in Kodi Manager settings"
+        status, body, _ = api_server.call("GET", "/api/addons/plugin.video.pov/backups")
+        assert status == 200 and "backups" in body["data"]
+
+
+def test_settings_patch_never_writes_kodi_manager_itself(api_server):
+    with patch.object(server, "create_backup") as snapshot:
+        status, body, _ = api_server.call("PATCH", "/api/addons/service.kodi.addonadmin/settings",
+                                          {"changes": [{"id": "auth_token", "value": "x", "source": "raw"}]})
+        assert status == 403 and body["code"] == "self_read_only"
+        status, body, _ = api_server.call("PATCH", "/api/addons/plugin.video.other/settings", {"changes": []})
+        assert status == 403 and body["code"] == "addon_not_allowed"
+        snapshot.assert_not_called()
+
+
+def test_unknown_addon_is_404(api_server):
+    status, body, _ = api_server.call("GET", "/api/addons/plugin.video.missing")
+    assert status == 404 and body["code"] == "not_found"
+
+
+def test_bounded_server_uses_daemon_threads_and_caps_handlers():
+    entered, release = threading.Event(), threading.Event()
+
+    class Slow(server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            entered.set()
+            release.wait(5)
+            self.send_response(204)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    class One(server.BoundedThreadingHTTPServer):
+        max_handlers = 1
+        slot_wait = 0.2
+
+    assert server.BoundedThreadingHTTPServer.daemon_threads is True
+    assert server.BoundedThreadingHTTPServer.max_handlers == 16
+    httpd = One(("127.0.0.1", 0), Slow)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    first = socket.create_connection(httpd.server_address, timeout=5)
+    try:
+        first.sendall(b"GET / HTTP/1.0\r\n\r\n")
+        assert entered.wait(2)
+        second = socket.create_connection(httpd.server_address, timeout=5)
+        second.sendall(b"GET / HTTP/1.0\r\n\r\n")
+        try:
+            closed = second.recv(100) == b""  # Closed: every handler slot is busy.
+        except ConnectionResetError:
+            closed = True
+        assert closed
+        second.close()
+    finally:
+        release.set()
+        first.close()
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join()
+
+
+# --- Pipeline/account writes: same gate as the settings editor ----------------------
+
+import sqlite3  # noqa: E402
+
+from kodi_manager import fenlight_db, pipeline  # noqa: E402
+from kodi_manager.write_policy import WriteRefused  # noqa: E402
+
+
+def _addon(tmp_path, aid, stack=True, values=None):
+    data = tmp_path / ("addon data #%s" % aid)
+    data.mkdir()
+    settings = data / "settings.xml"
+    settings.write_text('<settings version="2">%s</settings>' % "".join(
+        '<setting id="%s">%s</setting>' % item for item in (values or {"tb.token": "old"}).items()))
+    return {"addon_id": aid, "addon_data_path": str(data), "user_settings_path": str(settings),
+            "settings_schema_path": "", "path": "", "is_stack_addon": stack}
+
+
+@pytest.fixture
+def writer(tmp_path, monkeypatch):
+    root = tmp_path / "backups"
+    root.mkdir()
+    monkeypatch.setattr(backup, "backup_root", lambda: str(root))
+    addons = {aid: _addon(tmp_path, aid, stack) for aid, stack in (
+        ("plugin.video.pov", True), ("plugin.video.other", False), ("service.kodi.addonadmin", False),
+        ("plugin.video.fenlight", True))}
+    kodi = SimpleNamespace(set_addon_setting=Mock())
+    index = SimpleNamespace(get=addons.get)
+    return SimpleNamespace(kodi=kodi, index=index, addons=addons, root=root, tmp=tmp_path)
+
+
+def _raw(aid, sid="tb.token", value="new"):
+    return {"component": aid, "setting_id": sid, "value": value, "source": "raw"}
+
+
+def test_account_raw_writes_never_reach_kodi_manager_itself(writer):
+    for sid in ("tb.token", "auth_token", "host", "allow_lan", "write_enabled"):
+        with pytest.raises(WriteRefused):
+            pipeline.apply_account_settings(writer.kodi, writer.index, [_raw("service.kodi.addonadmin", sid)], True)
+    writer.kodi.set_addon_setting.assert_not_called()
+
+
+def test_account_writes_use_the_allowed_addons_gate(writer):
+    with pytest.raises(PermissionError):
+        pipeline.apply_account_settings(writer.kodi, writer.index, [_raw("plugin.video.other")], True)
+    with pytest.raises(PermissionError):
+        pipeline.apply_pipeline_settings(writer.kodi, writer.index, [_raw("plugin.video.other")], True)
+    writer.kodi.set_addon_setting.assert_not_called()
+    result = pipeline.apply_account_settings(writer.kodi, writer.index, [_raw("plugin.video.other")], True,
+                                             config={"allowed_addons_csv": "plugin.video.other"})
+    assert result["changed_count"] == 1
+    writer.kodi.set_addon_setting.assert_called_once_with("plugin.video.other", "tb.token", "new")
+
+
+def test_whole_batch_is_validated_before_any_write(writer):
+    with pytest.raises(ValueError):
+        pipeline.apply_account_settings(writer.kodi, writer.index,
+                                        [_raw("plugin.video.pov"), _raw("plugin.video.pov", "not.there")], True)
+    with pytest.raises(WriteRefused):
+        pipeline.apply_account_settings(writer.kodi, writer.index,
+                                        [_raw("plugin.video.pov"), _raw("service.kodi.addonadmin")], True)
+    writer.kodi.set_addon_setting.assert_not_called()
+    assert not (writer.root / "pipeline").exists() or not os.listdir(writer.root / "pipeline")
+
+
+def test_account_write_backs_up_only_touched_files(writer):
+    result = pipeline.apply_account_settings(writer.kodi, writer.index, [_raw("plugin.video.pov")], True)
+    snapshot = writer.root / "pipeline" / result["backup_id"]
+    files = sorted(str(p.relative_to(snapshot)) for p in snapshot.rglob("*") if p.is_file())
+    assert files == ["manifest.json", "plugin.video.pov/settings.xml"]
+
+
+def _fen_db(writer):
+    path = Path(writer.addons["plugin.video.fenlight"]["addon_data_path"]) / "databases" / "settings.db"
+    path.parent.mkdir()
+    con = sqlite3.connect(str(path))
+    con.execute("create table settings (setting_id text, setting_type text, setting_default text, setting_value text)")
+    con.executemany("insert into settings values (?, ?, ?, ?)", [
+        ("tb.token", "string", "", "old"), ("tb.enabled", "boolean", "false", "false"), ("results.limit", "integer", "5", "5")])
+    con.commit()
+    con.close()
+    return path
+
+
+def _db(sid, value):
+    return {"component": "plugin.video.fenlight", "setting_id": sid, "value": value, "source": "settings.db"}
+
+
+def test_settings_db_write_needs_existing_file_and_never_creates_one(writer):
+    path = Path(writer.addons["plugin.video.fenlight"]["addon_data_path"]) / "databases" / "settings.db"
+    with pytest.raises(ValueError, match="not found"):
+        pipeline.apply_account_settings(writer.kodi, writer.index, [_db("tb.token", "x")], True)
+    assert not path.exists()
+    with pytest.raises(ValueError):
+        fenlight_db.write_changes(writer.addons["plugin.video.fenlight"], [("tb.token", "x")])
+    assert not path.exists()
+
+
+def test_settings_db_values_are_type_checked_and_written_through_uri_with_special_characters(writer):
+    path = _fen_db(writer)
+    assert "#" in str(path) and " " in str(path)
+    for sid, value in (("tb.enabled", "maybe"), ("results.limit", "ten"), ("results.limit", True), ("tb.token", ["x"])):
+        with pytest.raises(ValueError):
+            pipeline.apply_account_settings(writer.kodi, writer.index, [_db(sid, value)], True)
+    with pytest.raises(ValueError, match="Unknown"):
+        pipeline.apply_account_settings(writer.kodi, writer.index, [_db("nope", "1")], True)
+    result = pipeline.apply_account_settings(writer.kodi, writer.index,
+                                             [_db("tb.token", "new"), _db("tb.enabled", True), _db("results.limit", "7")], True)
+    assert result["changed_count"] == 3
+    rows = dict((sid, value) for sid, _t, _d, value in fenlight_db.read_rows(writer.addons["plugin.video.fenlight"]))
+    assert rows == {"tb.token": "new", "tb.enabled": "true", "results.limit": "7"}
+    snapshot = writer.root / "pipeline" / result["backup_id"]
+    assert (snapshot / "plugin.video.fenlight" / "databases" / "settings.db").is_file()
+
+
+def test_fenlight_reader_falls_back_to_a_copy_when_the_database_cannot_be_opened(writer, monkeypatch):
+    _fen_db(writer)
+    real = sqlite3.connect
+    calls = []
+
+    def flaky(database, *args, **kwargs):
+        calls.append(database)
+        if len(calls) == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return real(database, *args, **kwargs)
+
+    monkeypatch.setattr(fenlight_db.sqlite3, "connect", flaky)
+    rows = fenlight_db.read_rows(writer.addons["plugin.video.fenlight"])
+    assert len(rows) == 3 and len(calls) == 2 and calls[0].startswith("file:")
+
+
+def test_redact_masks_secrets_inside_strings():
+    from kodi_manager.validation import redact
+    out = redact({"msg": '"GET /?token=abc123&x=1 HTTP/1.1" 200', "nested": ["Authorization: Bearer s3cr3t.v"],
+                  "note": "auth_token=xyz password: hunter2", "plain": "Server started at http://0.0.0.0:8765"})
+    joined = json.dumps(out)
+    for secret in ("abc123", "s3cr3t", "xyz", "hunter2"):
+        assert secret not in joined
+    assert out["plain"] == "Server started at http://0.0.0.0:8765" and "x=1" in out["msg"]

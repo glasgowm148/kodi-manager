@@ -1,23 +1,29 @@
 import json
 import os
-import shutil
-import sqlite3
 import xml.etree.ElementTree as ET
 
 try:
-    from .settings_schema import parse_schema, flatten_settings, parse_user_settings
+    from .settings_schema import parse_schema, flatten_settings, parse_user_settings, setting_description
     from .stack_detector import detect_stack
-    from .validation import is_secret_like, mask_value, setting_editable, coerce_value, redact
+    from .validation import setting_editable, coerce_value, redact
     from .kodi_api import read_text, translate
     from .account_evidence import credential_present, summarize_account, account_provider, is_auth_field
-    from .backup import allocate_backup
+    from .backup import allocate_backup, create_file_backup, _copytree
+    from .fsutil import atomic_write_json
+    from . import fenlight_db
+    from .fenlight_db import DB_EDITABLE_TYPES
+    from .write_policy import check_writable
 except ImportError:
-    from settings_schema import parse_schema, flatten_settings, parse_user_settings
+    from settings_schema import parse_schema, flatten_settings, parse_user_settings, setting_description
     from stack_detector import detect_stack
-    from validation import is_secret_like, mask_value, setting_editable, coerce_value, redact
+    from validation import setting_editable, coerce_value, redact
     from kodi_api import read_text, translate
     from account_evidence import credential_present, summarize_account, account_provider, is_auth_field
-    from backup import allocate_backup
+    from backup import allocate_backup, create_file_backup, _copytree
+    from fsutil import atomic_write_json
+    import fenlight_db
+    from fenlight_db import DB_EDITABLE_TYPES
+    from write_policy import check_writable
 
 PLAYER_IDS = ["plugin.video.fenlight", "plugin.video.fen", "plugin.video.pov", "plugin.video.umbrella", "plugin.video.seren"]
 HELPER_IDS = ["plugin.video.tmdb.bingie.helper", "plugin.video.themoviedb.helper"]
@@ -27,7 +33,6 @@ ACCOUNT_PROVIDERS = ("trakt", "torbox", "tmdb", "realdebrid", "real-debrid", "al
 ACCOUNT_CREDENTIAL_WORDS = ("token", "api", "key", "oauth", "refresh", "secret", "auth", "client", "username", "user", "login", "email", "password", "account", "enabled")
 ACCOUNT_EXCLUDE_WORDS = ("watched", "indicator", "indicators", "calendar", "sync_interval", "refresh_widgets", "widget", "widgets", "rating", "ratings", "scrobble", "manager", "list", "lists", "sort", "flatten", "next_daily_clear", "cloud", "provider.", "store_resolved", "title_filter", "priority", "highlight")
 TEXT_EXTS = (".xml", ".json", ".txt", ".properties", ".ini", ".strm")
-DB_EDITABLE_TYPES = {"boolean", "bool", "string", "text", "path", "name", "action", "integer", "int", "number"}
 
 
 def is_unset_value(value):
@@ -89,66 +94,6 @@ def pretty_label(setting_id):
     if base in aliases:
         return aliases[base]
     return " ".join(w.upper() if w in ("tmdb", "api") else w.capitalize() for w in words) or setting_id
-
-
-def setting_description(setting_id="", label=""):
-    sid = (setting_id or "").lower()
-    provider = ""
-    if sid.startswith("rd."):
-        provider = "Real-Debrid"
-    elif sid.startswith("ad."):
-        provider = "AllDebrid"
-    elif sid.startswith("pm."):
-        provider = "Premiumize"
-    elif sid.startswith("tb."):
-        provider = "TorBox"
-    elif sid.startswith("ed."):
-        provider = "EasyDebrid"
-    elif sid.startswith("oc."):
-        provider = "OffCloud"
-    if provider:
-        if sid.endswith(".enabled"):
-            return "Turn %s account integration on or off." % provider
-        if sid.endswith(".priority"):
-            return "Order used when choosing %s results. Lower number usually means higher priority." % provider
-        if sid.endswith(".token"):
-            return "%s access token used by the add-on." % provider
-        if sid.endswith(".refresh"):
-            return "%s refresh token used to renew access." % provider
-        if sid.endswith(".secret"):
-            return "%s client secret used for authorization." % provider
-        if sid.endswith(".client_id"):
-            return "%s client ID used for authorization." % provider
-        if sid.endswith(".account_id"):
-            return "%s account name or account ID currently linked." % provider
-        if sid.endswith(".alt_api"):
-            return "Alternative %s API key/token." % provider
-    rules = [
-        ("tmdb", "TMDb API/account credential used for metadata and lists."),
-        ("trakt", "Trakt account credential or authorization setting."),
-        ("easynews_user", "EasyNews username."),
-        ("easynews_password", "EasyNews password."),
-        ("omdb", "OMDb API key used for ratings/metadata."),
-        ("fanart", "Fanart.tv API key used for artwork."),
-        ("tvdb", "TVDb token used for TV metadata."),
-        ("mdblist", "MDBList API key used for list metadata."),
-        ("prowlarr", "Prowlarr token used by scraper integration."),
-        ("furk", "Furk account/API credential."),
-        ("default_addon_fanart", "Artwork shown when Fen Light has no specific background."),
-        ("autoplay", "Controls automatic playback behavior."),
-        ("external", "Connects this add-on to an external helper/module."),
-        ("scraper", "Controls scraper/provider integration."),
-        ("provider", "Controls provider behavior or appearance."),
-        ("timeout", "How long to wait before giving up."),
-        ("thread", "Concurrency/performance setting."),
-        ("quality", "Playback/source quality preference."),
-        ("cache", "Cache behavior."),
-        ("resume", "Resume playback behavior."),
-    ]
-    for key, desc in rules:
-        if key in sid:
-            return desc
-    return "Kodi add-on setting. Change only if you know this behavior."
 
 
 def _summary(addon):
@@ -218,15 +163,8 @@ def _parse_component_settings(addon):
 
 
 def _fenlight_db_settings(addon, account=False):
-    if not addon or addon.get("addon_id") != "plugin.video.fenlight":
-        return []
-    db_path = translate(os.path.join(addon.get("addon_data_path") or "", "databases", "settings.db"))
-    if not os.path.exists(db_path):
-        return []
     try:
-        con = sqlite3.connect("file:%s?mode=ro" % db_path, uri=True)
-        rows = con.execute("select setting_id, setting_type, setting_default, setting_value from settings order by setting_id").fetchall()
-        con.close()
+        rows = fenlight_db.read_rows(addon)
     except Exception:
         return []
     out = []
@@ -385,7 +323,6 @@ def _parse_account_settings(addon):
     seen = set()
     for group in parsed.get("groups", []):
         for setting in group.get("settings", []):
-            text = ("%s %s" % (setting.get("id", ""), setting.get("label", ""))).lower()
             if is_account_setting(setting.get("id", ""), setting.get("label", ""), setting.get("value")) or (account_provider(setting.get("id"), addon["addon_id"]) and is_auth_field(setting.get("id"))):
                 seen.add(setting.get("id", ""))
                 obj = _setting_obj(addon["addon_id"], setting, "settings.xml", True)
@@ -497,109 +434,119 @@ def pipeline_backup(index, kodi_version="", pipeline_obj=None):
         addon = index.get(aid)
         src = addon.get("addon_data_path") if addon else ""
         if src and os.path.isdir(src):
-            shutil.copytree(src, os.path.join(dest, aid), dirs_exist_ok=True)
+            _copytree(src, os.path.join(dest, aid))
             included.append(aid)
         else:
             skipped.append(aid)
     summary = (pipeline_obj or {}).get("summary", {})
     manifest = {"backup_id": backup_id, "timestamp": ts, "included_components": included, "skipped_components": skipped, "Kodi version": kodi_version, "active_skin": summary.get("active_skin", {}), "detected_helper": summary.get("helper", {}), "detected_primary_player": summary.get("primary_player", {}), "account_status": redact(summary.get("accounts", {})), "warnings": summary.get("health", {}).get("warnings", [])}
-    with open(os.path.join(dest, "manifest.json"), "w", encoding="utf-8") as fh:
-        json.dump(manifest, fh, indent=2)
+    atomic_write_json(os.path.join(dest, "manifest.json"), manifest, indent=2)
     return manifest
 
 
-def apply_pipeline_settings(kodi, index, changes, write_enabled=False, kodi_version=""):
-    if not write_enabled:
-        raise PermissionError("Writes disabled in service settings")
-    pipe = build_pipeline(kodi, index)
-    backup = pipeline_backup(index, kodi_version, pipe)
-    changed = []
+def _plan_changes(index, changes, config, account=False):
+    """Validate a whole batch of pipeline/account changes before anything is written.
+
+    Returns a list of planned writes. Raises WriteRefused (a PermissionError)
+    for add-ons outside the write policy and ValueError for bad changes.
+    """
+    if not isinstance(changes, list):
+        raise ValueError("changes must be a list")
+    plan, db_changes = [], {}
     for ch in changes:
+        if not isinstance(ch, dict):
+            raise ValueError("Each change must be an object")
         aid = ch.get("component")
         sid = ch.get("setting_id")
+        if not isinstance(aid, str) or not isinstance(sid, str) or not sid:
+            raise ValueError("Each change needs a component and a setting_id")
         addon = index.get(aid)
         if not addon:
             raise ValueError("Component not detected: %s" % aid)
-        if aid == "plugin.video.fenlight" and ch.get("source") == "settings.db":
-            value = str(ch.get("value"))
-            db_path = translate(os.path.join(addon.get("addon_data_path") or "", "databases", "settings.db"))
-            if not os.path.exists(db_path):
-                raise ValueError("Fen Light settings.db not found")
-            con = sqlite3.connect(db_path)
-            row = con.execute("select setting_type from settings where setting_id=?", (sid,)).fetchone()
-            if not row:
-                con.close()
-                raise ValueError("Unknown Fen Light DB setting: %s" % sid)
-            if (row[0] or "").lower() not in DB_EDITABLE_TYPES:
-                con.close()
-                raise ValueError("Unsupported Fen Light DB setting type: %s" % sid)
-            con.execute("update settings set setting_value=? where setting_id=?", (value, sid))
-            con.commit()
-            con.close()
-            changed.append({"component": aid, "setting_id": sid, "source": "settings.db", "value_present": bool(str(value))})
-            continue
-        if ch.get("source") == "raw":
-            raw_vals = parse_user_settings(addon.get("user_settings_path"))
-            if sid not in raw_vals:
-                raise ValueError("Unknown raw setting: %s" % sid)
-            value = str(ch.get("value"))
-            kodi.set_addon_setting(aid, sid, value)
-            changed.append({"component": aid, "setting_id": sid, "source": "raw", "value_present": bool(str(value))})
-            continue
-        parsed = parse_schema(addon.get("settings_schema_path"), addon.get("path"), addon.get("user_settings_path"), True)
-        settings = flatten_settings(parsed)
-        setting = settings.get(sid)
-        if not setting:
-            raise ValueError("Unknown setting: %s" % sid)
-        if not setting_editable(setting, True):
-            raise ValueError("Unsupported setting rejected: %s" % sid)
-        value = coerce_value(setting, ch.get("value"))
-        kodi.set_addon_setting(aid, sid, value)
-        changed.append({"component": aid, "setting_id": sid, "value_present": bool(str(value))})
-    return {"backup_id": backup["backup_id"], "changed_count": len(changed), "changed_settings": changed, "warnings": [], "restart_recommended": True}
-
-
-def apply_account_settings(kodi, index, changes, write_enabled=False, kodi_version=""):
-    if not write_enabled:
-        raise PermissionError("Writes disabled in service settings")
-    pipe = build_pipeline(kodi, index)
-    backup = pipeline_backup(index, kodi_version, pipe)
-    changed = []
-    for ch in changes:
-        aid = ch.get("component")
-        sid = ch.get("setting_id")
+        check_writable(aid, addon, config)
         value = ch.get("value")
         if value is None:
             value = ""
-        addon = index.get(aid)
-        if not addon:
-            raise ValueError("Component not detected: %s" % aid)
-        if ch.get("source") == "settings.db" and aid == "plugin.video.fenlight":
-            db_path = translate(os.path.join(addon.get("addon_data_path") or "", "databases", "settings.db"))
-            con = sqlite3.connect(db_path)
-            row = con.execute("select setting_type from settings where setting_id=?", (sid,)).fetchone()
-            if not row:
-                con.close()
-                raise ValueError("Unknown Fen Light DB setting: %s" % sid)
-            con.execute("update settings set setting_value=? where setting_id=?", (str(value), sid))
-            con.commit()
-            con.close()
-            changed.append({"component": aid, "setting_id": sid, "source": "settings.db", "value_present": bool(str(value))})
+        source = ch.get("source")
+        if source == "settings.db":
+            if aid != fenlight_db.FENLIGHT_ID:
+                raise ValueError("settings.db changes are only supported for Fen Light")
+            db_changes.setdefault(aid, (addon, []))[1].append((sid, value))
             continue
-        if ch.get("source") == "raw":
-            kodi.set_addon_setting(aid, sid, str(value))
-            changed.append({"component": aid, "setting_id": sid, "source": "raw", "value_present": bool(str(value))})
+        if source == "raw":
+            if sid not in parse_user_settings(addon.get("user_settings_path")):
+                raise ValueError("Unknown raw setting: %s" % sid)
+            if isinstance(value, (dict, list)):
+                raise ValueError("Expected a single value: %s" % sid)
+            plan.append({"component": aid, "addon": addon, "setting_id": sid, "value": str(value), "source": "raw"})
             continue
         parsed = parse_schema(addon.get("settings_schema_path"), addon.get("path"), addon.get("user_settings_path"), True)
-        settings = flatten_settings(parsed)
-        setting = settings.get(sid)
+        setting = flatten_settings(parsed).get(sid)
         if not setting:
-            raise ValueError("Account setting not safely writable: %s" % sid)
-        stype = (setting.get("type") or "").lower()
-        if stype not in ("text", "string", "password", "bool", "boolean", "integer", "int", "number", "select", "spinner", "enum"):
-            raise ValueError("Only text secret replacement is supported: %s" % sid)
-        kodi.set_addon_setting(aid, sid, coerce_value(setting, value))
-        changed.append({"component": aid, "setting_id": sid, "value_present": bool(str(value))})
+            raise ValueError(("Account setting not safely writable: %s" if account else "Unknown setting: %s") % sid)
+        if account:
+            stype = (setting.get("type") or "").lower()
+            if stype not in ("text", "string", "password", "bool", "boolean", "integer", "int", "number", "select", "spinner", "enum"):
+                raise ValueError("Only text secret replacement is supported: %s" % sid)
+        elif not setting_editable(setting, True):
+            raise ValueError("Unsupported setting rejected: %s" % sid)
+        plan.append({"component": aid, "addon": addon, "setting_id": sid, "value": coerce_value(setting, value), "source": "settings.xml"})
+    for aid, (addon, pairs) in db_changes.items():
+        for sid, value in fenlight_db.validate_changes(addon, pairs):
+            plan.append({"component": aid, "addon": addon, "setting_id": sid, "value": value, "source": "settings.db"})
+    return plan
+
+
+def _backup_touched(plan, kodi_version):
+    """Snapshot only the files a batch will change (not every add-on's addon_data)."""
+    files = {}
+    for item in plan:
+        addon, aid = item["addon"], item["component"]
+        if item["source"] == "settings.db":
+            files["%s/databases/settings.db" % aid] = fenlight_db.db_path(addon)
+        else:
+            path = addon.get("user_settings_path") or ""
+            files["%s/settings.xml" % aid] = translate(path) if path else ""
+    return create_file_backup("pipeline", files, kodi_version, note="Settings changed from the dashboard")
+
+
+def _apply_plan(kodi, plan):
+    changed, db_writes = [], {}
+    for item in plan:
+        if item["source"] == "settings.db":
+            db_writes.setdefault(item["component"], (item["addon"], []))[1].append((item["setting_id"], item["value"]))
+        else:
+            kodi.set_addon_setting(item["component"], item["setting_id"], item["value"])
+        entry = {"component": item["component"], "setting_id": item["setting_id"], "value_present": bool(str(item["value"]))}
+        if item["source"] != "settings.xml":
+            entry["source"] = item["source"]
+        changed.append(entry)
+    for addon, pairs in db_writes.values():
+        fenlight_db.write_changes(addon, pairs)
+    return changed
+
+
+def _write_config(write_enabled, config):
+    config = dict(config or {})
+    config["write_enabled"] = bool(write_enabled)
+    return config
+
+
+def apply_pipeline_settings(kodi, index, changes, write_enabled=False, kodi_version="", config=None):
+    if not write_enabled:
+        raise PermissionError("Writes disabled in service settings")
+    plan = _plan_changes(index, changes, _write_config(write_enabled, config))
+    backup = _backup_touched(plan, kodi_version)
+    changed = _apply_plan(kodi, plan)
+    return {"backup_id": backup["backup_id"], "changed_count": len(changed), "changed_settings": changed, "warnings": [], "restart_recommended": True}
+
+
+def apply_account_settings(kodi, index, changes, write_enabled=False, kodi_version="", config=None):
+    if not write_enabled:
+        raise PermissionError("Writes disabled in service settings")
+    plan = _plan_changes(index, changes, _write_config(write_enabled, config), account=True)
+    backup = _backup_touched(plan, kodi_version)
+    changed = _apply_plan(kodi, plan)
     return {"backup_id": backup["backup_id"], "changed_count": len(changed), "changed_settings": changed, "warnings": ["Kodi/add-on restart may be required."], "restart_recommended": True}
 
 

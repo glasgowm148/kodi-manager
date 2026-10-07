@@ -1,3 +1,5 @@
+import re
+
 SECRET_WORDS = (
     "token", "trakt", "oauth", "refresh", "access", "secret", "password",
     "passwd", "pin", "api", "key", "client", "auth", "authorization",
@@ -20,6 +22,26 @@ def mask_value(value):
     return "••••••••" if value not in (None, "") else ""
 
 
+_QUERY_SECRET = re.compile(r"([?&;](?:token|access_token|auth_token|refresh_token|api_key|apikey|key)=)[^&#\s\"']*", re.I)
+_BEARER = re.compile(r"\b(Bearer)\s+[A-Za-z0-9._~+/=-]+", re.I)
+_ASSIGNED_SECRET = re.compile(
+    r"\b((?:access_|refresh_|auth_|client_|api_)?(?:token|secret|password|passwd|api_?key|apikey|key))"
+    r"(\s*[=:]\s*[\"']?)([^\s&\"',;]+)", re.I)
+MASK = "••••••••"
+
+
+def mask_query_secrets(text):
+    """Mask token/key query values in a URL or request line (``?token=abc`` -> ``?token=***``)."""
+    return _QUERY_SECRET.sub(lambda m: m.group(1) + "***", str(text))
+
+
+def mask_secrets_in_text(text):
+    """Mask secrets embedded in free text: query values, ``Bearer ...`` and ``token=...``."""
+    text = mask_query_secrets(text)
+    text = _BEARER.sub(lambda m: m.group(1) + " " + MASK, text)
+    return _ASSIGNED_SECRET.sub(lambda m: m.group(1) + m.group(2) + (m.group(3) if m.group(3) in ("***", "\u2022" * 8) else MASK), text)
+
+
 def redact(obj):
     if isinstance(obj, dict):
         out = {}
@@ -28,6 +50,8 @@ def redact(obj):
         return out
     if isinstance(obj, list):
         return [redact(v) for v in obj]
+    if isinstance(obj, str):
+        return mask_secrets_in_text(obj)
     return obj
 
 
