@@ -253,7 +253,7 @@ def restore_backup(addon_info, backup_id):
             "undo_backup_id": undo["backup_id"], "restart_required": True}
 
 
-def create_stack_backup(addons, kodi_version=""):
+def create_stack_backup(addons, kodi_version="", note=""):
     ts, backup_id, root = allocate_backup("_stack")
     included, skipped, counts = [], [], {}
     for addon in addons:
@@ -268,9 +268,17 @@ def create_stack_backup(addons, kodi_version=""):
         else:
             skipped.append(addon["addon_id"])
     manifest = {"backup_id": backup_id, "timestamp": ts, "included_folders": included, "skipped_folders": skipped,
-                "file_counts": counts, "Kodi version": kodi_version}
+                "file_counts": counts, "Kodi version": kodi_version, "note": note}
     _write_manifest(root, manifest)
     return manifest
+
+
+def delete_stack_backup(backup_id):
+    root = _backup_path("_stack", backup_id)
+    if os.path.isdir(root) and not os.path.islink(root):
+        shutil.rmtree(root)
+        return True
+    return False
 
 
 def restore_stack_backup(index, backup_id):

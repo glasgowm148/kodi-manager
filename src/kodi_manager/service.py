@@ -161,6 +161,45 @@ def start_widget_refresher(kodi):
     return refresher
 
 
+def start_maintenance(kodi):
+    """Nightly checkpoint, protected-settings check and account checks (see maintenance.py)."""
+    try:
+        try:
+            from .maintenance import Maintenance, nightly_checkpoint
+            from .account_health import trakt_status, torbox_status
+            from .addon_index import AddonIndex
+            from .backup import create_stack_backup, list_backups, delete_stack_backup
+            from .server import stack_backup_addons, make_baseline
+        except ImportError:
+            from maintenance import Maintenance, nightly_checkpoint
+            from account_health import trakt_status, torbox_status
+            from addon_index import AddonIndex
+            from backup import create_stack_backup, list_backups, delete_stack_backup
+            from server import stack_backup_addons, make_baseline
+    except Exception as error:
+        kodi.log("Maintenance unavailable: %s" % type(error).__name__)
+        return None
+    index = AddonIndex(kodi)
+
+    def checkpoint():
+        index.refresh(force=True)
+        return nightly_checkpoint(
+            lambda: create_stack_backup(stack_backup_addons(kodi, index), kodi.get_kodi_version(), note="nightly"),
+            lambda: list_backups(stack=True), delete_stack_backup)
+
+    def accounts():
+        return [trakt_status(kodi.get_addon_setting), torbox_status(kodi.get_addon_setting, translate)]
+
+    try:
+        nightly = [b for b in list_backups(stack=True) if b.get("note") == "nightly"]
+        last = max(str(b.get("backup_id", ""))[:8] for b in nightly) if nightly else ""
+        last_day = "%s-%s-%s" % (last[:4], last[4:6], last[6:8]) if len(last) == 8 else None
+    except Exception:
+        last_day = None
+    return Maintenance(lambda title, message: kodi.notify(title, message), baseline=make_baseline(kodi),
+                       accounts=accounts, checkpoint=checkpoint, log=kodi.log, last_nightly_day=last_day)
+
+
 def start_watchdog(kodi):
     """Background connection and memory check; notifies once when something is wrong."""
     import threading
@@ -174,6 +213,7 @@ def start_watchdog(kodi):
                         is_quiet=lambda: not xbmc.getCondVisibility(BUSY_CONDITION),
                         memory=memory_status, log=kodi.log)
     watchdog.stop = threading.Event()
+    housekeeping = start_maintenance(kodi)
 
     def run():
         while not watchdog.stop.is_set():
@@ -181,6 +221,11 @@ def start_watchdog(kodi):
                 watchdog.tick()
             except Exception as error:
                 kodi.log("Connection watchdog error: %s" % type(error).__name__)
+            if housekeeping is not None:
+                try:
+                    housekeeping.tick(not xbmc.getCondVisibility(BUSY_CONDITION))
+                except Exception as error:
+                    kodi.log("Maintenance error: %s" % type(error).__name__)
             watchdog.stop.wait(15)
 
     threading.Thread(target=run, name="km-watchdog", daemon=True).start()

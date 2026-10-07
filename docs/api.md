@@ -129,3 +129,16 @@ trusted LAN or through a secure tunnel you manage.
 These APIs manage installed Kodi functionality. They do not create cloud accounts, migrate Trakt
 history, authorize debrid services or install third-party playback or skin patches. Family filters
 help with discovery and are not parental access control.
+
+### Protected settings (0.7.3)
+
+| Method and path | Access | Body | Result |
+| --- | --- | --- | --- |
+| `GET /api/baseline` | read | – | `{items[{key, kind, label, expected, current, ok, missing}], count, drifted}` |
+| `POST /api/baseline/capture` | write | `{"items": [{"kind": "addon_setting", "addon", "id", "label"?, "value"?} \| {"kind": "kodi_setting", "id", ...} \| {"kind": "addon_xml", "addon", "tag", ...}]}` | Protects each item at its current (or given) value: `{protected[], count}` |
+| `POST /api/baseline/apply` | write | `{"keys"?: [...]}` | Re-applies drifted items: `{applied[], failed[], restart_required}` |
+| `POST /api/baseline/remove` | write | `{"keys": [...]}` | `{count}` |
+
+Health also lists **Protected settings**, **Trakt sign-in**, **TorBox subscription**, **Nightly
+checkpoint**, **Internet (add-on services)** and **Memory**; a check may carry
+`action: {label, path}` that the dashboard offers as a button.

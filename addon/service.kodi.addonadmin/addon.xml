@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="service.kodi.addonadmin" name="Kodi Manager" version="0.7.2" provider-name="Kodi Manager contributors">
+<addon id="service.kodi.addonadmin" name="Kodi Manager" version="0.7.3" provider-name="Kodi Manager contributors">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
   </requires>
@@ -19,7 +19,7 @@
     <summary lang="en_GB">Browser dashboard for your Kodi add-ons and settings</summary>
     <description lang="en_GB">Kodi Manager is a dashboard you open in a browser on your phone or computer. It shows your skin, players and helper add-ons at a glance; lets you search and edit add-on settings with a backup before every change; keeps checkpoints you can restore and undo; reads Kodi's log; and opens Kodi's own Install from zip file dialog on the TV. Optional: cached rows keep a copy of slow add-on folders so home-screen widgets load instantly. It only listens on this device until you turn on Allow LAN access, and needs an access token.</description>
     <disclaimer lang="en_GB">Changes are only made when you turn on Enable writes. Use it on a trusted home network only; the dashboard does not use HTTPS.</disclaimer>
-    <news>0.7.2: a background check warns on the TV when TorBox, Trakt and TMDb stop answering or memory runs low, before streams fail; Health shows the result. Full history: CHANGELOG.md on the project website.</news>
+    <news>0.7.3: protected settings (spot and re-apply values an update reset), a nightly checkpoint of your add-on settings (last 7 kept) and Trakt/TorBox account checks with a warning before they fail. Full history: CHANGELOG.md on the project website.</news>
     <platform>all</platform>
     <license>MIT</license>
     <website>https://github.com/glasgowm148/kodi-manager</website>

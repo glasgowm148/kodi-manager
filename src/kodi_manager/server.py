@@ -32,6 +32,8 @@ try:
     from .netconfig import is_loopback
     from .memstat import memory_status
     from .netwatch import internet_check
+    from .baseline import Baseline
+    from . import maintenance
 except ImportError:
     from version import VERSION
     from fix_protection import protection_for_kodi
@@ -55,6 +57,8 @@ except ImportError:
     from netconfig import is_loopback
     from memstat import memory_status
     from netwatch import internet_check
+    from baseline import Baseline
+    import maintenance
 
 MAX_HANDLERS = 16
 WIDGET_CACHE_DIR = "special://profile/addon_data/service.kodi.addonadmin/widget_cache"
@@ -164,6 +168,51 @@ def integration_status(index):
     return out
 
 
+STACK_EXTRA_IDS = ("script.skinshortcuts", "shortcutmanager", "script.skin.helper.service",
+                   "script.skin.helper.widgets", "plugin.program.openwizard")
+
+
+def stack_backup_addons(kodi, index):
+    """Add-ons whose settings a stack checkpoint covers."""
+    stack = detect_stack(kodi, index)
+    ids = [stack[k].get("addon_id") for k in ("tmdbhelper", "fenlight", "fen", "pov", "cocoscrapers", "trakt")]
+    ids.append(stack["skin"].get("addon_id"))
+    ids += list(STACK_EXTRA_IDS)
+    return [index.get(aid) for aid in ids if aid]
+
+
+def make_baseline(kodi):
+    return Baseline(translate("special://profile/addon_data/service.kodi.addonadmin/baseline.json"), kodi,
+                    addon_path=lambda addon_id: (kodi.get_addon_details(addon_id) or {}).get("path", ""))
+
+
+def maintenance_checks(kodi):
+    """Protected settings, accounts and the nightly checkpoint for the Health page."""
+    checks = []
+    try:
+        rows = make_baseline(kodi).check()
+    except Exception:
+        rows = []
+    if rows:
+        drift = [r for r in rows if not r["ok"] and not r["missing"]]
+        check = {"id": "baseline", "label": "Protected settings",
+                 "status": "warning" if drift else "ok",
+                 "detail": ("%d changed: %s" % (len(drift), "; ".join("%s is %s, expected %s" % (r["label"], r["current"], r["expected"]) for r in drift)))
+                 if drift else "%d settings as you set them" % len(rows)}
+        if drift:
+            check["action"] = {"label": "Re-apply", "path": "/api/baseline/apply"}
+        checks.append(check)
+    snap = maintenance.snapshot()
+    checks.extend(dict(a) for a in snap["accounts"])
+    nightly = snap["nightly"]
+    if nightly:
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(nightly["at"]))
+        checks.append({"id": "nightly", "label": "Nightly checkpoint",
+                       "status": "ok" if nightly["status"] == "ok" else "warning",
+                       "detail": ("Last taken %s" % when) if nightly["status"] == "ok" else "Failed %s (%s)" % (when, nightly.get("error"))})
+    return checks
+
+
 def health_summary(kodi, index, config):
     index.refresh()
     stack = detect_stack(kodi, index)
@@ -187,6 +236,8 @@ def health_summary(kodi, index, config):
     internet = internet_check()
     if internet:
         checks.insert(len(checks) - 1, internet)
+    for extra in maintenance_checks(kodi):
+        checks.insert(len(checks) - 1, extra)
     checks = [c for c in checks if c.get("status") != "unknown"]
     status = "error" if any(c["status"] == "error" for c in checks) else ("warning" if any(c["status"] == "warning" for c in checks) else "ok")
     return {
@@ -301,6 +352,10 @@ ROUTES = [
     ("GET", r"/api/kodi/logs", "kodi_logs", False, "bad_request"),
     ("POST", r"/api/addons/install", "addons_install", True, "bad_request"),
     ("POST", r"/api/stack/backup", "stack_backup", True, "bad_request"),
+    ("GET", r"/api/baseline", "baseline", False, "bad_request"),
+    ("POST", r"/api/baseline/apply", "baseline_apply", True, "bad_request"),
+    ("POST", r"/api/baseline/capture", "baseline_capture", True, "bad_request"),
+    ("POST", r"/api/baseline/remove", "baseline_remove", True, "bad_request"),
     ("GET", r"/api/stack/backups", "stack_backups", False, "bad_request"),
     ("GET", r"/api/backups/timeline", "backups_timeline", False, "bad_request"),
     ("POST", r"/api/stack/restore", "stack_restore", True, "bad_request"),
@@ -768,12 +823,29 @@ def make_handler(state):
             return state.kodi.open_install_from_zip()
 
         def api_stack_backup(self):
-            stack = detect_stack(state.kodi, state.index)
-            ids = [stack[k].get("addon_id") for k in ("tmdbhelper", "fenlight", "fen", "pov", "cocoscrapers", "trakt")]
-            ids.append(stack["skin"].get("addon_id"))
-            ids += ["script.skinshortcuts", "shortcutmanager", "script.skin.helper.service", "script.skin.helper.widgets", "plugin.program.openwizard"]
-            addons = [state.index.get(aid) for aid in ids if aid]
-            return create_stack_backup(addons, state.kodi.get_kodi_version())
+            return create_stack_backup(stack_backup_addons(state.kodi, state.index), state.kodi.get_kodi_version())
+
+        def api_baseline(self):
+            rows = make_baseline(state.kodi).check()
+            return {"items": rows, "count": len(rows), "drifted": len([r for r in rows if not r["ok"] and not r["missing"]])}
+
+        def api_baseline_apply(self):
+            keys = self.body().get("keys") or None
+            if keys is not None and (not isinstance(keys, list) or not all(isinstance(k, str) for k in keys)):
+                raise ValueError("keys must be a list of strings")
+            return make_baseline(state.kodi).apply(keys)
+
+        def api_baseline_capture(self):
+            items = self.body().get("items")
+            if not isinstance(items, list) or not items:
+                raise ValueError("items must be a non-empty list")
+            return make_baseline(state.kodi).capture(items)
+
+        def api_baseline_remove(self):
+            keys = self.body().get("keys")
+            if not isinstance(keys, list):
+                raise ValueError("keys must be a list")
+            return make_baseline(state.kodi).remove(keys)
 
         def api_stack_backups(self):
             return {"backups": list_backups(stack=True)}

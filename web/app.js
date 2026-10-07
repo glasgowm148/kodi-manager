@@ -514,8 +514,23 @@ async function healthView(){
   const h = await api("/api/health");
   const tone = h.status === "ok" ? "ok" : h.status === "error" ? "bad" : "warn";
   out(`<div class="panel"><h2>Health</h2><p class="${tone}">Overall: ${esc(h.status)}</p><div class="stats">${Object.entries(h.stats || {}).map(([k,v])=>card(k.replace(/_/g," "), `<p class="big">${esc(v)}</p>`)).join("")}</div></div>
-  <div class="panel"><h3>Checks</h3><div class="table">${(h.checks||[]).map(c=>`<div class="row"><span><b>${esc(c.label)}</b><br><span class="muted">${esc(c.detail)}</span></span><span class="${c.status === "ok" ? "ok" : c.status === "error" ? "bad" : "warn"}">${esc(c.status)}</span></div>`).join("")}</div></div>
+  <div class="panel"><h3>Checks</h3><div class="table">${(h.checks||[]).map(c=>`<div class="row"><span><b>${esc(c.label)}</b><br><span class="muted">${esc(c.detail)}</span>${healthAction(c)}</span><span class="${c.status === "ok" ? "ok" : c.status === "error" ? "bad" : "warn"}">${esc(c.status)}</span></div>`).join("")}</div></div>
   <div class="panel"><h3>Recent log problems</h3><h4>Errors</h4><pre>${esc(logBlock(h.recent_errors))}</pre><h4>Warnings</h4><pre>${esc(logBlock(h.recent_warnings))}</pre></div>`);
+  bindHealthActions();
+}
+function healthAction(check){
+  const action = check && check.action;
+  if (!action || typeof action.path !== "string" || !action.path.startsWith("/api/")) return "";
+  return `<br><button type="button" class="action" data-health-action="${esc(action.path)}" ${writeAttrs()}>${esc(action.label || "Fix")}</button>`;
+}
+function bindHealthActions(){
+  document.querySelectorAll("[data-health-action]").forEach(button => button.onclick = withErrors(async () => {
+    const r = await api(button.dataset.healthAction, {});
+    const applied = (r && r.applied) ? r.applied.length : 0;
+    const failed = (r && r.failed) ? r.failed.length : 0;
+    toast(`${applied} setting${applied === 1 ? "" : "s"} re-applied${failed ? `, ${failed} failed` : ""}.${r && r.restart_required ? " Restart Kodi for add-on changes to take effect." : ""}`, failed ? "warn" : "ok");
+    await healthView();
+  }));
 }
 function logBlock(lines){ return (lines || []).slice().reverse().join("\n") || "None"; }
 function runGlobalSearch(){

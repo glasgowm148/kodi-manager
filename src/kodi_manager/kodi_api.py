@@ -158,6 +158,11 @@ class KodiAPI:
             return True
         return False
 
+    def get_addon_setting(self, addon_id, setting_id):
+        if xbmcaddon:
+            return xbmcaddon.Addon(addon_id).getSetting(setting_id)
+        raise RuntimeError("Kodi xbmcaddon unavailable")
+
     def set_addon_setting(self, addon_id, setting_id, value):
         if xbmcaddon:
             xbmcaddon.Addon(addon_id).setSetting(setting_id, value)

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.3 — 2026-10-07 (prerelease)
+
+- **Protected settings.** List the values you rely on (an add-on setting, a Kodi setting, or a simple
+  element in an add-on's addon.xml such as POV's `reuselanguageinvoker`). Kodi Manager compares them
+  shortly after start and every 6 hours, shows a TV notification when an update changed one, and
+  Health offers **Re-apply**. API: `GET /api/baseline`, `POST /api/baseline/capture|apply|remove`.
+  Security and system settings and Kodi Manager's own settings cannot be protected.
+- **Nightly checkpoint.** After 03:00, while the TV is idle, a checkpoint of the add-on stack's settings
+  is taken once a night; the newest 7 nightly checkpoints are kept (manual ones are untouched). Restore
+  them from Backups like any checkpoint.
+- **Account checks.** Twice a day: whether POV's Trakt sign-in is still renewing, and when the TorBox
+  subscription ends (warning from 14 days before). Problems show on Health and as one TV notification
+  a day.
+
 ## 0.7.2 — 2026-10-07 (prerelease)
 
 - **Connection and memory watchdog.** While the TV is quiet, the service checks every 10 minutes that
