@@ -506,18 +506,19 @@ def make_handler(state):
         def query(self, name, default=""):
             return (parse_qs(urlsplit(self.path).query).get(name) or [default])[0]
 
-        def _require_idle(self, message):
+        def _require_idle(self, message, status=400):
             players = state.kodi.jsonrpc("Player.GetActivePlayers")
             if not isinstance(players, dict) or "error" in players or players.get("result") != []:
-                # 400 with code playback_active (restores accept {"force": true} to override).
-                raise ApiError(400, "playback_active", message)
+                # Code playback_active. Restores answer 409 because {"force": true} overrides them;
+                # actions that cannot be forced keep their historic 400.
+                raise ApiError(status, "playback_active", message)
 
         def _require_idle_unless_forced(self, message):
             force = self.body().get("force", False)
             if not isinstance(force, bool):
                 raise ValueError("force must be boolean")
             if not force:
-                self._require_idle(message)
+                self._require_idle(message, status=409)
 
         def _addon(self, aid):
             state.index.refresh()
