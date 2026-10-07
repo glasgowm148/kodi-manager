@@ -460,7 +460,7 @@ def test_whole_batch_is_validated_before_any_write(writer):
 def test_account_write_backs_up_only_touched_files(writer):
     result = pipeline.apply_account_settings(writer.kodi, writer.index, [_raw("plugin.video.pov")], True)
     snapshot = writer.root / "pipeline" / result["backup_id"]
-    files = sorted(str(p.relative_to(snapshot)) for p in snapshot.rglob("*") if p.is_file())
+    files = sorted(p.relative_to(snapshot).as_posix() for p in snapshot.rglob("*") if p.is_file())
     assert files == ["manifest.json", "plugin.video.pov/settings.xml"]
 
 

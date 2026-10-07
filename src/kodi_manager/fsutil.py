@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 
 _LOCKS = {}
 _LOCKS_GUARD = threading.Lock()
@@ -41,13 +42,31 @@ def atomic_write_bytes(path, data, fsync=True):
             os.chmod(tmp, mode)
         except OSError:
             pass
-        os.replace(tmp, path)
+        _replace(tmp, path)
     except BaseException:
         try:
             os.unlink(tmp)
         except OSError:
             pass
         raise
+
+
+def _replace(tmp, path, attempts=20):
+    """``os.replace`` serialised per path, retrying Windows sharing violations.
+
+    On Windows replacing a file fails with PermissionError while another thread
+    is replacing it or a reader has it open; the condition clears within
+    milliseconds, so wait briefly instead of failing the write.
+    """
+    with path_lock(path):
+        for attempt in range(attempts):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                if os.name != "nt" or attempt == attempts - 1:
+                    raise
+                time.sleep(0.01 * (attempt + 1))
 
 
 def atomic_write_text(path, text, encoding="utf-8", fsync=True):

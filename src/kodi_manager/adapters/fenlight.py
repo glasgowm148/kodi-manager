@@ -2,7 +2,7 @@ from .base import BaseAdapter
 
 try:
     from ..kodi_api import safe_listdir
-except ImportError:
+except (ImportError, ValueError):  # Python 3.8 raises ValueError past the top-level package
     from kodi_api import safe_listdir
 
 
