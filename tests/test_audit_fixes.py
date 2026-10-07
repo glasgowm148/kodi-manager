@@ -307,7 +307,7 @@ def test_restores_require_idle_unless_forced(api_server):
     with patch.object(server, "restore_backup", return_value={"restored": True}) as restore, \
             patch.object(server, "restore_stack_backup", return_value={"restored": []}) as stack:
         status, body, _ = api_server.call("POST", "/api/addons/plugin.video.pov/restore", {"backup_id": "b"})
-        assert status == 400 and "Stop playback" in body["error"]["message"]
+        assert status == 400 and "Stop playback" in body["error"]["message"] and body["code"] == "playback_active"
         assert api_server.call("POST", "/api/stack/restore", {"backup_id": "b"})[0] == 400
         restore.assert_not_called()
         stack.assert_not_called()
