@@ -113,6 +113,8 @@ async function confirmLeave(target){
 async function onHashChange(){
   if (location.hash === state.currentHash) return;
   if (consumeUrlToken()) { await loadStatus().catch(reportError); return route(); }
+  // In-page anchors (#section) are not routes: keep the current page.
+  if (location.hash && !location.hash.startsWith("#/")) { history.replaceState(null, "", state.currentHash || "#/dashboard"); return; }
   if (!(await confirmLeave(location.hash))) return;
   await route();
 }
