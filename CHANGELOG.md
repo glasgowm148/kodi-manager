@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.2 — 2026-10-07 (prerelease)
+
+- **Connection and memory watchdog.** While the TV is quiet, the service checks every 10 minutes that
+  the services streaming add-ons rely on (TorBox, Trakt, TMDb) answer a small plain-HTTP request. If most
+  of them stop answering on two checks in a row, or memory and swap run low, Kodi shows one
+  notification saying what to do (at most every 6 hours), instead of an add-on failing later with a
+  timeout. Health lists the last result with each service's response time.
+
 ## 0.7.1 — 2026-10-07 (prerelease)
 
 - **Cached rows refresh only while the TV is quiet.** Refreshing runs the source add-on once per row,

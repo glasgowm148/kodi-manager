@@ -161,6 +161,32 @@ def start_widget_refresher(kodi):
     return refresher
 
 
+def start_watchdog(kodi):
+    """Background connection and memory check; notifies once when something is wrong."""
+    import threading
+    try:
+        from .netwatch import Watchdog
+        from .memstat import memory_status
+    except ImportError:
+        from netwatch import Watchdog
+        from memstat import memory_status
+    watchdog = Watchdog(lambda title, message: kodi.notify(title, message),
+                        is_quiet=lambda: not xbmc.getCondVisibility(BUSY_CONDITION),
+                        memory=memory_status, log=kodi.log)
+    watchdog.stop = threading.Event()
+
+    def run():
+        while not watchdog.stop.is_set():
+            try:
+                watchdog.tick()
+            except Exception as error:
+                kodi.log("Connection watchdog error: %s" % type(error).__name__)
+            watchdog.stop.wait(15)
+
+    threading.Thread(target=run, name="km-watchdog", daemon=True).start()
+    return watchdog
+
+
 def start_server(kodi, config, web_root, server_class=None):
     """Start the dashboard server; on failure (port in use, bad address) log, notify and return None."""
     server_class = server_class or ServerThread
@@ -240,6 +266,12 @@ def main():
     except Exception as error:
         refresher = None
         kodi.log('Widget cache unavailable: %s' % type(error).__name__)
+    watchdog = None
+    if xbmc:
+        try:
+            watchdog = start_watchdog(kodi)
+        except Exception as error:
+            kodi.log('Connection watchdog unavailable: %s' % type(error).__name__)
     if xbmc:
         class ServiceMonitor(xbmc.Monitor):
             def onSettingsChanged(self):
@@ -276,6 +308,8 @@ def main():
     finally:
         if refresher:
             refresher.stop.set()
+        if watchdog:
+            watchdog.stop.set()
         try:
             guard.on_abort()
             if supported:

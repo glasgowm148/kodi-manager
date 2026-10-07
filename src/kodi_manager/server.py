@@ -31,6 +31,7 @@ try:
     from .write_policy import WriteRefused, check_writable, read_only_reason
     from .netconfig import is_loopback
     from .memstat import memory_status
+    from .netwatch import internet_check
 except ImportError:
     from version import VERSION
     from fix_protection import protection_for_kodi
@@ -53,6 +54,7 @@ except ImportError:
     from write_policy import WriteRefused, check_writable, read_only_reason
     from netconfig import is_loopback
     from memstat import memory_status
+    from netwatch import internet_check
 
 MAX_HANDLERS = 16
 WIDGET_CACHE_DIR = "special://profile/addon_data/service.kodi.addonadmin/widget_cache"
@@ -182,6 +184,9 @@ def health_summary(kodi, index, config):
         dict({"id": "memory", "label": "Memory"}, **{k: v for k, v in memory.items() if k in ("status", "detail")}),
         {"id": "logs", "label": "Kodi log scan", "status": "error" if errors else ("warning" if warnings else "ok"), "detail": "%s errors · %s warnings in last 200 lines" % (len(errors), len(warnings))},
     ]
+    internet = internet_check()
+    if internet:
+        checks.insert(len(checks) - 1, internet)
     checks = [c for c in checks if c.get("status") != "unknown"]
     status = "error" if any(c["status"] == "error" for c in checks) else ("warning" if any(c["status"] == "warning" for c in checks) else "ok")
     return {

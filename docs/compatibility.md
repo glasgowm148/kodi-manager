@@ -6,8 +6,8 @@ These are alpha releases. Passing a fixture test does not establish live TV comp
 | --- | --- | --- |
 | Library/client | Python 3.9+; Linux/Windows CI on 3.9, 3.11, 3.13; macOS local tests | A computer install does not install the TV service |
 | Service code on Kodi's Python | CI runs the test suite on Python 3.8, the version Kodi 19–21 embeds on Android | The library package itself still needs 3.9+ |
-| 0.7.1 library/ZIP (current release) | 308 Python and 63 UI tests; Python 3.8 job; Linux/Windows CI; deterministic ZIP and fresh-wheel smoke | — |
-| Kodi service, live | 0.4.2–0.7.1 installed and used on an NVIDIA Shield (Kodi 22 beta 2), two profiles, Bingie 2.0.2, POV and TMDb Bingie Helper | One device; other skins and devices are tested in CI only |
+| 0.7.2 library/ZIP (current release) | 308 Python and 63 UI tests; Python 3.8 job; Linux/Windows CI; deterministic ZIP and fresh-wheel smoke | — |
+| Kodi service, live | 0.4.2–0.7.2 installed and used on an NVIDIA Shield (Kodi 22 beta 2), two profiles, Bingie 2.0.2, POV and TMDb Bingie Helper | One device; other skins and devices are tested in CI only |
 | Widget cache | Live on the Shield above: cached rows, View more, multi-page rows, per-row hide watched, background refresh, TMDb Helper playback from a cached row | Needs Kodi 20+ (ListItem info tags). Other skins' `widgetPath` routing and the cached-rows picker are covered by tests, not yet live |
 | Kodi service | Requires Kodi `xbmc.python` API 3.0.0 | No universal Kodi/firmware guarantee |
 | Layout writes | Reviewed Bingie 2.0.2 and Skin Shortcuts 2.0.3 versions **and source hashes** | Unknown forks/patches are view-only |
