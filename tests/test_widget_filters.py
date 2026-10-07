@@ -155,7 +155,7 @@ class WidgetFilterTests(unittest.TestCase):
     def test_missing_directory_result_is_not_an_empty_success(self):
         kodi = Kodi([])
         for reply in ({'result': {}}, {'result': {'files': None}}, {'result': 'OK'}):
-            kodi.jsonrpc = lambda *args: reply
+            kodi.jsonrpc = lambda *args, reply=reply: reply
             with self.assertRaisesRegex(ValueError, 'no directory listing'):
                 collect_family_directory(kodi, Index(), 'plugin://plugin.video.pov/')
 

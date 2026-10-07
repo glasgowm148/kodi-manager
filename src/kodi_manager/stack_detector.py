@@ -2,12 +2,10 @@ import os
 import sqlite3
 
 try:
-    from .adapters import adapter_for
     from .settings_schema import parse_schema, parse_user_settings
     from .account_evidence import summarize_account, credential_present
     from .kodi_api import translate
 except ImportError:
-    from adapters import adapter_for
     from settings_schema import parse_schema, parse_user_settings
     from account_evidence import summarize_account, credential_present
     from kodi_api import translate

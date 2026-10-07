@@ -90,7 +90,7 @@ def _validate_path(path, index):
     try:
         parsed = urlparse(path)
     except ValueError:
-        raise ValueError("The resolved directory is malformed.")
+        raise ValueError("The resolved directory is malformed.") from None
     if parsed.username or parsed.password or parsed.fragment or "\\" in path or _DYNAMIC.search(path):
         raise ValueError("The resolved directory is not supported for a preview.")
     decoded = parsed.path
