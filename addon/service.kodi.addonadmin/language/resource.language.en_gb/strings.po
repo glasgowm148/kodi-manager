@@ -6,42 +6,42 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgctxt "#32000"
-msgid "Service"
-msgstr ""
 msgctxt "#32001"
 msgid "Enabled"
 msgstr ""
+
 msgctxt "#32002"
-msgid "Host"
+msgid "Bind address (advanced: Allow LAN access sets this for you)"
 msgstr ""
+
 msgctxt "#32003"
 msgid "Port"
 msgstr ""
+
 msgctxt "#32004"
 msgid "Allow LAN access"
 msgstr ""
+
 msgctxt "#32005"
 msgid "Enable writes"
 msgstr ""
+
 msgctxt "#32006"
 msgid "Auth token"
 msgstr ""
+
 msgctxt "#32007"
 msgid "Log level"
 msgstr ""
+
 msgctxt "#32008"
-msgid "Backup retention"
+msgid "Backups to keep per add-on"
 msgstr ""
-msgctxt "#32009"
-msgid "Show advanced settings"
-msgstr ""
+
 msgctxt "#32011"
-msgid "Allowed add-ons CSV"
+msgid "Also allow editing these add-ons (comma-separated IDs)"
 msgstr ""
-msgctxt "#32012"
-msgid "Stack mode"
-msgstr ""
+
 msgctxt "#32013"
 msgid "Delete installer result after first login"
 msgstr ""
@@ -64,4 +64,20 @@ msgstr ""
 
 msgctxt "#32018"
 msgid "Add to Kodi Manager cached rows"
+msgstr ""
+
+msgctxt "#32019"
+msgid "Dashboard"
+msgstr ""
+
+msgctxt "#32020"
+msgid "Backups"
+msgstr ""
+
+msgctxt "#32021"
+msgid "Cached rows (optional)"
+msgstr ""
+
+msgctxt "#32022"
+msgid "Advanced"
 msgstr ""

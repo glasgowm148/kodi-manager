@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    version = re.search(r'^version = "([^"]+)"$', (ROOT / "pyproject.toml").read_text(), re.M).group(1)
+    version = re.search(r'^VERSION = "([^"]+)"$', (ROOT / "src/kodi_manager/version.py").read_text(), re.M).group(1)
     wheels = list((ROOT / "dist").glob("*-" + version + "-*.whl"))
     if len(wheels) != 1:
         raise ValueError("Build exactly one current-version wheel first")

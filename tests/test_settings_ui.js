@@ -69,13 +69,31 @@ test('readonly and masked controls cannot silently become editable', () => {
   assert.equal(ui.settingPresentationState({editable:true,masked:true}).readOnly, true);
 });
 
-test('declining discard preserves unsaved settings before any API request', async () => {
-  ui.state = {dirtyChanges:{enabled:{value:'false'}}};
-  ui.confirm = () => false;
-  ui.api = () => { throw Error('must not fetch or clear pending edits'); };
-  ui.clearDirty = () => { throw Error('must not clear pending edits'); };
-  await ui.renderAddonSettingsView('plugin.video.pov');
-  assert.equal(ui.state.dirtyChanges.enabled.value, 'false');
+test('read-only add-ons render disabled controls and explain why', async () => {
+  let markup = '';
+  ui.state = {dirtyChanges:{},writeEnabled:true};
+  ui.api = async endpoint => endpoint === '/api/status' ? {write_enabled:true} : {name:'Fen Light', editable:false,
+    read_only_reason:'Fen Light keeps these settings in its <own> database.',
+    groups:[{label:'General',settings:[{id:'autoplay',type:'bool',value:'true',editable:true},{id:'timeout',type:'text',value:'20',editable:true}]}]};
+  ui.clearDirty = () => {};
+  ui.updateDirtyBar = () => {};
+  ui.out = html => { markup = html; };
+  ui.$ = () => ({value:'',addEventListener(){},classList:{toggle(){}}});
+  ui.document = {querySelectorAll:() => []};
+  await ui.renderAddonSettingsView('plugin.video.fenlight');
+  assert.match(markup, /class="banner settings-readonly"/);
+  assert.match(markup, /Fen Light keeps these settings in its &lt;own&gt; database\./);
+  const controls = markup.match(/<(?:select|input) [^>]*data-setting=[^>]*>/g);
+  assert.equal(controls.length, 2);
+  for (const control of controls) assert.match(control, / disabled/);
+});
+
+test('edit state prefers the add-on read-only reason, then the write switch', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(ui.settingsEditState({editable:false, read_only_reason:'Busy'}, true))), {canEdit:false,banner:'readonly',reason:'Busy'});
+  assert.equal(ui.settingsEditState({editable:false, read_only_reason:null}, true).reason.length > 0, true);
+  assert.equal(ui.settingsEditState({}, false).banner, 'writes');
+  assert.equal(ui.settingsEditState({}, true).canEdit, true);
+  assert.equal(ui.settingsEditState({editable:true}, true).canEdit, true);
 });
 
 test('addon view preserves native categories and starts with all settings', async () => {

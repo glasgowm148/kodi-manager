@@ -43,9 +43,10 @@ or JSON editing tasks. Ask only for missing connection information or unavoidabl
 2. Go to **Add-ons → Install from zip file** and select the transferred ZIP. Use Kodi's native
    installer; do not copy an unpacked add-on behind Kodi's database.
 3. Open **My add-ons → Services → Kodi Manager → Configure**.
-4. To access it from another computer, enable **LAN access**, set the bind host to `0.0.0.0` and
-   port to `8765`. The default is loopback-only. Leave **Write mode** disabled for first setup.
-5. Restart the service/Kodi when the TV is free and interruption is authorized.
+4. To open the dashboard from another device, turn on **Allow LAN access** (under **Dashboard**). The
+   default port is `8765`; without LAN access the service only listens on the Kodi device itself.
+   Leave **Enable writes** off for first setup. Changes to these settings apply straight away; there
+   is no need to restart Kodi.
 
 An authorized agent can perform TV navigation through its supported tools where available. The
 native installation and service permissions still need to be applied inside Kodi.
@@ -56,6 +57,11 @@ In Kodi, open **Add-ons → Video add-ons → Kodi Manager → Open the dashboar
 It shows the dashboard address and access token, or tells you to turn on LAN access first. Open
 that address in a browser on the same network and enter the token when asked.
 
+Once signed in, **Setup** in the dashboard offers a **Copy sign-in link** button. The link has the form
+`http://KODI_IP:8765/#token=…`: opening it on your phone or another computer signs that browser in.
+The token sits after `#`, so browsers never send it to the server, and the dashboard removes it from
+the address bar. Treat the link like a password.
+
 ## Connect and verify — agent/computer
 
 1. Privately read `auth_token` from the **active profile's**
@@ -63,7 +69,7 @@ that address in a browser on the same network and enter the token when asked.
    Parse it in a local process without printing it into tool output. It is separate from Kodi's HTTP
    username/password. A library install or HTTP password does not generate this token.
 2. Open `http://YOUR_KODI_IP:8765` using the actual IP/port. Enter the generated token in the
-   dashboard's authentication prompt, privately. Do not share a filled config, token-bearing URL or
+   dashboard's sign-in form, privately. Do not share a filled config, token-bearing URL or
    diagnostics. A manual installer can read and enter the same token through private local access.
 3. Verify `/api/status`, installed add-ons, the active profile and pipeline. Start with read-only
    requests; provider folder previews execute installed add-on code and can make network requests.
@@ -79,14 +85,15 @@ can contain credentials; keep them private.
 
 | Symptom | Check |
 | --- | --- |
-| Browser cannot connect | Kodi/service running, current device IP, port, LAN access and host `0.0.0.0` |
-| Works on the Kodi device only | Loopback binding; enable LAN access and restart when free |
+| Browser cannot connect | Kodi and the service are running; the device's current IP and port; **Allow LAN access** is on |
+| Works on the Kodi device only | **Allow LAN access** is off |
 | Authentication error | Active-profile `auth_token`, not Kodi HTTP credentials or another profile's token |
-| Connected but changes disabled | Service Write mode; Python/MCP clients have their own write opt-in too |
-| Bingie layout is view-only | Reviewed skin/Shortcuts versions **and source hashes** are required |
+| Connected but changes disabled | **Enable writes** in the add-on settings; Python/MCP clients have their own write opt-in too |
+| Home layout missing or view-only | It appears only for reviewed skin and Skin Shortcuts versions **and source hashes** |
 | Provider preview empty/fails | Provider enabled, accounts configured and route available; see provider logs |
 | Agent cannot read Kodi files | Android scoped storage may block ADB; use an available mounted/local route |
 
-Generic settings/discovery do not require Bingie. Layout writes currently recognize reviewed
-**Bingie 2.0.2 / Skin Shortcuts 2.0.3** sources; unknown forks remain view-only.
+The dashboard, settings, playback setup, backups and cached rows work with any skin. The Home layout
+editor currently recognises reviewed **Bingie 2.0.2 / Skin Shortcuts 2.0.3** sources; other skins and
+unknown forks do not get it.
 For backups/restores and safe upgrades, see [recovery](recovery.md). For clients, see [API](api.md).

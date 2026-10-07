@@ -40,7 +40,9 @@ Skins with a "custom widget path" field accept a cached path directly:
 plugin://service.kodi.addonadmin/?mode=cached&source=<URL-encoded add-on folder>&reload=$INFO[Window(Home).Property(km_widgets)]
 ```
 
-`GET /api/widget-cache/url?source=<add-on folder>` builds it for you.
+The dashboard's **Cached rows** page builds it for you: paste the add-on folder path under **Add a
+row**, then use **Copy URL**. Over the API, `GET /api/widget-cache/url?source=<add-on folder>` does the
+same.
 
 ### Automatically (Skin Shortcuts skins)
 
@@ -110,9 +112,9 @@ item is never cut off. With 0, Kodi Manager uses Bingie's own limit
 
 | Task | How |
 | --- | --- |
-| See cached rows and their age | `GET /api/widget-cache` |
-| Refresh everything now | `POST /api/widget-cache/refresh` |
-| List, add or remove picker rows | `GET/POST /api/widget-cache/rows`, `POST /api/widget-cache/rows/remove` |
+| See cached rows, their age, status and item count | Dashboard **Cached rows**, or `GET /api/widget-cache` |
+| Refresh everything now | **Refresh all now** on that page, or `POST /api/widget-cache/refresh` |
+| List, add or remove picker rows | That page, or `GET/POST /api/widget-cache/rows`, `POST /api/widget-cache/rows/remove` |
 | Undo automatic routing | Copy the files from the `autocache-<time>` backup back into `addon_data/script.skinshortcuts/` |
 | Clear the cache | Delete `addon_data/service.kodi.addonadmin/widget_cache/entries/` |
 

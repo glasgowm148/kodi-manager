@@ -4,10 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+const core = fs.readFileSync(path.resolve(__dirname, '../web/core.js'), 'utf8');
 const app = fs.readFileSync(path.resolve(__dirname, '../web/app.js'), 'utf8')
   .replace(/boot\(\)\.catch[^\n]+;\s*$/, '');
 const ui = {localStorage: {getItem: () => ''}};
 vm.createContext(ui);
+vm.runInContext(core, ui);
 vm.runInContext(app, ui);
 
 test('statuses distinguish confirmed installation, enablement and leftover config', () => {

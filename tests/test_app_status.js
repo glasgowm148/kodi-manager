@@ -3,24 +3,26 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const core = fs.readFileSync(path.resolve(__dirname, '../web/core.js'), 'utf8');
 const source = fs.readFileSync(path.resolve(__dirname, '../web/app.js'), 'utf8')
   .replace(/boot\(\)\.catch[^\n]+;\s*$/, '');
 
-function harness(desktop = false) {
+function harness(readOnly = false) {
   const elements = new Map();
   const calls = [];
-  const ui = {localStorage:{getItem:()=>''}, window:{KODI_DESKTOP_READONLY:desktop}, alert:()=>{},
+  const ui = {localStorage:{getItem:()=>''}, window:{}, alert:()=>{},
     document:{querySelector:selector=>{
       if (!elements.has(selector)) elements.set(selector, {});
       return elements.get(selector);
     }, querySelectorAll:()=>[]}, navigator:{clipboard:{writeText:async value=>{ui.copied=value;}}}};
   vm.createContext(ui);
+  vm.runInContext(core, ui);
   vm.runInContext(source, ui);
   const pipe = {summary:{primary_player:{selection:'unknown'}, health:{warnings:[]}, accounts:{trakt:{status:'unknown',message:'Local settings cannot be read.'}}},
     nodes:[], edges:[], routing:{}, settings_groups:[], discovery:{id:'trakt.token',value:'sample-private-token'}};
   ui.api = async path => {
     calls.push(path);
-    if (path === '/api/status') return {write_enabled:true};
+    if (path === '/api/status') return {write_enabled:!readOnly};
     if (path === '/api/pipeline') return pipe;
     if (path === '/api/accounts') return {summary:{},groups:[]};
     throw new Error('Unexpected endpoint ' + path);
@@ -50,7 +52,7 @@ test('unknown boolean options preserve original value instead of silently select
   assert.match(ui.appBooleanOptions('0'), /value="0" selected>Off/);
 });
 
-test('desktop pipeline refresh/copy use supported reads and disable backup', async () => {
+test('read-only pipeline refresh/copy use supported reads and disable backup', async () => {
   const {ui,elements,calls} = harness(true);
   await ui.pipelineView();
   assert.deepEqual(calls, ['/api/status','/api/pipeline']);
@@ -65,7 +67,7 @@ test('desktop pipeline refresh/copy use supported reads and disable backup', asy
   assert.equal(vm.runInContext('state.writeEnabled',ui), false);
 });
 
-test('accounts cannot submit writes from desktop read-only mode', async () => {
+test('accounts cannot submit writes when writes are off', async () => {
   const {ui,elements,calls} = harness(true);
   await ui.accountsView();
   assert.equal(elements.get('#saveAccounts').disabled,true);

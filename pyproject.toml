@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kodi-manager"
-version = "0.6.2"
+dynamic = ["version"]
 description = "Reusable Kodi management library and optional authenticated dashboard companion"
 readme = "README.md"
 license = "MIT"
@@ -18,6 +18,10 @@ dev = ["pytest>=8,<9", "build>=1.2,<2", "ruff>=0.12,<1"]
 [project.urls]
 Repository = "https://github.com/glasgowm148/kodi-manager"
 Issues = "https://github.com/glasgowm148/kodi-manager/issues"
+
+[tool.hatch.version]
+# Single version source, shared with the Kodi add-on (addon.xml is checked against it).
+path = "src/kodi_manager/version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kodi_manager"]

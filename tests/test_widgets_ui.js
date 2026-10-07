@@ -106,7 +106,7 @@ test('native source descriptions identify playlists addons favourites and skin v
     [{path:'special://videoplaylists/'},'Kodi · Video playlists'],
     [{path:'addons://sources/video/'},'Kodi · Installed video add-ons'],
     [{action:'ActivateWindow(FavouritesBrowser)'},'Kodi · Favourites'],
-    [{path:'$VAR[widgetSourcePath]'},'Bingie · Skin-defined source']
+    [{path:'$VAR[widgetSourcePath]'},'Skin-defined source']
   ]) assert.equal(ui.widgetSourceDescription(row),label);
   assert.equal(ui.widgetSourceDescription({path:'plugin://plugin.video.pov/?mode=build_movie_list'}),'');
 });
@@ -151,7 +151,7 @@ function catalogueHarness(layoutRows=[], options={}) {
   if(options.configure)options.configure({replies,lists,folder,rootPath,menuPath,mediaPath});
   const context = {URL,URLSearchParams,AbortController,console,setTimeout,clearTimeout,esc:value=>String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),out:()=>{},
     document:{querySelector:()=>root,createElement:()=>node()},window:{addEventListener(){}},localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},
-    IntersectionObserver:class {constructor(callback){context.intersection=callback;}observe(){}disconnect(){}},navigator:{clipboard:{writeText:async()=>{}}},prompt:()=>null,confirm:()=>true,
+    IntersectionObserver:class {constructor(callback){context.intersection=callback;}observe(){}disconnect(){}},navigator:{clipboard:{writeText:async()=>{}}},prompt:()=>null,confirm:()=>true,promptDialog:async()=>null,confirmDialog:async()=>true,copyText:async()=>'clipboard',
     api:async (path,body)=>{
       calls.push({path,body});
       if(path==='/api/widgets/sources')return {sources:options.sources || [{addon_id:'plugin.video.pov',label:'POV',path:rootPath,enabled:true,traversable:true}]};

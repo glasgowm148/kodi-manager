@@ -27,7 +27,7 @@ from a phone or computer. Use it on its own or as the on-device companion to
 *Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
 > [!NOTE]
-> **Prerelease.** 0.6.2 is in use on an NVIDIA Shield with Kodi 22 beta 2 and the Bingie skin.
+> **Prerelease.** 0.6.2 has been used day to day on one device (an NVIDIA Shield with Kodi 22 beta 2).
 > Other skins and devices are covered by automated tests rather than live use so far; see
 > [compatibility](docs/compatibility.md).
 
@@ -38,8 +38,9 @@ from a phone or computer. Use it on its own or as the on-device companion to
 | **Setup overview** | Installed and enabled add-ons and saved configuration; anything it can't confirm is marked unknown | Any Kodi 19+ |
 | **Settings** | Each add-on's settings with current and default values, searchable. Account tokens are visible so you can enter and repair them | Any Kodi 19+ |
 | **Playback pipeline** | Which player is selected, how metadata helpers route to it, and evidence for provider and account links | Any Kodi 19+ |
-| **Backups** | Add-on and whole-setup checkpoints, restore with undo, diagnostic logs | Any Kodi 19+ |
-| **Layout editor** | Previews hub and row changes, and applies them after you review them | Bingie 2.0.2 with Skin Shortcuts 2.0.3 |
+| **Backups** | A backup before every change, add-on and whole-setup checkpoints, restore with one-click undo | Any Kodi 19+ |
+| **Logs and diagnostics** | Kodi's log and the service log, filtered by level; redacted debug reports | Any Kodi 19+ |
+| **Home layout** | Previews hub and row changes, and applies them after you review them | Reviewed skins only: Bingie 2.0.2 with Skin Shortcuts 2.0.3 today; the page is hidden for other skins |
 | **Faster rows** (optional) | Serves home-screen rows from a cache and adds **View more** to each list ([guide](docs/widget-cache.md)) | Any skin, Kodi 20+ |
 | **Python library** | API client and offline settings parser for scripts and MCP clients | Python 3.9+ |
 
@@ -59,9 +60,12 @@ from a phone or computer. Use it on its own or as the on-device companion to
 2. **Install it.** In Kodi, choose **Add-ons → Install from zip file** and pick the ZIP. Allow
    unknown sources if Kodi asks.
 3. **Allow the dashboard on your network.** Go to **Add-ons → My add-ons → Services → Kodi Manager →
-   Configure**. Turn on **LAN access**, set host `0.0.0.0` and port `8765`, then restart Kodi.
+   Configure** and turn on **Allow LAN access**. It takes effect straight away.
 4. **Open the dashboard.** In Kodi, open **Add-ons → Video add-ons → Kodi Manager → Open the
-   dashboard on another device**. It shows the address and access token to use in a browser.
+   dashboard on another device**. It shows the address and access token to use in a browser. Once you
+   are in, **Setup** offers a sign-in link (`http://IP:8765/#token=…`) to open it on your other devices.
+
+To change settings from the dashboard, turn on **Enable writes** in the same place.
 
 The [setup guide](docs/setup.md) has menu-by-menu steps and troubleshooting.
 
@@ -80,7 +84,7 @@ Check for an existing installation and preserve customizations.
 Download and verify the companion ZIP, transfer it using authorized access,
 and tell me where to select it in Kodi's native installer.
 Retrieve the Manager token privately and verify read-only dashboard/API access.
-Keep write mode off. Do not interrupt playback.
+Keep Enable writes off. Do not interrupt playback.
 ```
 
 </details>
@@ -97,11 +101,11 @@ Shortcuts skins can switch existing rows over automatically. See the
 ## Questions
 
 **Do I need a particular skin or add-on?**
-No. The dashboard, settings, pipeline and backups work with any skin. Only the layout editor is
-Bingie-specific.
+No. The dashboard, settings, playback setup, backups and cached rows work with any skin and any
+add-ons. Only the Home layout editor needs a skin version Kodi Manager has reviewed.
 
 **Does it change anything by itself?**
-No. Write mode starts off, so the dashboard can only look until you turn it on in the add-on's
+No. **Enable writes** starts off, so the dashboard can only look until you turn it on in the add-on's
 settings. Settings and layout changes take a backup first, and installs and menu rebuilds refuse to
 run while something is playing. The optional row cache only switches rows over if you turn that on.
 

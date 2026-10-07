@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
   <title>Kodi Manager</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
@@ -11,16 +13,17 @@
 </head>
 <body>
   <header>
-    <h1>Kodi Manager</h1>
-    <div class="topbar"><input id="globalSearch" placeholder="Search configs e.g. torbox"><button id="runSearch" class="action">Search</button><span id="top">Starting...</span><span id="dirtyStatus" class="muted">No unsaved changes</span><button id="saveChanges" class="action" disabled>Save Changes</button></div>
+    <div class="brand"><button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav">Menu</button><h1>Kodi Manager</h1></div>
+    <div class="topbar" role="search"><label for="globalSearch" class="sr-only">Search add-on settings</label><input id="globalSearch" type="search" placeholder="Search settings, e.g. torbox"><button id="runSearch" class="action" type="button">Search</button><span id="top">Starting…</span><span id="dirtyStatus" class="muted" aria-live="polite">No unsaved changes</span><button id="saveChanges" class="action" type="button" disabled>Save changes</button></div>
   </header>
   <div class="shell">
-    <nav id="nav"></nav>
+    <nav id="nav" aria-label="Main"></nav>
     <main>
       <section id="banner"></section>
-      <section id="content"></section>
+      <section id="content" tabindex="-1"></section>
     </main>
   </div>
+  <script src="core.js"></script>
   <script src="settings-ui.js"></script>
   <script src="widgets.js"></script>
   <script src="app.js"></script>
