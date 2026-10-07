@@ -28,8 +28,14 @@ from urllib.parse import parse_qs, urlsplit
 
 try:
     from .widget_cache import TMDB_HELPERS, cache_url, strip_skin_reload, validate_source
+    from .fsutil import atomic_write_bytes, atomic_write_text
+    from .backup import prune_folder
+    from . import skin_layout
 except ImportError:
     from widget_cache import TMDB_HELPERS, cache_url, strip_skin_reload, validate_source
+    from fsutil import atomic_write_bytes, atomic_write_text
+    from backup import prune_folder
+    import skin_layout
 
 WIDGET_FILES = re.compile(r"^skin\.[A-Za-z0-9_.-]+-(?:10000-1|[a-z]+hub)\.DATA\.xml$")
 PROPERTY_FILES = re.compile(r"^skin\.[A-Za-z0-9_.-]+\.properties$")
@@ -72,9 +78,12 @@ def convert_path(path, extra_addons=()):
 
 
 def _backup(folder, stamp, name, path):
-    backup = os.path.join(folder, "kodi-manager-backups", "autocache-" + stamp)
+    root = os.path.join(folder, "kodi-manager-backups")
+    if os.path.islink(root):
+        raise ValueError("Backup directory must not be a symlink")
+    backup = os.path.join(root, "autocache-" + stamp)
     os.makedirs(backup, exist_ok=True)
-    shutil.copy2(path, os.path.join(backup, name))
+    shutil.copy2(path, os.path.join(backup, name), follow_symlinks=False)
 
 
 def _properties(folder, name, stamp, extra_addons):
@@ -95,15 +104,22 @@ def _properties(folder, name, stamp, extra_addons):
                 count += 1
     if count:
         _backup(folder, stamp, name, path)
-        tmp = path + ".km-tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            fh.write(repr(rows))
-        os.replace(tmp, path)
+        atomic_write_text(path, repr(rows))
     return count
 
 
 def autocache(folder, now=None, extra_addons=()):
-    """Rewrite direct widget rows in ``folder``. Returns {file name: rows changed}."""
+    """Rewrite direct widget rows in ``folder``. Returns {file name: rows changed}.
+
+    Holds the skin layout lock (the dashboard's layout editor writes the same
+    files), keeps XML comments, writes atomically and prunes old
+    ``autocache-*`` backups to the retention setting.
+    """
+    with skin_layout._LOCK:
+        return _autocache(folder, now, extra_addons)
+
+
+def _autocache(folder, now, extra_addons):
     try:
         listing = sorted(os.listdir(folder))
     except OSError:
@@ -121,11 +137,11 @@ def autocache(folder, now=None, extra_addons=()):
         if os.path.islink(path):
             continue
         try:
-            tree = ET.parse(path)
-        except (OSError, ET.ParseError):
+            root = skin_layout._xml(skin_layout._read(path))
+        except (OSError, ValueError, ET.ParseError):
             continue
         count = 0
-        for action in tree.getroot().iter("action"):
+        for action in root.iter("action"):
             new = convert_action(action.text, extra_addons)
             if new:
                 action.text = new
@@ -133,8 +149,8 @@ def autocache(folder, now=None, extra_addons=()):
         if not count:
             continue
         _backup(folder, stamp, name, path)
-        tmp = path + ".km-tmp"
-        tree.write(tmp, encoding="utf-8")
-        os.replace(tmp, path)
+        atomic_write_bytes(path, ET.tostring(root, encoding="utf-8"))
         changed[name] = count
+    if changed:
+        prune_folder(os.path.join(folder, "kodi-manager-backups"), "autocache-", keep=("autocache-" + stamp,))
     return changed

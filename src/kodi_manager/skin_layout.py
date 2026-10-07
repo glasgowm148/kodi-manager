@@ -21,9 +21,11 @@ from urllib.parse import urlsplit, parse_qs
 try:
     from .kodi_api import translate
     from .fsutil import atomic_write_bytes
+    from .backup import prune_folder
 except ImportError:
     from kodi_api import translate
     from fsutil import atomic_write_bytes
+    from backup import prune_folder
 
 SKIN = "skin.bingie"
 SHORTCUTS = "script.skinshortcuts"
@@ -730,6 +732,7 @@ def apply_layout(kodi, index, body, write_enabled):
             if not name.startswith('default') and original is not None:
                 _atomic(os.path.join(backup, name), original)
         _atomic(os.path.join(backup, "manifest.json"), json.dumps({"revision": preview["revision"], "files": {n: _hash(v) for n, v in snapshots.items()}}, sort_keys=True).encode())
+        prune_folder(backup_root, "skin-layout-", keep=(backup_id,))
         _check_snapshots(root, snapshots)
         changed, staged = [], {}
         try:

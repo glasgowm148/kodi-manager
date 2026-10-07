@@ -3,6 +3,7 @@ import json
 import os
 import re
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -670,3 +671,53 @@ def test_kodi_log_reads_only_the_tail(tmp_path, monkeypatch):
     assert text.splitlines()[-1] == lines[-1]
     monkeypatch.setattr(kodi_api, "translate", lambda p: str(log) if p.endswith("kodi.log") else p)
     assert kodi_api.KodiAPI().get_log_lines(3) == lines[-3:]
+
+
+# --- Autocache keeps comments, takes the layout lock and prunes its backups ----------------
+
+from kodi_manager import skin_layout, widget_autocache  # noqa: E402
+
+POV_ROW = "plugin://plugin.video.pov/?mode=build_movie_list&action=tmdb_movies_blockbusters"
+
+
+def _hub(tmp_path):
+    hub = tmp_path / "skin.bingie-moviehub.DATA.xml"
+    hub.write_text("<shortcuts><!-- keep me --><shortcut><label>Row</label><action>ActivateWindow(Videos,%s,return)"
+                   "</action></shortcut></shortcuts>" % POV_ROW.replace("&", "&amp;"))
+    return hub
+
+
+def test_autocache_keeps_xml_comments_and_holds_the_layout_lock(tmp_path, monkeypatch):
+    hub = _hub(tmp_path)
+    held = []
+    real = widget_autocache._autocache
+
+    def spy(*args):
+        acquired = skin_layout._LOCK.acquire(blocking=False)  # re-entrant: succeeds only for the holder
+        held.append(acquired and skin_layout._LOCK._is_owned())
+        skin_layout._LOCK.release()
+        return real(*args)
+
+    monkeypatch.setattr(widget_autocache, "_autocache", spy)
+    assert widget_autocache.autocache(str(tmp_path), now=0) == {hub.name: 1}
+    assert "<!-- keep me -->" in hub.read_text() and "mode=cached" in hub.read_text()
+    assert held == [True]
+
+
+def test_autocache_and_layout_backups_are_pruned_to_retention(tmp_path):
+    backups = tmp_path / "kodi-manager-backups"
+    for i in range(5):
+        for prefix in ("autocache-2026010%d-000000" % i, "skin-layout-%d" % i, "claude-2026-%d" % i):
+            (backups / prefix).mkdir(parents=True)
+            os.utime(str(backups / prefix), (i, i))
+    backup.set_retention(2)
+    try:
+        _hub(tmp_path)
+        widget_autocache.autocache(str(tmp_path), now=10 ** 9)
+        names = sorted(os.listdir(str(backups)))
+        newest = "autocache-" + time.strftime("%Y%m%d-%H%M%S", time.localtime(10 ** 9))
+        assert {n for n in names if n.startswith("autocache-")} == {"autocache-20260104-000000", newest}
+        assert len([n for n in names if n.startswith("claude-")]) == 5  # other folders are never touched
+        assert backup.prune_folder(str(backups), "skin-layout-") == ["skin-layout-2", "skin-layout-1", "skin-layout-0"]
+    finally:
+        backup.set_retention(20)

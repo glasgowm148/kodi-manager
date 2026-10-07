@@ -28,6 +28,27 @@ def set_retention(count):
         _retention = DEFAULT_RETENTION
 
 
+def retention():
+    return _retention
+
+
+def prune_folder(folder, prefix, keep=(), limit=None):
+    """Keep the newest ``limit`` (default: the retention setting) subfolders of
+    ``folder`` whose names start with ``prefix``; other folders are never touched."""
+    limit = _retention if limit is None else max(1, int(limit))
+    try:
+        names = [n for n in os.listdir(folder) if n.startswith(prefix) and n not in keep
+                 and os.path.isdir(os.path.join(folder, n)) and not os.path.islink(os.path.join(folder, n))]
+    except OSError:
+        return []
+    names.sort(key=lambda n: os.path.getmtime(os.path.join(folder, n)), reverse=True)
+    removed = []
+    for name in names[max(0, limit - len(keep)):]:
+        shutil.rmtree(os.path.join(folder, name), ignore_errors=True)
+        removed.append(name)
+    return removed
+
+
 def backup_root():
     root = translate("special://profile/addon_data/service.kodi.addonadmin/backups")
     os.makedirs(root, exist_ok=True)
