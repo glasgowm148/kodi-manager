@@ -28,10 +28,14 @@ def build(destination=None):
         (ROOT / "src/kodi_manager", "resources/lib", {".py", ".sh"}),
         (ROOT / "web", "resources/web", {".js", ".css", ".html"}),
         (addon / "language", "resources/language", {".po"}),
+        (addon / "resources", "resources", {".png", ".jpg"}),
     ):
         for path in source.rglob("*"):
             if path.is_file() and path.suffix in extensions and "__pycache__" not in path.parts:
                 entries[prefix + "/" + path.relative_to(source).as_posix()] = path
+    for asset in re.findall(r"<(?:icon|fanart|banner|clearlogo|screenshot)>([^<]+)</", metadata):
+        if asset not in entries:
+            raise ValueError("addon.xml names a missing asset: " + asset)
     with ZipFile(target, "w", ZIP_DEFLATED) as archive:
         for relative, source in sorted(entries.items()):
             info = ZipInfo(ADDON_ID + "/" + relative, (2026, 1, 1, 0, 0, 0))

@@ -16,9 +16,17 @@
     </menu>
   </extension>
   <extension point="xbmc.addon.metadata">
-    <summary lang="en_GB">LAN-only Kodi management dashboard</summary>
-    <description lang="en_GB">Local authenticated dashboard for inspecting, editing, installing local ZIPs, reading logs, and backing up Kodi add-on configuration.</description>
+    <summary lang="en_GB">Browser dashboard for your Kodi add-ons and settings</summary>
+    <description lang="en_GB">Kodi Manager is a dashboard you open in a browser on your phone or computer. It shows your skin, players and helper add-ons at a glance; lets you search and edit add-on settings with a backup before every change; keeps checkpoints you can restore and undo; reads Kodi's log; and opens Kodi's own Install from zip file dialog on the TV. Optional: cached rows keep a copy of slow add-on folders so home-screen widgets load instantly. It only listens on this device until you turn on Allow LAN access, and needs an access token.</description>
+    <disclaimer lang="en_GB">Changes are only made when you turn on Enable writes. Use it on a trusted home network only; the dashboard does not use HTTPS.</disclaimer>
+    <news>0.6.2: the Open the dashboard on another device screen waits for the TV's address and shows the whole access token. Full history: CHANGELOG.md on the project website.</news>
     <platform>all</platform>
     <license>MIT</license>
+    <website>https://github.com/glasgowm148/kodi-manager</website>
+    <source>https://github.com/glasgowm148/kodi-manager</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+      <fanart>resources/fanart.jpg</fanart>
+    </assets>
   </extension>
 </addon>
