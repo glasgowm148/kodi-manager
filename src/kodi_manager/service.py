@@ -11,15 +11,20 @@ except ImportError:
 try:
     from .auth import generate_token
     from .kodi_api import KodiAPI, service_addon, translate
+    from .netconfig import DEFAULT_PORT, effective_host, parse_int
     from .server import ServerThread
     from .shield_exit import ShieldExitGuard
     from .widget_cache import Refresher, WidgetCache, jsonrpc_via, RELOAD_PROPERTY
 except ImportError:
     from auth import generate_token
     from kodi_api import KodiAPI, service_addon, translate
+    from netconfig import DEFAULT_PORT, effective_host, parse_int
     from server import ServerThread
     from shield_exit import ShieldExitGuard
     from widget_cache import Refresher, WidgetCache, jsonrpc_via, RELOAD_PROPERTY
+
+# Settings that need a new listening socket when they change.
+NETWORK_KEYS = ("host", "port", "allow_lan")
 
 
 def _bool(v):
@@ -80,19 +85,18 @@ def load_config(addon):
         except Exception:
             pass
     allow_lan = _bool(get("allow_lan", "false"))
-    host = get("host", "127.0.0.1")
-    if host == "0.0.0.0" and not allow_lan:
-        host = "127.0.0.1"
+    # LAN access with the host left at 127.0.0.1 listens on 0.0.0.0; LAN off listens on loopback.
+    host = effective_host(get("host", "127.0.0.1"), allow_lan)
     config = {
         "enabled": _bool(get("enabled", "true")),
         "shield_exit_workaround": _bool(get("shield_exit_workaround", "false")),
         "host": host,
-        "port": int(get("port", "8765")),
+        "port": parse_int(get("port", str(DEFAULT_PORT)), DEFAULT_PORT, 1, 65535),
         "allow_lan": allow_lan,
         "write_enabled": _bool(get("write_enabled", "false")),
         "auth_token": token,
         "log_level": get("log_level", "info"),
-        "backup_retention": int(get("backup_retention", "20")),
+        "backup_retention": parse_int(get("backup_retention", "20"), 20, 1, 1000),
         "widget_cache_auto": _bool(get("widget_cache_auto", "false")),
         "widget_cache_auto_addons": [a.strip() for a in get("widget_cache_auto_addons", "").split(",") if a.strip()],
         "allowed_addons_csv": get("allowed_addons_csv", ""),
@@ -147,6 +151,40 @@ def start_widget_refresher(kodi):
     return refresher
 
 
+def start_server(kodi, config, web_root, server_class=None):
+    """Start the dashboard server; on failure (port in use, bad address) log, notify and return None."""
+    server_class = server_class or ServerThread
+    try:
+        server = server_class(kodi, config, web_root)
+        server.start()
+    except Exception as error:
+        message = "Dashboard could not start on %s:%s (%s)" % (config.get("host"), config.get("port"), error)
+        kodi.log(message)
+        try:
+            kodi.notify("Kodi Manager", "Dashboard unavailable: port %s could not be opened" % config.get("port"))
+        except Exception:
+            pass
+        return None
+    kodi.log("Kodi Manager URL http://%s:%s token configured=%s" % (config["host"], config["port"], bool(config.get("auth_token"))))
+    return server
+
+
+def apply_settings_change(kodi, server, old_config, new_config, web_root, server_class=None):
+    """Settings were saved in Kodi. Returns the server that is now running (or None).
+
+    A changed host, port or LAN switch restarts the server on the new socket;
+    anything else (Write Mode, retention, allowed add-ons, widget cache
+    options) is swapped into the running server without a restart.
+    """
+    if server is not None and all(old_config.get(k) == new_config.get(k) for k in NETWORK_KEYS):
+        server.update_config(new_config)
+        return server
+    if server is not None:
+        server.stop()
+    kodi.log("Network settings changed: restarting the dashboard on %s:%s" % (new_config.get("host"), new_config.get("port")))
+    return start_server(kodi, new_config, web_root, server_class)
+
+
 def main():
     addon = service_addon()
     kodi = KodiAPI()
@@ -163,10 +201,9 @@ def main():
         return
     root = os.path.abspath(addon.getAddonInfo("path"))
     web_root = os.path.join(root, "resources", "web")
-    server = ServerThread(kodi, config, web_root)
-    server.start()
-    kodi.log("Kodi Manager URL http://%s:%s token configured=%s" % (config["host"], config["port"], bool(config.get("auth_token"))))
-    kodi.notify("Kodi Manager", "http://%s:%s" % (config["host"], config["port"]))
+    running = {"server": start_server(kodi, config, web_root), "config": config}
+    if running["server"]:
+        kodi.notify("Kodi Manager", "http://%s:%s" % (config["host"], config["port"]))
     supported = bool(xbmc and config['shield_exit_workaround']
                      and xbmc.getCondVisibility('System.Platform.Android')
                      and xbmc.getInfoLabel('System.BuildVersion').startswith('22.0-BETA2')
@@ -195,6 +232,15 @@ def main():
         kodi.log('Widget cache unavailable: %s' % type(error).__name__)
     if xbmc:
         class ServiceMonitor(xbmc.Monitor):
+            def onSettingsChanged(self):
+                try:
+                    new_config = load_config(service_addon())
+                    kodi.installer_seed = new_config.get("installer_seed", {})
+                    running["server"] = apply_settings_change(kodi, running["server"], running["config"], new_config, web_root)
+                    running["config"] = new_config
+                except Exception as error:
+                    kodi.log("Settings reload failed: %s" % type(error).__name__)
+
             def onNotification(self, sender, method, data):
                 if method == 'Player.OnStop' and refresher:
                     refresher.playback_stopped()
@@ -223,7 +269,8 @@ def main():
                 kodi.log('Shield exit guard armed=%s' % bool(guard.child))
         except Exception as error:
             kodi.log('Shield exit guard unavailable: %s' % type(error).__name__)
-        server.stop()
+        if running["server"]:
+            running["server"].stop()
 
 
 if __name__ == "__main__":

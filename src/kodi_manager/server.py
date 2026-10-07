@@ -29,6 +29,7 @@ try:
     from .widget_rows import RowStore
     from . import fenlight_db
     from .write_policy import WriteRefused, check_writable, read_only_reason
+    from .netconfig import is_loopback
 except ImportError:
     from version import VERSION
     from fix_protection import protection_for_kodi
@@ -49,6 +50,7 @@ except ImportError:
     from widget_rows import RowStore
     import fenlight_db
     from write_policy import WriteRefused, check_writable, read_only_reason
+    from netconfig import is_loopback
 
 MAX_HANDLERS = 16
 WIDGET_CACHE_DIR = "special://profile/addon_data/service.kodi.addonadmin/widget_cache"
@@ -230,17 +232,6 @@ def playback_test(kodi, index, body):
     return {"ok": all(s["ok"] for s in steps[:4]), "dry_run": True, "target_player_addon_id": target, "steps": steps, "pipeline_routing": pipe.get("routing", {})}
 
 
-def _loopback_host(host):
-    """True when the service listens on loopback only (no LAN client can connect)."""
-    host = str(host or "").strip().strip("[]")
-    if host.lower() == "localhost":
-        return True
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return False
-
-
 class ApiError(Exception):
     def __init__(self, status, code, message, details=None):
         super(ApiError, self).__init__(message)
@@ -368,7 +359,7 @@ def make_handler(state):
             return path
 
         def _client_allowed(self):
-            if _loopback_host(state.config.get("host")):
+            if is_loopback(state.config.get("host")):
                 return True
             if _private_client(self.client_address[0]):
                 return True

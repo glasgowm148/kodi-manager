@@ -279,7 +279,7 @@ def test_private_client_check_applies_to_any_non_loopback_bind(api_server):
     api_server.state.config["host"] = "127.0.0.1"
     with patch.object(server, "_private_client", return_value=False):
         assert api_server.call("GET", "/api/logs")[0] == 200
-    assert not server._loopback_host("0.0.0.0") and server._loopback_host("localhost")
+    assert not server.is_loopback("0.0.0.0") and server.is_loopback("localhost")
 
 
 def test_non_object_json_body_is_a_400(api_server):
@@ -721,3 +721,79 @@ def test_autocache_and_layout_backups_are_pruned_to_retention(tmp_path):
         assert backup.prune_folder(str(backups), "skin-layout-") == ["skin-layout-2", "skin-layout-1", "skin-layout-0"]
     finally:
         backup.set_retention(20)
+
+
+# --- Service resilience ---------------------------------------------------------------------
+
+from kodi_manager import service, widget_rows  # noqa: E402
+
+
+class _Addon:
+    def __init__(self, **settings):
+        self.settings = dict({"auth_token": "t"}, **settings)
+
+    def getSetting(self, key):
+        return self.settings.get(key, "")
+
+    def setSetting(self, key, value):
+        self.settings[key] = value
+
+
+def _config(tmp_path, **settings):
+    with patch.object(service, "translate", return_value=str(tmp_path)):
+        return service.load_config(_Addon(**settings))
+
+
+def test_int_settings_fall_back_to_defaults(tmp_path):
+    config = _config(tmp_path, port="80x", backup_retention="lots")
+    assert config["port"] == 8765 and config["backup_retention"] == 20
+    assert _config(tmp_path, port="70000")["port"] == 8765
+    assert _config(tmp_path, port="9000", backup_retention="5")["port"] == 9000
+
+
+def test_lan_access_with_default_host_binds_all_interfaces(tmp_path):
+    assert _config(tmp_path, allow_lan="true", host="127.0.0.1")["host"] == "0.0.0.0"
+    assert _config(tmp_path, allow_lan="true")["host"] == "0.0.0.0"
+    assert _config(tmp_path, allow_lan="true", host="192.168.1.20")["host"] == "192.168.1.20"
+    assert _config(tmp_path, allow_lan="false", host="0.0.0.0")["host"] == "127.0.0.1"
+    assert _config(tmp_path, allow_lan="false", host="192.168.1.20")["host"] == "127.0.0.1"
+    heading, _text = widget_rows.dashboard_message({"allow_lan": "true", "host": "127.0.0.1", "port": "8765", "auth_token": "x"}, "192.168.1.9")
+    assert heading == "Open the dashboard"
+
+
+def test_server_bind_failure_is_logged_and_notified():
+    kodi = SimpleNamespace(log=Mock(), notify=Mock())
+
+    class Busy:
+        def __init__(self, *args):
+            raise OSError(48, "Address already in use")
+
+    assert service.start_server(kodi, {"host": "0.0.0.0", "port": 8765}, "", Busy) is None
+    assert "could not start" in kodi.log.call_args[0][0]
+    kodi.notify.assert_called_once()
+
+
+def test_settings_change_swaps_config_or_restarts_on_network_change():
+    kodi = SimpleNamespace(log=Mock(), notify=Mock())
+    started = []
+
+    class FakeServer:
+        def __init__(self, kodi, config, web_root):
+            self.config, self.stopped = config, False
+            started.append(self)
+
+        def start(self):
+            pass
+
+        def stop(self):
+            self.stopped = True
+
+        def update_config(self, config):
+            self.config = config
+
+    old = {"host": "0.0.0.0", "port": 8765, "allow_lan": True, "write_enabled": False}
+    current = service.start_server(kodi, old, "", FakeServer)
+    swapped = service.apply_settings_change(kodi, current, old, dict(old, write_enabled=True), "", FakeServer)
+    assert swapped is current and current.config["write_enabled"] is True and len(started) == 1
+    moved = service.apply_settings_change(kodi, current, old, dict(old, port=9000), "", FakeServer)
+    assert moved is not current and current.stopped and moved.config["port"] == 9000 and len(started) == 2

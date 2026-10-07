@@ -109,11 +109,16 @@ def dashboard_message(settings, ip_address):
     """What to show on the TV so someone can open the dashboard: (heading, text)."""
     port = settings.get("port") or "8765"
     token = settings.get("auth_token") or ""
-    lan = str(settings.get("allow_lan", "")).lower() == "true" and settings.get("host") == "0.0.0.0"
+    try:
+        from .netconfig import effective_host, is_loopback
+    except ImportError:
+        from netconfig import effective_host, is_loopback
+    allow_lan = str(settings.get("allow_lan", "")).lower() == "true"
+    lan = allow_lan and not is_loopback(effective_host(settings.get("host"), allow_lan))
     if not lan or not ip_address or ip_address.startswith("127."):
         return ("Turn on network access", "Network access is off, so other devices can't reach the dashboard.[CR]"
-                "Open Kodi Manager's settings, turn on LAN access, set host 0.0.0.0 and port %s, "
-                "then restart Kodi." % port)
+                "Open Kodi Manager's settings and turn on LAN access (port %s). "
+                "The dashboard restarts on its own." % port)
     return ("Open the dashboard", "On a phone or computer on your home network, open this address:[CR][CR]"
             "[B]http://%s:%s[/B][CR][CR]When the dashboard asks for the access token, enter:[CR][CR]"
             "[B]%s[/B]" % (ip_address, port, token or "(none yet: restart Kodi to create one)"))
