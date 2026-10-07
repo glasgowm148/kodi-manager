@@ -71,22 +71,51 @@ function settingsRowMarkup(setting, index, writeEnabled) {
   return `<div class="settings-row" data-settings-index="${index}"><div class="settings-label"><label for="setting-field-${index}">${esc(title)}</label><div class="settings-row-badges"><span class="settings-state${p.boolean && p.enabled === true ? " settings-state-on" : ""}">${esc(status)}</span><span class="settings-origin${p.changed ? " settings-origin-custom" : ""}">${mode}</span><span class="settings-pending hidden">Unsaved</span></div>${description ? `<p>${esc(description)}</p>` : ""}<details class="settings-details"><summary>Details</summary><code>${esc(setting.id)}</code><p>${esc(source || "Value source unconfirmed")} · ${esc(setting.source || setting.raw?.source || "settings.xml")}</p>${setting.warning ? `<p class="warn">${esc(setting.warning)}</p>` : ""}</details></div><div class="settings-value">${settingsControlMarkup(setting, index, writeEnabled)}<p class="settings-default">Current: <strong data-current-label>${esc(settingsValueLabel(setting, setting.value, p.secret))}</strong> · Default: ${esc(p.defaultKnown ? settingsValueLabel(setting, setting.default, p.secret) : "Unknown")}</p>${setting.masked ? '<p class="muted">Hidden in source; edit in Kodi.</p>' : !setting.editable ? '<p class="muted">Read-only · use native Kodi settings.</p>' : ""}</div></div>`;
 }
 
+/* Whether this add-on's settings can be changed from here, and why not. */
+function settingsEditState(data, writeEnabled) {
+  if (data && data.editable === false) {
+    return {canEdit: false, banner: "readonly", reason: data.read_only_reason || "Kodi Manager can't safely change this add-on's settings."};
+  }
+  if (!writeEnabled) return {canEdit: false, banner: "writes", reason: typeof WRITE_HINT === "string" ? WRITE_HINT : "Writes are turned off."};
+  return {canEdit: true, banner: "", reason: ""};
+}
+
+function settingsBannerMarkup(edit) {
+  if (edit.banner === "readonly") return `<div class="banner settings-readonly" role="note"><b>Read-only.</b> ${esc(edit.reason)}</div>`;
+  if (edit.banner === "writes") return `<p class="warn">${esc(edit.reason)}</p>`;
+  return '<p class="muted">Changes stay pending until you choose Save changes at the top. A backup is created before saving.</p>';
+}
+
 async function renderAddonSettingsView(aid) {
-  if (Object.keys(state.dirtyChanges).length && !confirm("Discard unsaved settings changes?")) return;
   const status = await api("/api/status");
   const data = await api(`/api/addons/${encodeURIComponent(aid)}/settings`);
-  state.writeEnabled = !!status.write_enabled;
+  state.writeEnabled = status.write_enabled === true;
+  const edit = settingsEditState(data, state.writeEnabled);
   clearDirty();
   updateDirtyBar();
   const settings = [];
   const groups = (data.groups || []).map(group => {
     const rows = (group.settings || []).map(setting => {
       const index = settings.push(setting) - 1;
-      return settingsRowMarkup(setting, index, state.writeEnabled);
+      return settingsRowMarkup(setting, index, edit.canEdit);
     }).join("");
     return `<section class="settings-category"><h3>${esc(group.label || "Settings")}</h3><div class="settings-category-rows">${rows}</div><p class="settings-category-empty hidden muted">No matching settings in this category.</p></section>`;
   }).join("");
-  out(`<div class="settings-page"><div class="panel settings-heading"><h2>${esc(data.name || aid)}</h2><p>See what is on, compare saved values with add-on defaults, and review changes before saving.</p><p class="${state.writeEnabled ? "muted" : "warn"}">${state.writeEnabled ? "Changes stay pending until you choose Save Changes above. A backup is created before saving." : esc(data.read_only_reason || "Read-only: Write Mode is disabled. Enable it in Kodi Manager service settings to edit.")}</p><div class="settings-toolbar"><label for="settings-search">Find a setting<input id="settings-search" type="search" placeholder="Search names, descriptions, or setting IDs"></label><label for="settings-filter">Show<select id="settings-filter"><option value="all">All settings</option><option value="enabled">Enabled booleans</option><option value="disabled">Disabled booleans</option><option value="changed">Changed from default</option><option value="unset">Unset values</option><option value="readonly">Read-only settings</option></select></label></div><p id="settings-match-count" class="muted" role="status" aria-live="polite"></p><p class="muted settings-filter-help">Enabled/Disabled apply to On/Off settings. Changed means the value differs from a known add-on default.</p></div>${groups || '<div class="panel muted">No settings found. Open this add-on’s settings in Kodi.</div>'}<p id="settings-no-matches" class="panel hidden">No settings match. Try All settings or clear your search.</p></div>`);
+  out(`<div class="settings-page"><div class="panel settings-heading"><h2>${esc(data.name || aid)}</h2><p>See what is on, compare saved values with add-on defaults, and review changes before saving.</p>${settingsBannerMarkup(edit)}<div class="tabs" role="group" aria-label="Settings or backups"><button type="button" class="active" data-settings-tab="settings" aria-pressed="true">Settings</button><button type="button" data-settings-tab="backups" aria-pressed="false">Backups</button></div><div data-settings-panel="settings"><div class="settings-toolbar"><label for="settings-search">Find a setting<input id="settings-search" type="search" placeholder="Search names, descriptions, or setting IDs"></label><label for="settings-filter">Show<select id="settings-filter"><option value="all">All settings</option><option value="enabled">Enabled booleans</option><option value="disabled">Disabled booleans</option><option value="changed">Changed from default</option><option value="unset">Unset values</option><option value="readonly">Read-only settings</option></select></label></div><p id="settings-match-count" class="muted" role="status" aria-live="polite"></p><p class="muted settings-filter-help">Enabled/Disabled apply to On/Off settings. Changed means the value differs from a known add-on default.</p></div></div><div data-settings-panel="settings">${groups || '<div class="panel muted">No settings found. Open this add-on’s settings in Kodi.</div>'}<p id="settings-no-matches" class="panel hidden">No settings match. Try All settings or clear your search.</p></div><div class="panel hidden" data-settings-panel="backups"><h3>Backups of ${esc(data.name || aid)}</h3><div id="addon-backups"></div></div></div>`);
+  let backupsLoaded = false;
+  document.querySelectorAll("[data-settings-tab]").forEach(tab => tab.addEventListener("click", withErrors(async () => {
+    const name = tab.dataset.settingsTab;
+    document.querySelectorAll("[data-settings-tab]").forEach(other => {
+      const on = other === tab;
+      other.classList.toggle("active", on);
+      other.setAttribute("aria-pressed", String(on));
+    });
+    document.querySelectorAll("[data-settings-panel]").forEach(panel => panel.classList.toggle("hidden", panel.dataset.settingsPanel !== name));
+    if (name === "backups" && !backupsLoaded) {
+      backupsLoaded = true;
+      await renderAddonBackups(aid, $("#addon-backups"));
+    }
+  })));
   const applyFilter = () => {
     const query = $("#settings-search").value.trim().toLowerCase();
     const filter = $("#settings-filter").value;
