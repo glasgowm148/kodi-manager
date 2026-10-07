@@ -1,8 +1,46 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 — 2026-10-07 (prerelease)
 
-Dashboard, packaging and release work. Backend changes are listed separately.
+A security, safety and usability release from a full audit. Upgrading is recommended for anyone who
+allows LAN access.
+
+### Security and data safety
+
+- **Fixed an API authentication bypass.** POST and PATCH requests whose path did not start with
+  `/api/` (or that used an absolute URL) reached the API without a token, and the server answered
+  cross-origin requests with `Access-Control-Allow-Origin: *`. Requests are now normalised and routed
+  through one table; only `/api/` paths are served, the wildcard CORS header is gone, writes with a
+  foreign `Origin` are refused, and responses carry `nosniff`, `no-referrer` and `DENY` framing headers.
+- **Fixed a restore that could empty an add-on's data.** Restoring the oldest backup when retention
+  was full pruned that backup before copying it back. Restores now protect their source, refuse a
+  missing or incomplete snapshot before touching live data, and never follow symlinks.
+- **Account and playback-setting writes** now follow the same rules as the settings editor (writes
+  enabled, add-on in the stack or in Allowed add-ons) and can never change Kodi Manager's own
+  settings. A batch is validated before anything is written, and only the touched files are backed up.
+- **Restores wait for playback to stop** (answer `409`, resend with `"force": true` to override).
+- **Plugin routes are checked by one validator** for browsing, previews and cached rows: every query
+  value and path segment, so actions such as toggles, refreshes and playback cannot run from a
+  read-only preview.
+- Access tokens are masked in logged request lines and inside logged strings.
+
+### Reliability
+
+- **Settings apply without restarting Kodi.** Changing host, port or Allow LAN access restarts the
+  dashboard server; other settings apply at once. Turning on Allow LAN access is enough to listen on
+  the network.
+- The service survives invalid numbers in settings and a busy port, and shows a notification.
+- Kodi 19 (Python 3.8): cached rows no longer fail on Kodi 19's list items, and the layout editor no
+  longer uses a Python 3.9-only call.
+- The add-on index is rebuilt off to the side and swapped in, so concurrent requests never see it half
+  built; full rescans run at most every 5 seconds.
+- Cache, cached-rows, backup and layout files are written atomically with per-file locks.
+- Health and Logs read only the end of `kodi.log`.
+- Automatic row caching keeps skin XML comments and prunes its own backups.
+- Fen Light settings database access is unified, opens files read-only or read-write explicitly and
+  copes with special characters in paths.
+
+### Dashboard
 
 - **Errors are visible.** Every button and form now shows a notice when something fails, instead of
   doing nothing. Network failures and unexpected replies get a plain message, and a rejected token
@@ -32,6 +70,9 @@ Dashboard, packaging and release work. Backend changes are listed separately.
   rather than installing ZIPs itself); website, source and disclaimer. Settings are grouped into
   Dashboard, Backups, Cached rows (optional) and Advanced, with every setting id kept; the unused
   **Stack mode** and **Show advanced settings** are gone.
+
+### Packaging and releases
+
 - **Releases:** one version source (`src/kodi_manager/version.py`); `check_release.py` checks every
   archive's version and the add-on ZIP's required files; CI runs all Node tests on Node 20 and the
   test suite on Python 3.8 (Kodi's Python on Android); pushing a `v*` tag builds, checks

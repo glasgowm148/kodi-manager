@@ -4,7 +4,7 @@ Kodi Manager has a **TV service**, **browser dashboard** and **computer-side Pyt
 For live settings/dashboard access, install the service ZIP inside Kodi. Installing the library on
 your computer alone does not install or start the TV service.
 
-The current portable release is **0.6.2**, marked prerelease. See [compatibility](compatibility.md)
+The current portable release is **0.7.0**, marked prerelease. See [compatibility](compatibility.md)
 for remaining live checks. Back up an existing customized installation before upgrading: public
 releases deliberately omit household settings and separate third-party patch bundles.
 
@@ -29,8 +29,8 @@ or JSON editing tasks. Ask only for missing connection information or unavoidabl
 
 1. Check for an existing Manager installation and inspect its version/profile before replacing it.
    Preserve local changes and create an appropriate private backup for an authorized upgrade.
-2. Download `service.kodi.addonadmin-0.6.2.zip` and `SHA256SUMS` from the
-   [release](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.6.2). Verify the ZIP checksum.
+2. Download `service.kodi.addonadmin-0.7.0.zip` and `SHA256SUMS` from the
+   [release](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.0). Verify the ZIP checksum.
    nvidia-MCP users can instead export the pinned bundle with `nvidia-mcp --export-manager DIRECTORY`.
 3. Transfer the verified ZIP to a Kodi-accessible folder using authorized ADB, a mounted share or
    local storage. Use only the configured device, not a LAN scan. Give the user the exact folder and
