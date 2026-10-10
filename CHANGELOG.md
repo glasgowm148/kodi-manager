@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.4 — 2026-10-10 (prerelease)
+
+- Preserve complete widget rows when later pages fail; retry unavailable or suspiciously empty sources with bounded backoff. Keep the previous successful listing rather than replacing it with partial data.
+- Add private-safe cache health records and prioritize visible/active rows during idle refresh.
+- Report memory as unknown when MemAvailable is absent. High compressed-swap occupancy alone no longer produces a low-memory warning when RAM is available.
+
 ## 0.7.3 — 2026-10-07 (prerelease)
 
 - **Protected settings.** List the values you rely on (an add-on setting, a Kodi setting, or a simple

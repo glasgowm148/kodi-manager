@@ -301,7 +301,7 @@ def test_refresher_refreshes_serially_and_bumps_on_change(tmp_path):
     r.next_sweep = 0
     assert r.tick() == 1  # first sweep queues the stale row
     assert len(rpc.calls) == 2 and bumps == [str(10 ** 6)]  # two pages
-    clock.t += 1
+    clock.t += wc.Refresher.BATCH_PAUSE
     cache.request(MOVIES)
     assert r.tick() == 1 and len(bumps) == 1  # unchanged data: no skin reload
 
@@ -418,7 +418,8 @@ def test_fetch_follows_next_page_up_to_the_requested_pages():
     assert [f["label"] for f in files][::3] == ["Film 1-0", "Film 2-0", "Film 3-0"] and len(files) == 9
     assert len(rpc.calls) == 3 and "new_page=3" in rpc.calls[-1]
     assert len(wc.fetch(PagedRPC(pages=1), MOVIES, pages=3)) == 3  # stops on the last page
-    assert len(wc.fetch(PagedRPC(pages=5, fail_on=2), MOVIES, pages=3)) == 3  # keeps page 1
+    with pytest.raises(ValueError):
+        wc.fetch(PagedRPC(pages=5, fail_on=2), MOVIES, pages=3)  # do not cache partial success
 
 
 def test_fetch_ignores_next_page_items_to_other_routes():
@@ -491,7 +492,7 @@ class _Q:
         return 0
     def prune(self, now):
         return 0
-    def take_queue(self):
+    def take_queue(self, **kwargs):
         return []
 
 
@@ -527,3 +528,117 @@ def test_refresher_treats_busy_errors_as_busy():
         raise RuntimeError("kodi shutting down")
     r = wc.Refresher(_Q(), FakeRPC({}), lambda: False, lambda v: None, clock=Clock(10 ** 6), is_busy=broken)
     assert r.tick() == 0
+
+
+def test_empty_failed_row_does_not_offer_a_dead_view_more_tile():
+    plugin = FakePlugin()
+    wc.render(SimpleNamespace(), SimpleNamespace(ListItem=FakeListItem), plugin, 1,
+              {"source": MOVIES, "files": [], "content": "movies"}, view_more=MOVIES)
+    assert plugin.items == []
+
+
+def test_outage_backoff_retains_listing_and_clears_after_recovery(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    files = wc.fetch(FakeRPC(listing('Existing')), MOVIES)
+    cache.save(MOVIES, files, now=100)
+    clock = Clock(200)
+    cache.request(MOVIES)
+    r = wc.Refresher(cache, FakeRPC({'error': {'code': -1}}), lambda: False, lambda v: None, clock=clock)
+    assert r.tick() == 0
+    assert cache.load(MOVIES)['files'] == files
+    assert cache.health(MOVIES)['failures'] == 1
+    clock.t += 10
+    assert r.tick() == 0
+    assert cache.health(MOVIES)['failures'] == 1
+    clock.t = 260
+    r.jsonrpc = FakeRPC(listing('Recovered'))
+    assert r.tick() == 1
+    assert cache.health(MOVIES) == {}
+    assert cache.load(MOVIES)['files'][0]['label'] == 'Recovered'
+
+
+def test_silent_empty_discovery_failure_preserves_good_cache(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    cache.save(MOVIES, wc.fetch(FakeRPC(listing('Existing')), MOVIES), now=100)
+    cache.request(MOVIES)
+    r = wc.Refresher(cache, FakeRPC({'result': {'files': []}}), lambda: False, lambda v: None, clock=Clock(200))
+    assert r.tick() == 0
+    assert cache.load(MOVIES)['files'][0]['label'] == 'Existing'
+    assert cache.health(MOVIES)['reason'] == 'unexpected_empty'
+    # An empty Continue Watching row can legitimately mean everything was watched.
+    cache.save(CONTINUE, wc.fetch(FakeRPC(listing('Existing')), CONTINUE), now=100)
+    cache.request(CONTINUE)
+    r.clock.t += 10
+    assert r.tick() == 1
+    assert cache.load(CONTINUE)['files'] == []
+
+
+def test_refresh_batches_preserve_queued_work_and_priority(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    sources = [MOVIES + '&year=%s' % i for i in range(6)]
+    for source in sources:
+        cache.request(source)
+    cache.request(CONTINUE, priority=True)
+    clock = Clock(200)
+    rpc = FakeRPC({'result': {'files': []}})
+    r = wc.Refresher(cache, rpc, lambda: False, lambda v: None, clock=clock)
+    assert r.tick() == 2
+    assert rpc.calls[0][1]['directory'] == CONTINUE
+    assert cache.status()['queued'] == 5
+    assert r.tick() == 0
+    clock.t += 10
+    assert r.tick() == 2
+    assert cache.status()['queued'] == 3
+
+
+def test_later_page_failure_does_not_replace_complete_cached_row(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    previous = wc.fetch(FakeRPC(listing('Saved A', 'Saved B')), MOVIES)
+    cache.save(MOVIES, previous, now=100, pages=2)
+    calls = []
+    def rpc(method, params):
+        calls.append(params)
+        return listing('Partial') if len(calls) == 1 else {'error': {'code': -1}}
+    cache.request(MOVIES)
+    r = wc.Refresher(cache, rpc, lambda: False, lambda v: None, clock=Clock(200))
+    assert r.tick() == 0
+    assert cache.load(MOVIES)['files'] == previous
+    assert cache.health(MOVIES)['failures'] == 1
+
+
+def test_cold_failure_is_queued_for_automatic_recovery(tmp_path):
+    xbmc, gui, plugin, vfs = kodi_modules(tmp_path, FakeRPC({'error': {'code': -1}}))
+    wc.serve(['x', '1', '?mode=cached&source=' + wc.urlencode({'source': MOVIES}).split('=', 1)[1]], xbmc, gui, plugin, vfs)
+    cache = wc.WidgetCache(str(tmp_path))
+    assert plugin.ended is False
+    assert cache.load(MOVIES) is None
+    assert cache.health(MOVIES)['failures'] == 1
+    assert cache.take_queue() == [MOVIES]
+
+
+def test_bounded_queue_preserves_unselected_jobs_and_skips_backoff(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    cache.request(CONTINUE, priority=True, pages=4)
+    cache.request(MOVIES)
+    cache.record_failure(CONTINUE, 100)
+    path = Path(cache.queue, wc.cache_key(CONTINUE) + ".json")
+    original = path.read_bytes()
+    assert cache.take_queue(limit=1, ready=lambda source: cache.retry_ready(source, 100)) == [MOVIES]
+    assert path.read_bytes() == original
+    assert cache.take_queue(limit=1, ready=lambda source: cache.retry_ready(source, 200)) == [CONTINUE]
+    assert cache.pages_for(CONTINUE) == 4
+    assert cache.take_queue() == []
+
+
+def test_refresher_does_not_rewrite_unselected_jobs(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    for index in range(30):
+        cache.request(MOVIES + "&fixture=" + str(index))
+    untouched = {p.name: p.read_bytes() for p in Path(cache.queue).glob("*.json")}
+    clock = Clock(100)
+    refresher = wc.Refresher(cache, FakeRPC(listing("A")), lambda: False, lambda value: None, clock=clock)
+    refresher.next_sweep = 1000
+    assert refresher.tick() == 2
+    remaining = list(Path(cache.queue).glob("*.json"))
+    assert len(remaining) == 28
+    assert all(p.read_bytes() == untouched[p.name] for p in remaining)

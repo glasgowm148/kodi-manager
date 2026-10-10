@@ -84,8 +84,13 @@ Add these to a cached path:
 
 - **Live reload.** When fresh data differs, Kodi Manager bumps
   `Window(Home).Property(km_widgets)` and the skin reloads the row.
-- **Fallback.** If a refresh fails, the last good listing stays. Rows unused for 3 weeks are
-  dropped.
+- **Fallback.** Failed requests, including a failed later page, retain the last complete listing.
+  An unexpectedly empty discovery row also retains its previous items; an empty progress or
+  watchlist row is accepted because it can mean you finished or removed everything.
+- **Retries.** Failed rows retry after 1, 2, 4, 8… minutes, capped at an hour. A successful
+  refresh clears the failure state. `GET /api/widget-cache` includes each cached row's
+  consecutive failures and next retry time. Health records store no source URL or raw errors.
+  Rows unused for 3 weeks are dropped.
 
 ## Row item limit
 
@@ -95,9 +100,11 @@ item is never cut off. With 0, Kodi Manager uses Bingie's own limit
 
 ## Limits
 
-- **Background work.** Refreshes run one row at a time and pause while anything plays. Rows refresh
-  only when stale, and each refresh is one call to the add-on, the same call the skin would have
-  made.
+- **Background work.** Refreshes run one row at a time, at most two rows per batch, with a
+  10-second pause between batches. A batch stops starting new rows after 10 seconds; an
+  in-flight provider request still needs to finish. Playback, dialogs and recent remote
+  input pause background work. Stale rows requested by the visible hub get queue priority.
+  Existing artwork and item counts are retained.
 
 - **Context menus.** Listings are read through Kodi's JSON-RPC. Titles, artwork, ratings, cast,
   resume points, watched state and IDs are kept, but an add-on's own context menu is not. Kodi
@@ -126,3 +133,5 @@ Kodi 22 beta 2 can crash when an add-on that reuses its Python interpreter (POV,
 asked for several rows at once. Once rows are cached, the source add-on is only called by the
 background refresher, one row at a time. A row's first load still calls it directly, so if you see
 crashes, turn off the add-on's "reuse language invoker" option.
+
+The background refresher claims only its next two eligible jobs. Jobs waiting for retry keep their files and priority, and other pending jobs remain untouched; a large queue no longer gets deleted and rewritten each batch.

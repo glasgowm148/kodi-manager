@@ -22,7 +22,7 @@ def _kb_fields(path, wanted):
 def memory_status(meminfo="/proc/meminfo", self_status="/proc/self/status"):
     info = _kb_fields(meminfo, ("MemTotal", "MemAvailable", "SwapTotal", "SwapFree"))
     kodi = _kb_fields(self_status, ("VmRSS",))
-    if not info.get("MemTotal"):
+    if not info.get("MemTotal") or "MemAvailable" not in info:
         return {"status": "unknown", "detail": "Memory figures are not available on this system"}
     mb = lambda kb: int(round(kb / 1024.0))  # noqa: E731
     total, available = info["MemTotal"], info.get("MemAvailable", 0)
@@ -31,7 +31,9 @@ def memory_status(meminfo="/proc/meminfo", self_status="/proc/self/status"):
     problems = []
     if available < min(300 * 1024, total * 0.10):
         problems.append("only %s MB free" % mb(available))
-    if swap_total and swap_used_pct >= 90:
+    # Android keeps cold pages in compressed swap even after RAM is available.
+    # Swap occupancy alone is not evidence of current memory pressure.
+    if problems and swap_total and swap_used_pct >= 90:
         problems.append("swap %s%% full" % swap_used_pct)
     status = "warning" if problems else "ok"
     detail = "Kodi uses %s MB · %s MB of %s MB free%s" % (

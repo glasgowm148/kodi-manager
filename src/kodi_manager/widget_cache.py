@@ -275,15 +275,13 @@ def fetch(jsonrpc, source, pages=1):
 def fetch_listing(jsonrpc, source, pages=1):
     """Read up to ``pages`` pages. Returns (items, has_more, next_page_art).
 
-    Follows the add-on's own Next page item; a failure on a later page keeps
-    the pages already read. ``has_more`` says the add-on offered another page.
+    Follows the add-on's own Next page item; any failed page raises so a
+    partial refresh cannot replace the last complete listing. ``has_more`` says the add-on offered another page.
     """
     current, out, more, art = validate_source(source), [], False, None
-    for page in range(_clamp_pages(pages)):
+    for _page in range(_clamp_pages(pages)):
         reply = jsonrpc("Files.GetDirectory", {"directory": current, "media": "video", "properties": FIELDS})
         if not isinstance(reply, dict) or reply.get("error") or not isinstance(reply.get("result"), dict):
-            if page:
-                break
             raise ValueError("Source directory could not be read")
         files = reply["result"].get("files")
         files = files if isinstance(files, list) else []
@@ -310,6 +308,7 @@ class WidgetCache:
         self.entries = os.path.join(root, "entries")
         self.queue = os.path.join(root, "queue")
         self.queued_pages = {}
+        self.health_dir = os.path.join(root, "health")
 
     def _write(self, path, data, fsync=True):
         try:
@@ -334,11 +333,37 @@ class WidgetCache:
         now = time.time() if now is None else now
         old = self.load(source)
         digest = _digest(files)
+        self.record_success(source)
         self._write(self.entry_path(source), {"source": source, "fetched_at": now, "digest": digest,
                                               "pages": _clamp_pages(pages), "more": bool(more),
                                               "next_art": next_art,
                                               "content": content_for(source, files), "files": files})
         return old is None or old.get("digest") != digest
+
+    def health(self, source):
+        try:
+            with open(os.path.join(self.health_dir, cache_key(source) + ".json"), encoding="utf-8") as fh:
+                value = json.load(fh)
+            return value if isinstance(value, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def record_failure(self, source, now, reason="unavailable"):
+        previous = self.health(source)
+        failures = min(20, int(previous.get("failures", 0)) + 1)
+        # The health file contains no provider URL, token, title or raw exception.
+        self._write(os.path.join(self.health_dir, cache_key(source) + ".json"), {
+            "failures": failures, "last_failure": now, "reason": reason,
+            "retry_at": now + min(3600, 60 * 2 ** min(failures - 1, 6))}, fsync=False)
+
+    def record_success(self, source):
+        try:
+            os.remove(os.path.join(self.health_dir, cache_key(source) + ".json"))
+        except FileNotFoundError:
+            pass
+
+    def retry_ready(self, source, now):
+        return now >= float(self.health(source).get("retry_at", 0))
 
     def is_stale(self, entry, now=None):
         now = time.time() if now is None else now
@@ -357,7 +382,14 @@ class WidgetCache:
     def request(self, source, priority=False, pages=None):
         path = os.path.join(self.queue, cache_key(source) + ".json")
         if priority or pages or not os.path.exists(path):
-            job = {"source": source, "priority": bool(priority), "at": time.time()}
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    previous = json.load(fh)
+            except (OSError, ValueError):
+                previous = {}
+            job = {"source": source, "priority": bool(priority or previous.get("priority")),
+                   "at": previous.get("at", time.time())}
+            pages = max(pages or 1, previous.get("pages", 1))
             if pages:
                 job["pages"] = _clamp_pages(pages)
             self._write(path, job, fsync=False)  # A lost job is re-queued by the next sweep.
@@ -367,8 +399,8 @@ class WidgetCache:
         entry = self.load(source) or {}
         return max(self.queued_pages.get(source, 1), _clamp_pages(entry.get("pages", 1)), default_pages(source))
 
-    def take_queue(self):
-        """Remove and return queued sources, priority (progress) rows first."""
+    def take_queue(self, limit=None, ready=None):
+        """Claim eligible jobs in priority order; leave unselected files untouched."""
         try:
             names = [n for n in os.listdir(self.queue) if n.endswith(".json")]
         except OSError:
@@ -379,20 +411,30 @@ class WidgetCache:
             try:
                 with open(path, encoding="utf-8") as fh:
                     job = json.load(fh)
-                os.remove(path)
+                if not isinstance(job, dict) or not isinstance(job.get("source"), str):
+                    raise ValueError("Invalid queued job")
+                jobs.append((job, path))
             except (OSError, ValueError):
-                continue
-            if isinstance(job, dict) and isinstance(job.get("source"), str):
-                jobs.append(job)
-        jobs.sort(key=lambda j: (not j.get("priority"), j.get("at", 0)))
-        for job in jobs:
-            if job.get("pages"):
-                self.queued_pages[job["source"]] = max(self.queued_pages.get(job["source"], 1), _clamp_pages(job["pages"]))
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+        jobs.sort(key=lambda pair: (not pair[0].get("priority"), pair[0].get("at", 0)))
         seen, out = set(), []
-        for job in jobs:
-            if job["source"] not in seen:
-                seen.add(job["source"])
-                out.append(job["source"])
+        for job, path in jobs:
+            source = job["source"]
+            if source in seen or (ready is not None and not ready(source)):
+                continue
+            if limit is not None and len(out) >= limit:
+                break
+            try:
+                os.remove(path)
+            except OSError:
+                continue
+            if job.get("pages"):
+                self.queued_pages[source] = max(self.queued_pages.get(source, 1), _clamp_pages(job["pages"]))
+            seen.add(source)
+            out.append(source)
         return out
 
     def all_entries(self):
@@ -442,7 +484,8 @@ class WidgetCache:
         for entry in self.all_entries():
             rows.append({"source": entry["source"], "items": len(entry.get("files", [])),
                          "age_seconds": int(now - float(entry.get("fetched_at", 0))),
-                         "stale": self.is_stale(entry, now), "progress": is_progress(entry["source"])})
+                         "stale": self.is_stale(entry, now), "progress": is_progress(entry["source"]),
+                         "health": self.health(entry["source"])})
         try:
             queued = len([n for n in os.listdir(self.queue) if n.endswith(".json")])
         except OSError:
@@ -523,7 +566,7 @@ def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable
     if view_more and limit > 1 and len(items) > limit - 1:
         # The skin shows at most ``limit`` items: keep room for View more.
         items = items[:limit - 1]
-    if view_more:
+    if view_more and (items or entry.get("more")):
         li = xbmcgui.ListItem(label="View more", path=view_more, offscreen=True)
         art = view_more_art or (POV_NEXT_ART if urlsplit(view_more).netloc == "plugin.video.pov" else "DefaultFolder.png")
         li.setArt({"thumb": art, "poster": art, "icon": art})
@@ -582,6 +625,7 @@ def cache_root(xbmcvfs):
 
 def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
     handle = int(argv[1])
+    cache = source = None
     try:
         query = parse_qs(argv[2].lstrip("?"))
         source = validate_source(query.get("source", [""])[0])
@@ -598,14 +642,20 @@ def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
                 pass
         else:
             if _clamp_pages(entry.get("pages", 1)) < pages:
-                cache.request(source, priority=is_progress(source), pages=pages)
+                cache.request(source, priority=True, pages=pages)
             elif cache.is_stale(entry):
-                cache.request(source, priority=is_progress(source))
+                cache.request(source, priority=True)
             cache.touch(source)
         render(xbmc, xbmcgui, xbmcplugin, handle, entry, helper_playable=helper_resolves(source),
                hide_watched=hide_watched, view_more=view_more_url(source, entry.get("more")),
                limit=skin_widget_limit(xbmc, configured_row_limit()), view_more_art=entry.get("next_art"))
     except Exception as exc:
+        if cache is not None and source is not None:
+            try:
+                cache.record_failure(source, time.time())
+                cache.request(source, priority=True)
+            except OSError:
+                pass
         xbmc.log("Kodi Manager widget cache: %s" % type(exc).__name__, xbmc.LOGWARNING)
         xbmcplugin.endOfDirectory(handle, succeeded=False, cacheToDisc=False)
 
@@ -622,6 +672,9 @@ class Refresher:
 
     EVERYTHING_EVERY = 30 * 60   # at most one full refresh per 30 minutes
     SHORT_PLAYBACK = 120         # seconds; shorter plays are treated as failed starts
+    MAX_ROWS_PER_TICK = 2
+    WORK_BUDGET = 10
+    BATCH_PAUSE = 10
     ROW_PAUSE = 1.5              # seconds between rows so Kodi stays responsive
 
     def __init__(self, cache, jsonrpc, is_playing, bump, log=lambda msg: None, clock=time.time,
@@ -629,6 +682,7 @@ class Refresher:
         self.cache, self.jsonrpc, self.is_playing, self.bump, self.log, self.clock = cache, jsonrpc, is_playing, bump, log, clock
         self.is_busy = is_busy
         self.sleep = sleep or (lambda seconds: None)
+        self.next_work = clock()
         self.next_sweep = clock() + 20
         self.after_playback = []
         self.playback_started_at = None
@@ -660,7 +714,7 @@ class Refresher:
 
     def tick(self, should_stop=lambda: False):
         now = self.clock()
-        if not self._quiet():
+        if not self._quiet() or now < self.next_work:
             return 0
         token = self.external_reload()
         if token != self.last_external:
@@ -680,23 +734,42 @@ class Refresher:
             self.next_sweep = now + 300
             self.cache.queue_stale(now)
             self.cache.prune(now)
-        changed = done = 0
+        changed = done = attempted = 0
+        started = self.clock()
         first = True
-        for source in self.cache.take_queue():
-            if not first and not should_stop():
+        for source in self.cache.take_queue(limit=self.MAX_ROWS_PER_TICK,
+                                                 ready=lambda value: self.cache.retry_ready(value, self.clock())):
+            if (should_stop() or not self._quiet() or attempted >= self.MAX_ROWS_PER_TICK
+                    or self.clock() - started >= self.WORK_BUDGET
+                    or not self.cache.retry_ready(source, self.clock())):
+                self.cache.request(source, priority=is_progress(source))
+                continue
+            if not first:
                 self.sleep(self.ROW_PAUSE)
             first = False
             if should_stop() or not self._quiet():
                 self.cache.request(source, priority=is_progress(source))
                 continue
             try:
+                attempted += 1
                 validate_source(source)
                 pages = self.cache.pages_for(source)
                 files, more, next_art = fetch_listing(self.jsonrpc, source, pages)
+                previous = self.cache.load(source)
+                if not files and previous and previous.get("files") and not is_progress(source):
+                    # Many providers report a failed fetch as a successful empty directory.
+                    # Do not erase useful discovery rows on that ambiguous result.
+                    self.cache.record_failure(source, self.clock(), "unexpected_empty")
+                    self.cache.request(source)
+                    continue
                 changed += bool(self.cache.save(source, files, self.clock(), pages=pages, more=more, next_art=next_art))
                 done += 1
             except Exception as exc:
-                self.log("Widget refresh failed (%s)" % type(exc).__name__)
+                self.cache.record_failure(source, self.clock())
+                self.cache.request(source, priority=is_progress(source))
+                self.log("Widget refresh failed (%s); preserving cached row" % type(exc).__name__)
+        if attempted:
+            self.next_work = self.clock() + self.BATCH_PAUSE
         if changed:
             self.bump(str(int(self.clock())))
             self.log("Widget cache refreshed %d rows, %d changed" % (done, changed))
