@@ -1,11 +1,13 @@
 """Run the real dashboard against a fake, in-memory Kodi for screenshots and design review.
 
     python3 scripts/demo_server.py [--port 8770] [--playing] [--read-only] [--profile Kids]
+                                   [--now 2026-10-11T12:00:00]
 
 Serves ../web on 127.0.0.1 only and prints a sign-in link with a fixed demo token. All data is
 synthetic: 7 days of metrics history, a few failing home rows, an account about to expire, a
 nightly-checkpoint timeline and made-up add-ons. Nothing here talks to Kodi, the LAN or the internet,
-and the script is not part of the Kodi add-on.
+and the script is not part of the Kodi add-on. ``--now`` freezes the clock (with ``TZ=UTC`` the
+data are then identical on every run), which the browser tests in e2e/ use for screenshots.
 
 Toggles while it runs (no token needed, loopback only):
     /demo/playback   start or stop the fake playback
@@ -13,6 +15,7 @@ Toggles while it runs (no token needed, loopback only):
     /demo/profile    switch between the Living room and Kids profiles
 """
 import argparse
+import calendar
 import json
 import math
 import random
@@ -51,8 +54,9 @@ def source(addon, mode, label=None):
 
 
 class Demo:
-    def __init__(self, playing, writes, profile):
-        self.now = int(time.time())
+    def __init__(self, playing, writes, profile, now=None):
+        self.fixed = now
+        self.now = int(now if now is not None else time.time())
         self.playing, self.writes, self.profile = playing, writes, profile
         self.rng = random.Random(7)
         self.history = self._history()
@@ -61,6 +65,10 @@ class Demo:
                            {"id": "r2", "label": "Kids TV", "source": source("plugin.video.pov", "kids_tv", "Kids TV"), "pages": 1, "hide_watched": False},
                            {"id": "r3", "label": "Weekend picks", "source": source("plugin.video.pov", "weekend"), "pages": 1, "hide_watched": False}]
         self.revision = "rev-1"
+
+    def clock(self):
+        """The current time: frozen with --now, otherwise the real clock."""
+        return self.fixed if self.fixed is not None else time.time()
 
     # --- synthetic history -----------------------------------------------------------------
     def _history(self):
@@ -151,7 +159,7 @@ class Demo:
 
     def status(self):
         return {"service_version": VERSION, "Kodi version": "22.0", "server": {"host": "127.0.0.1", "port": 0},
-                "write_enabled": self.writes, "allow_lan": True, "current_time": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "write_enabled": self.writes, "allow_lan": True, "current_time": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(self.clock())),
                 "active_skin": {"addon_id": "skin.bingie", "name": "Bingie", "version": "2.0.2"}, "platform": "Demo", "stack": self.stack()}
 
     def cache_entries(self):
@@ -357,7 +365,8 @@ def make_handler(demo):
                 if path in ("/api/pipeline/debug", "/api/debug/paths", "/api/debug/stack-raw", "/api/integrations"):
                     return {"demo": True, "note": "Synthetic diagnostics"}
                 if path == "/api/logs":
-                    return {"lines": ["%s Demo service started" % time.strftime("%H:%M:%S"), "%s Widget cache refreshed 3 rows, 1 changed" % time.strftime("%H:%M:%S")]}
+                    clock = time.strftime("%H:%M:%S", time.localtime(d.clock()))
+                    return {"lines": ["%s Demo service started" % clock, "%s Widget cache refreshed 3 rows, 1 changed" % clock]}
                 if path == "/api/kodi/logs":
                     return {"lines": ["info <general>: Starting Kodi (22.0)", "warning <general>: Texture not found: demo.png", "error <general>: Demo error line for the log view", "info <general>: Demo finished loading"]}
                 if path == "/api/search/config":
@@ -394,7 +403,7 @@ def make_handler(demo):
             # Everything else changes something.
             if path == "/api/stack/backup":
                 self.write("Stop playback before taking a checkpoint", 409)
-                item = d._backup(time.time(), "manual")
+                item = d._backup(d.clock(), "manual")
                 d.backups.insert(0, item)
                 return item
             if path in ("/api/stack/restore",) or path.endswith("/restore"):
@@ -429,14 +438,24 @@ def make_handler(demo):
     return Handler
 
 
+def frozen_time(value):
+    if value.replace(".", "", 1).isdigit():
+        return float(value)
+    try:
+        return float(calendar.timegm(time.strptime(value.rstrip("Z"), "%Y-%m-%dT%H:%M:%S")))
+    except ValueError:
+        raise argparse.ArgumentTypeError("expected YYYY-MM-DDTHH:MM:SS or Unix seconds") from None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", type=int, default=8770)
     parser.add_argument("--playing", action="store_true", help="start with something playing")
     parser.add_argument("--read-only", action="store_true", help="start view-only (writes off), like a Kids profile")
     parser.add_argument("--profile", default="Living room")
+    parser.add_argument("--now", type=frozen_time, help="freeze the clock at this UTC time (YYYY-MM-DDTHH:MM:SS) or Unix time")
     args = parser.parse_args()
-    demo = Demo(args.playing, not args.read_only, args.profile)
+    demo = Demo(args.playing, not args.read_only, args.profile, args.now)
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(demo))
     base = "http://127.0.0.1:%d" % httpd.server_address[1]
     print("Kodi Manager demo (synthetic data only)")

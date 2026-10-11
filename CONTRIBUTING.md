@@ -14,6 +14,7 @@ pytest -q
 ruff check .
 python -m pip install pyright==1.1.414 && pyright   # types, checked as Python 3.8
 node --test tests/*.js
+(cd e2e && npm ci && npx playwright test)   # dashboard in Chromium, see e2e/README.md
 python -m build
 python scripts/build_addon.py
 python scripts/test_wheel.py
