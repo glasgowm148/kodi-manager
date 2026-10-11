@@ -31,8 +31,19 @@ def _bool(v):
     return str(v).lower() in ("true", "1", "yes", "on")
 
 
+# Boolean settings are read through Kodi's typed settings API when it exists
+# (Kodi 20+); getSetting's text form is the fallback for older Kodi and fakes.
+BOOL_KEYS = frozenset(("enabled", "shield_exit_workaround", "allow_lan", "write_enabled",
+                       "widget_cache_auto", "delete_installer_result_after_first_login"))
+
+
 def load_config(addon):
     def get(key, default=""):
+        try:
+            if key in BOOL_KEYS and hasattr(addon, "getSettings"):
+                return "true" if addon.getSettings().getBool(key) else "false"
+        except Exception:
+            pass
         try:
             val = addon.getSetting(key)
             return val if val != "" else default

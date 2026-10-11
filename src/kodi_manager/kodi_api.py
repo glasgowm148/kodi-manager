@@ -58,6 +58,9 @@ def read_text(path):
 
 
 LOG_TAIL_BYTES = 512 * 1024
+# Kodi Manager's own Write Mode switch is a typed boolean: on Kodi 20+ it is read
+# and written through the settings API rather than its text form.
+OWN_BOOL_SETTING = ("service.kodi.addonadmin", "write_enabled")
 
 
 def read_tail(path, max_bytes=LOG_TAIL_BYTES):
@@ -160,12 +163,19 @@ class KodiAPI:
 
     def get_addon_setting(self, addon_id, setting_id):
         if xbmcaddon:
-            return xbmcaddon.Addon(addon_id).getSetting(setting_id)
+            addon = xbmcaddon.Addon(addon_id)
+            if (addon_id, setting_id) == OWN_BOOL_SETTING and hasattr(addon, "getSettings"):
+                return "true" if addon.getSettings().getBool(setting_id) else "false"
+            return addon.getSetting(setting_id)
         raise RuntimeError("Kodi xbmcaddon unavailable")
 
     def set_addon_setting(self, addon_id, setting_id, value):
         if xbmcaddon:
-            xbmcaddon.Addon(addon_id).setSetting(setting_id, value)
+            addon = xbmcaddon.Addon(addon_id)
+            if (addon_id, setting_id) == OWN_BOOL_SETTING and hasattr(addon, "getSettings"):
+                addon.getSettings().setBool(setting_id, str(value).lower() == "true")
+            else:
+                addon.setSetting(setting_id, value)
             return True
         raise RuntimeError("Kodi xbmcaddon unavailable")
 
