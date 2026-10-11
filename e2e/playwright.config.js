@@ -4,7 +4,8 @@ const { defineConfig } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: "./tests",
-  timeout: 30_000,
+  // Generous: on a cold machine the first page of a worker can take 20 s to load (see fixtures.js warmUp).
+  timeout: 60_000,
   expect: {
     timeout: 7_000,
     // Small, anti-aliasing-tolerant threshold: a moved card or a changed colour still fails.

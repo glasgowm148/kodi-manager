@@ -52,9 +52,10 @@ async function startDemo(args = []) {
   return { url, port, stop };
 }
 
-/* A page has loaded when its heading is shown and no skeleton is left. */
+/* A page has loaded when its heading is shown and no skeleton is left. #content h2 is the page
+   heading on every page, in the desktop and phone layouts alike. */
 async function waitForPage(page) {
-  await expect(page.locator("#content h2").first()).toBeVisible();
+  await expect(page.locator("#content h2").first()).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('#content .page-skeleton, #content [aria-busy="true"]')).toHaveCount(0);
 }
 
@@ -73,6 +74,20 @@ const test = base.extend({
   }, { scope: "worker" }],
 
   baseURL: async ({ demo }, use) => { await use(demo.url); },
+
+  /* Load the dashboard once per worker before its first test. Starting Chromium and rendering the
+     first page can take 20-30 s on a cold machine (fonts, caches); a worker fixture has its own
+     timeout, so that cost no longer eats into the first test's. */
+  warmUp: [async ({ browser, demo }, use) => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await page.goto(demo.url + "/", { waitUntil: "load" });
+    } finally {
+      await context.close();
+    }
+    await use();
+  }, { scope: "worker", auto: true, timeout: 120_000 }],
 
   /* Browser console errors and uncaught exceptions seen by this test. An API refusal the test
      provokes (401, 409 …) is logged by Chromium as a failed resource and is not an error here. */
