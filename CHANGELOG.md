@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.5 — 2026-10-11 (prerelease)
+
+- Prune backup retention only after the replacement snapshot has completed; failed attempts no longer consume the retention allowance or hide valid backups.
+- Repair shared protected files once, preventing duplicate manifest entries from triggering a false conflict and rollback.
+- Add optional cached-row genre exclusions and a filtered full-list view without changing source caches or watch history.
+
 ## 0.7.4 — 2026-10-10 (prerelease)
 
 - Preserve complete widget rows when later pages fail; retry unavailable or suspiciously empty sources with bounded backoff. Keep the previous successful listing rather than replacing it with partial data.

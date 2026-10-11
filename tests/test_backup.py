@@ -65,3 +65,32 @@ def test_existing_snapshot_directory_cannot_be_reused(storage, monkeypatch):
         backup.create_backup(info)
     original = Path(root, info["addon_id"], first["backup_id"], "addon_data/settings.xml")
     assert original.read_bytes() == b"original"
+
+
+@pytest.mark.parametrize("kind", ["addon", "stack", "files", "pipeline"])
+def test_failed_backup_preserves_last_complete_snapshot(storage, monkeypatch, kind):
+    root, settings, info = storage
+    monkeypatch.setattr(backup, "_retention", 1)
+    index = SimpleNamespace(get=lambda aid: info if aid == info["addon_id"] else None)
+    create = {
+        "addon": lambda: backup.create_backup(info),
+        "stack": lambda: backup.create_stack_backup([info]),
+        "files": lambda: backup.create_file_backup("selected", {"settings.xml": str(settings)}),
+        "pipeline": lambda: pipeline_backup(index),
+    }[kind]
+    settings.write_bytes(b"original")
+    first = create()
+    scope = {"addon": info["addon_id"], "stack": "_stack", "files": "selected", "pipeline": "pipeline"}[kind]
+    snapshot = root / scope / first["backup_id"]
+    original_copy = next(snapshot.rglob("settings.xml"))
+    real_copy = backup.shutil.copy2
+    monkeypatch.setattr(backup.shutil, "copy2", lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full")))
+    with pytest.raises(OSError, match="disk full"):
+        create()
+    assert original_copy.read_bytes() == b"original"
+    monkeypatch.setattr(backup.shutil, "copy2", real_copy)
+    # Incomplete attempts must not consume the retention allowance.
+    monkeypatch.setattr(backup, "_retention", 2)
+    create()
+    assert original_copy.read_bytes() == b"original"
+    assert len(backup.list_backups(scope)) == 2

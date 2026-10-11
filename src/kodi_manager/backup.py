@@ -107,14 +107,13 @@ def _copytree(src, dst, skip_top=()):
 def allocate_backup(scope, protect=()):
     """Reserve a unique directory before copying; never reuse a prior snapshot.
 
-    The new snapshot and every id in ``protect`` (for example the snapshot
-    being restored) are exempt from the retention prune.
+    Allocation never prunes: only a completed snapshot may replace an older
+    recovery point. Call finish_backup after all files have been copied.
     """
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     backup_id = timestamp + "-" + uuid.uuid4().hex
     destination = _backup_path(scope, backup_id)
     os.makedirs(destination, exist_ok=False)
-    prune(scope, keep=set(protect) | {backup_id})
     return timestamp, backup_id, destination
 
 
@@ -127,7 +126,8 @@ def prune(scope, keep=None):
     keep = {keep} if isinstance(keep, str) else set(keep or ())
     root = _backup_path(scope)
     try:
-        names = [n for n in os.listdir(root) if os.path.isdir(os.path.join(root, n))]
+        names = [n for n in os.listdir(root) if not os.path.islink(os.path.join(root, n))
+                 and _read_manifest(os.path.join(root, n)).get("backup_id") == n]
     except OSError:
         return []
     names.sort(key=lambda n: (n[:15], os.path.getmtime(os.path.join(root, n))), reverse=True)
@@ -181,6 +181,12 @@ def _read_manifest(dest):
         return {}
 
 
+def finish_backup(scope, dest, manifest, protect=()):
+    """Commit the snapshot before retention can discard older recovery points."""
+    _write_manifest(dest, manifest)
+    prune(scope, keep=set(protect) | {manifest["backup_id"]})
+
+
 def create_backup(addon_info, kodi_version="", adapter="", protect=()):
     aid = addon_info["addon_id"]
     ts, backup_id, dest = allocate_backup(aid, protect)
@@ -197,7 +203,7 @@ def create_backup(addon_info, kodi_version="", adapter="", protect=()):
         "adapter": adapter or addon_info.get("adapter_name", ""),
     }
     os.makedirs(os.path.join(dest, "addon_data"), exist_ok=True)
-    _write_manifest(dest, manifest)
+    finish_backup(aid, dest, manifest, protect)
     return manifest
 
 
@@ -216,7 +222,7 @@ def create_file_backup(scope, files, kodi_version="", note=""):
     manifest = {"backup_id": backup_id, "timestamp": ts, "included_files": copied, "missing_files": missing,
                 "included_components": sorted({rel.split("/")[0] for rel in copied}),
                 "skipped_components": [], "Kodi version": kodi_version, "note": note}
-    _write_manifest(dest, manifest)
+    finish_backup(scope, dest, manifest)
     return manifest
 
 
@@ -226,10 +232,10 @@ def list_backups(addon_id=None, stack=False):
         return []
     out = []
     for name in sorted(os.listdir(root), reverse=True):
-        man = os.path.join(root, name, "manifest.json")
-        if os.path.exists(man):
-            with open(man, "r", encoding="utf-8") as fh:
-                out.append(json.load(fh))
+        folder = os.path.join(root, name)
+        manifest = _read_manifest(folder) if not os.path.islink(folder) else {}
+        if manifest.get("backup_id") == name:
+            out.append(manifest)
     return out
 
 
@@ -269,7 +275,7 @@ def create_stack_backup(addons, kodi_version="", note=""):
             skipped.append(addon["addon_id"])
     manifest = {"backup_id": backup_id, "timestamp": ts, "included_folders": included, "skipped_folders": skipped,
                 "file_counts": counts, "Kodi version": kodi_version, "note": note}
-    _write_manifest(root, manifest)
+    finish_backup("_stack", root, manifest)
     return manifest
 
 

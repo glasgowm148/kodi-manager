@@ -76,11 +76,17 @@ class FixProtection:
             if not available:
                 raise ValueError('No changed files can be restored safely')
             plan = []
+            seen = {}
             for group in self.manifest['groups']:
                 if group['id'] not in available:
                     continue
                 for file in group['files']:
                     target = safe_path(self.root, file['path'])
+                    if target in seen:
+                        if seen[target] != file['sha256']:
+                            raise ValueError('Conflicting protected copies for the same file')
+                        continue
+                    seen[target] = file['sha256']
                     current = digest(target)
                     if current != file['sha256']:
                         plan.append((file, target, current))

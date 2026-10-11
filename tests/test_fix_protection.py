@@ -28,6 +28,15 @@ class FixTests(unittest.TestCase):
   with self.assertRaises(ValueError):self.p.repair()
   self.assertEqual(self.live.read_text(),'original')
   with self.assertRaises(ValueError):m.safe_path(self.addons,'../escape')
+ def test_shared_file_is_repaired_once(self):
+  import copy
+  self.p.manifest['groups'].append(copy.deepcopy(self.p.manifest['groups'][0]))
+  self.p.manifest['groups'][1]['id']='other-feature'
+  result=self.p.repair()
+  self.assertEqual(result['restored_files'],1)
+  self.assertEqual(self.live.read_text(),'patched')
+  self.assertEqual((Path(result['backup'])/'plugin.test/code.py').read_text(),'original')
+  self.assertTrue(self.p.status()['healthy'])
  def test_partial_restore_rolls_back(self):
   second=dict(self.p.manifest['groups'][0]['files'][0],path='plugin.test/other.py');self.p.manifest['groups'][0]['files'].append(second)
   (self.addon/'other.py').write_text('original');(self.p.bundle/'files/plugin.test/other.py').write_text('patched')
