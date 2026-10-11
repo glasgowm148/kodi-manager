@@ -129,6 +129,23 @@ def _fail_on(monkeypatch, live, name):
     monkeypatch.setattr(backup, "_copy_file", copy)
 
 
+
+def _fail_on_second_live_copy(monkeypatch, live):
+    """Fail the second file copied into the live folder, whatever its name (os.walk order varies),
+    and record the live files as they were at that moment."""
+    real = backup._copy_file
+    state = {"copies": 0, "at_failure": None}
+
+    def copy(src, dst):
+        if Path(dst).parent == live:
+            state["copies"] += 1
+            if state["copies"] == 2:
+                state["at_failure"] = {p.name: p.read_bytes() for p in live.iterdir() if not p.name.startswith(".")}
+                raise OSError("disk full")
+        return real(src, dst)
+    monkeypatch.setattr(backup, "_copy_file", copy)
+    return state
+
 def test_restore_failing_part_way_puts_the_live_folder_back(storage, monkeypatch):
     root, settings, info = storage
     live = settings.parent
@@ -138,11 +155,37 @@ def test_restore_failing_part_way_puts_the_live_folder_back(storage, monkeypatch
     (live / "a.xml").write_bytes(b"new a")
     (live / "b.xml").write_bytes(b"new b")
     (live / "c.xml").write_bytes(b"new c")
-    _fail_on(monkeypatch, live, "b.xml")
+    seen = _fail_on_second_live_copy(monkeypatch, live)
     with pytest.raises(OSError, match="disk full"):
         backup.restore_backup(info, snap["backup_id"])
+    # The first file really was replaced before the failure, so the rollback had work to do.
+    assert seen["at_failure"] != {"a.xml": b"new a", "b.xml": b"new b", "c.xml": b"new c"}
     assert {p.name: p.read_bytes() for p in live.iterdir()} == {
         "a.xml": b"new a", "b.xml": b"new b", "c.xml": b"new c"}
+
+
+def test_stack_restore_rolls_back_when_a_later_undo_snapshot_fails(tmp_path, storage, monkeypatch):
+    root, settings, info = storage
+    other_live = tmp_path / "other"
+    other_live.mkdir()
+    other = {"addon_id": "plugin.video.fenlight", "addon_data_path": str(other_live)}
+    settings.write_bytes(b"pov old")
+    (other_live / "settings.xml").write_bytes(b"fen old")
+    snap = backup.create_stack_backup([info, other])
+    settings.write_bytes(b"pov new")
+    (other_live / "settings.xml").write_bytes(b"fen new")
+    index = SimpleNamespace(get={info["addon_id"]: info, other["addon_id"]: other}.get)
+    real = backup.create_backup
+
+    def undo_snapshot(addon, *args, **kwargs):
+        if addon["addon_id"] == info["addon_id"]:  # POV restores second; its undo cannot be taken
+            raise OSError("disk full")
+        return real(addon, *args, **kwargs)
+    monkeypatch.setattr(backup, "create_backup", undo_snapshot)
+    with pytest.raises(OSError, match="disk full"):
+        backup.restore_stack_backup(index, snap["backup_id"])
+    assert (other_live / "settings.xml").read_bytes() == b"fen new"
+    assert settings.read_bytes() == b"pov new"
 
 
 def test_stack_restore_failing_part_way_rolls_back_earlier_components(tmp_path, storage, monkeypatch):

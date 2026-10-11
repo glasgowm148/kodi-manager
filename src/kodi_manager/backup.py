@@ -420,15 +420,16 @@ def restore_stack_backup(index, backup_id):
         plan.append((aid, addon, src, dest, skip, expected))
     # Every component is checked before the first one is replaced. A failure part
     # way through puts every component already touched back as it was.
+    # That includes a failure to take a later component's undo snapshot.
     done = []
-    for aid, addon, src, dest, skip, expected in plan:
-        undo = create_backup(addon, adapter=addon.get("adapter_name", ""))
-        undo_backups[aid] = undo["backup_id"]
-        done.append((aid, dest, skip, undo))
-        try:
+    try:
+        for aid, addon, src, dest, skip, expected in plan:
+            undo = create_backup(addon, adapter=addon.get("adapter_name", ""))
+            undo_backups[aid] = undo["backup_id"]
+            done.append((aid, dest, skip, undo))
             _restore_folder(aid, src, dest, skip, expected)
-        except BaseException as exc:
-            _roll_back(done, exc)
-            raise
-        restored.append(aid)
+            restored.append(aid)
+    except BaseException as exc:
+        _roll_back(done, exc)
+        raise
     return {"restored": restored, "skipped": skipped, "undo_backups": undo_backups, "restart_required": True}
