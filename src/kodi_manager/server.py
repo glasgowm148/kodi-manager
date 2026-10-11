@@ -833,13 +833,18 @@ def make_handler(state):
             keys = self.body().get("keys") or None
             if keys is not None and (not isinstance(keys, list) or not all(isinstance(k, str) for k in keys)):
                 raise ValueError("keys must be a list of strings")
-            return make_baseline(state.kodi).apply(keys)
+            return make_baseline(state.kodi).apply(keys, check=self._baseline_writable)
 
         def api_baseline_capture(self):
             items = self.body().get("items")
             if not isinstance(items, list) or not items:
                 raise ValueError("items must be a non-empty list")
-            return make_baseline(state.kodi).capture(items)
+            return make_baseline(state.kodi).capture(items, check=self._baseline_writable)
+
+        def _baseline_writable(self, item):
+            """Protected add-on items obey the same write policy as the settings editor."""
+            if item.get("kind") in ("addon_setting", "addon_xml"):
+                check_writable(item["addon"], state.index.get(item["addon"]), state.config)
 
         def api_baseline_remove(self):
             keys = self.body().get("keys")

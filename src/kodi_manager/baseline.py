@@ -21,6 +21,24 @@ except ImportError:
 
 KINDS = ("addon_setting", "kodi_setting", "addon_xml")
 _ID = re.compile(r"^[A-Za-z0-9._-]{1,120}$")
+SELF_ID = "service.kodi.addonadmin"
+LABEL_MAX = 80
+# Kodi settings that may be protected: playback, subtitle and library preferences an update
+# can reset. Network, add-on sources, security, display and output-device settings are not:
+# a value given to capture would be re-applied silently (proxy, unknown sources, a blank TV).
+KODI_SETTINGS_ALLOWED = ("general.addonupdates", "general.addonnotifications", "videoplayer.", "subtitles.",
+                         "locale.audiolanguage", "locale.subtitlelanguage", "pvrplayback.", "videolibrary.",
+                         "musicplayer.", "audiooutput.passthrough", "audiooutput.ac3passthrough",
+                         "audiooutput.eac3passthrough", "audiooutput.dtspassthrough",
+                         "audiooutput.truehdpassthrough", "audiooutput.dtshdpassthrough")
+KODI_SETTINGS_REFUSED = ("videoplayer.adjustrefreshrate",)
+
+
+def kodi_setting_allowed(setting_id):
+    if setting_id in KODI_SETTINGS_REFUSED:
+        return False
+    return any(setting_id == entry or (entry.endswith(".") and setting_id.startswith(entry))
+               for entry in KODI_SETTINGS_ALLOWED)
 
 
 def item_key(item):
@@ -38,10 +56,17 @@ def validate_item(item):
     for name in names:
         if not isinstance(item.get(name), str) or not _ID.match(item[name]):
             raise ValueError("Invalid %s for a protected setting" % name)
-    if item["kind"] == "addon_setting" and item["addon"] == "service.kodi.addonadmin":
+    if item["kind"] in ("addon_setting", "addon_xml") and item["addon"] == SELF_ID:
         raise ValueError("Kodi Manager's own settings cannot be protected here")
-    if item["kind"] == "kodi_setting" and item["id"].split(".")[0] in ("services", "masterlock", "system"):
-        raise ValueError("Security and system settings cannot be protected here")
+    if item["kind"] == "addon_xml" and item["addon"].startswith("skin."):
+        raise ValueError("A skin's addon.xml cannot be protected here")
+    if item["kind"] == "kodi_setting" and not kodi_setting_allowed(item["id"]):
+        raise ValueError("%s cannot be protected here: only playback, subtitle and library settings can"
+                         % item["id"])
+    label = item.get("label")
+    if label is not None and (not isinstance(label, str) or len(label) > LABEL_MAX
+                              or re.search(r"[\x00-\x1f\x7f]", label)):
+        raise ValueError("A protected setting's label must be one line of at most %d characters" % LABEL_MAX)
     return item
 
 
@@ -142,7 +167,9 @@ class Baseline:
     def drifted(self):
         return [row for row in self.check() if not row["ok"] and not row["missing"]]
 
-    def apply(self, keys=None):
+    def apply(self, keys=None, check=None):
+        """Re-apply drifted items. ``check(item)`` (optional) raises for items the caller may
+        not write, e.g. add-ons outside the write policy; those are reported as failed."""
         wanted = set(keys or [])
         applied, failed, restart = [], [], False
         for item in self.items():
@@ -150,6 +177,9 @@ class Baseline:
             if wanted and key not in wanted:
                 continue
             try:
+                validate_item(dict(item))   # baseline.json may predate a rule or be hand-edited
+                if check is not None:
+                    check(item)
                 if _same(item.get("value"), self.current(item)):
                     continue
                 restart = self._write(item) or restart
@@ -158,12 +188,16 @@ class Baseline:
                 failed.append({"key": key, "error": str(exc)[:200]})
         return {"applied": applied, "failed": failed, "restart_required": restart}
 
-    def capture(self, items):
-        """Protect the given items at their current live values (replaces items with the same key)."""
+    def capture(self, items, check=None):
+        """Protect the given items at their current live values (replaces items with the same key).
+
+        ``check(item)`` (optional) raises for items the caller may not write."""
         stored = {item_key(item): item for item in self.items()}
         added = []
         for raw in items:
             item = validate_item(dict(raw))
+            if check is not None:
+                check(item)
             value = raw.get("value") if "value" in raw else self.current(item)
             if value is None:
                 raise LookupError("%s has no current value to protect" % item_key(item))

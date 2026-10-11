@@ -50,6 +50,11 @@
   data when run (`options_menu_choice`, `extras_menu_choice`, `watched_unwatched_erase_bookmark`,
   `myservices`, the `*_choice` pickers, `show_text`, view and menu-editor modes) are no longer
   accepted as directory listings.
+- **Protected settings obey the write policy.** Capturing or re-applying an add-on item now needs
+  the same "Allowed add-ons" permission as the settings editor; only playback, subtitle and library
+  Kodi settings can be protected (not network, add-on source, security or display settings); Kodi
+  Manager's own and skins' addon.xml cannot be protected; labels are one line of at most 80
+  characters. Items saved before these rules are skipped at re-apply and reported as failed.
 
 ## 0.7.5 — 2026-10-11 (prerelease)
 
