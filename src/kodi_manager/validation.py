@@ -113,6 +113,25 @@ def coerce_value(setting, value):
     raise ValueError("Unsupported setting type")
 
 
+class SettingValueError(ValueError):
+    """A value refused for one setting of a batch. The message starts with the setting id
+    (never the value), so a batch save can say which field to fix."""
+
+    def __init__(self, setting_id, message):
+        super(SettingValueError, self).__init__("%s: %s" % (setting_id, message))
+        self.setting_id = setting_id
+
+
+def coerce_setting(setting_id, setting, value):
+    """coerce_value, raising SettingValueError that names ``setting_id``."""
+    try:
+        return coerce_value(setting, value)
+    except SettingValueError:
+        raise
+    except ValueError as exc:
+        raise SettingValueError(setting_id, exc) from None
+
+
 def setting_editable(setting, allow_secret_replacement=False):
     label = setting.get("label") or ""
     sid = setting.get("id") or ""

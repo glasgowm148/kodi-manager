@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 try:
     from .settings_schema import parse_schema, flatten_settings, parse_user_settings, setting_description
     from .stack_detector import detect_stack
-    from .validation import setting_editable, coerce_value, redact
+    from .validation import setting_editable, coerce_setting, redact
     from .kodi_api import read_text, translate
     from .account_evidence import credential_present, summarize_account, account_provider, is_auth_field
     from .backup import allocate_backup, finish_backup, discard_on_failure, create_file_backup, _copytree
@@ -15,7 +15,7 @@ try:
 except ImportError:
     from settings_schema import parse_schema, flatten_settings, parse_user_settings, setting_description
     from stack_detector import detect_stack
-    from validation import setting_editable, coerce_value, redact
+    from validation import setting_editable, coerce_setting, redact
     from kodi_api import read_text, translate
     from account_evidence import credential_present, summarize_account, account_provider, is_auth_field
     from backup import allocate_backup, finish_backup, discard_on_failure, create_file_backup, _copytree
@@ -490,7 +490,7 @@ def _plan_changes(index, changes, config, account=False):
                 raise ValueError("Only text secret replacement is supported: %s" % sid)
         elif not setting_editable(setting, True):
             raise ValueError("Unsupported setting rejected: %s" % sid)
-        plan.append({"component": aid, "addon": addon, "setting_id": sid, "value": coerce_value(setting, value), "source": "settings.xml",
+        plan.append({"component": aid, "addon": addon, "setting_id": sid, "value": coerce_setting(sid, setting, value), "source": "settings.xml",
                      "previous": setting.get("value") or ""})
     for aid, (addon, pairs) in db_changes.items():
         for sid, value in fenlight_db.validate_changes(addon, pairs):

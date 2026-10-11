@@ -13,10 +13,10 @@ from pathlib import Path
 
 try:
     from .kodi_api import translate
-    from .validation import coerce_value, _number_text
+    from .validation import SettingValueError, coerce_value, _number_text
 except ImportError:
     from kodi_api import translate
-    from validation import coerce_value, _number_text
+    from validation import SettingValueError, coerce_value, _number_text
 
 FENLIGHT_ID = "plugin.video.fenlight"
 DB_EDITABLE_TYPES = {"boolean", "bool", "string", "text", "path", "name", "action", "integer", "int", "number"}
@@ -103,7 +103,10 @@ def validate_changes(addon, changes):
     for sid, value in changes:
         if sid not in types:
             raise ValueError("Unknown Fen Light DB setting: %s" % sid)
-        clean.append((sid, coerce_db_value(types[sid], value)))
+        try:
+            clean.append((sid, coerce_db_value(types[sid], value)))
+        except ValueError as exc:
+            raise SettingValueError(sid, exc) from None
     return clean
 
 

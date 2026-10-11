@@ -21,7 +21,7 @@ try:
     from .stack_detector import detect_stack
     from .pipeline import build_pipeline, apply_pipeline_settings, pipeline_backup, switch_player, build_accounts, apply_account_settings, pretty_label, write_settings
     from .kodi_api import debug_paths, translate
-    from .validation import coerce_value, redact, mask_query_secrets
+    from .validation import coerce_setting, redact, mask_query_secrets
     from .widget_catalog import list_sources, browse_directory, suggest_kids_rows
     from .widget_filters import filter_items
     from .widget_preview import row_preview
@@ -46,7 +46,7 @@ except ImportError:
     from stack_detector import detect_stack
     from pipeline import build_pipeline, apply_pipeline_settings, pipeline_backup, switch_player, build_accounts, apply_account_settings, pretty_label, write_settings
     from kodi_api import debug_paths, translate
-    from validation import coerce_value, redact, mask_query_secrets
+    from validation import coerce_setting, redact, mask_query_secrets
     from widget_catalog import list_sources, browse_directory, suggest_kids_rows
     from widget_filters import filter_items
     from widget_preview import row_preview
@@ -573,7 +573,8 @@ def make_handler(state):
             except PermissionError as exc:
                 self.err(403, "write_disabled", str(exc))
             except ValueError as exc:
-                self.err(400, value_code, str(exc))
+                setting_id = getattr(exc, "setting_id", None)
+                self.err(400, value_code, str(exc), {"setting_id": setting_id} if setting_id else None)
             except (LookupError, FileNotFoundError) as exc:
                 self.err(404, "not_found", exc.args[0] if exc.args and isinstance(exc.args[0], str) else "Not found")
             except Exception as exc:
@@ -954,7 +955,7 @@ def make_handler(state):
                 setting = settings[sid]
                 if not setting.get("editable"):
                     raise ValueError("Setting not editable: %s" % sid)
-                clean.append({"id": sid, "value": coerce_value(setting, ch.get("value")), "previous": setting.get("value") or ""})
+                clean.append({"id": sid, "value": coerce_setting(sid, setting, ch.get("value")), "previous": setting.get("value") or ""})
             # The whole batch is validated (including settings.db types) before anything is written.
             db_clean = fenlight_db.validate_changes(addon, db_pairs) if db_pairs else []
             backup = create_backup(addon, state.kodi.get_kodi_version(), adapter.name)

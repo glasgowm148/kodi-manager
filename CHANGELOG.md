@@ -61,6 +61,9 @@
 - **`ManagerClient` reports why a request was refused.** `ManagerError` carries the HTTP `status`
   and the service's error `code` (`write_disabled`, `playback_active`...) with its message, and
   `unsupported` is true only for a 404.
+- **Refused setting values name the setting.** A batch save that fails validation answers `<setting
+  id>: <reason>` with `details.setting_id` (settings editor, pipeline/account editor and Fen Light
+  settings.db), so the dashboard can point at the field to fix.
 
 ## 0.7.5 — 2026-10-11 (prerelease)
 
