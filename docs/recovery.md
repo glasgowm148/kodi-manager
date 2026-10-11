@@ -17,6 +17,12 @@ for checkpoints. Keep a separate private copy before replacing a customized inst
   and a checkpoint restore returns an `undo_backups` map by add-on; restore those to undo.
 - **Kodi busy.** If something is playing, Kodi Manager asks before restoring (the API answers `409`
   and accepts `"force": true`). Restoring while an add-on runs can be overwritten when it next saves.
+- **Failed restores.** If a restore fails part way, every folder it changed is put back from its undo
+  backup before the error is shown. If that also fails, the error names the undo backups to restore.
+- **Kodi Manager itself.** Restoring Kodi Manager's own folder keeps its current `settings.xml`
+  (access token, LAN access, Enable writes); change those in Kodi.
+- **Nightly checkpoint.** Taken after 03:00 while the TV is idle. If something starts playing while it
+  is copying, it stops, deletes the partial copy and tries again later.
 
 Restores need **Enable writes**. If an add-on does not pick up restored settings, restart Kodi when
 viewing has finished, then check the settings and behaviour: an HTTP success alone does not prove the
@@ -30,8 +36,8 @@ somewhere private first if you need to keep it longer.
 
 ## Limits
 
-Restore copies the recorded configuration files. It does not remove files created since, provide a
-filesystem-wide transaction, restore Android private data, downgrade Kodi or migrate cloud history.
+Restore makes the add-on's folder match the backup: files created since are removed (they are kept
+in the undo backup). It does not provide a filesystem-wide transaction, restore Android private data, downgrade Kodi or migrate cloud history.
 Playback-setting backups (`kind: pipeline`) are restored by hand: copy the files from the backup
 folder back into each add-on's `addon_data` folder while Kodi is idle.
 

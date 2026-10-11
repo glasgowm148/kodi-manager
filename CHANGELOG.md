@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.7.6 — 2026-10-11 (prerelease)
+
+- **Restores roll back on failure.** A restore that fails part way (disk full, permission error) puts
+  every folder it already changed back from its undo backup; checkpoint restores roll back all
+  components. Files are replaced atomically, and a backup that fails is removed instead of
+  leaving an unlisted folder that was never pruned.
+- **Settings saves are all-or-nothing.** If one setting in a batch (settings editor, playback
+  controls, accounts) or Fen Light's settings.db cannot be written, the settings already written are
+  put back before the error is reported.
+- **Typed settings are checked properly.** Integer settings take whole numbers only; NaN, infinity,
+  missing values and objects are refused instead of being stored as text.
+- **Playback stays undisturbed.** Watchdog and housekeeping notifications found just before a film
+  starts wait for the next quiet moment; the nightly checkpoint stops and discards itself when the TV
+  gets busy and retries 10 minutes later; the address notification at service start is skipped while
+  something plays; opening add-on or skin settings and Trakt sync from the API are refused while
+  playing (`playback_active`).
+- **Protected addon.xml values** containing `<`, `>`, `&` or line breaks are refused, so a re-apply
+  can no longer leave an add-on's addon.xml malformed.
+- **Kodi Manager's own access settings are not restored.** Restoring its folder keeps the live
+  `settings.xml` (token, LAN access, Enable writes), so a replaced token cannot come back.
+
 ## 0.7.5 — 2026-10-11 (prerelease)
 
 - Prune backup retention only after the replacement snapshot has completed; failed attempts no longer consume the retention allowance or hide valid backups.
