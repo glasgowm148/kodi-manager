@@ -77,3 +77,148 @@ def test_every_item_action_target_is_seen():
 def test_item_action_targets_are_never_browsable(target):
     with pytest.raises(ValueError):
         route_guard.check_directory(target)
+
+
+# --- Explicit listing allowlists for known add-ons ---------------------------------------
+
+from urllib.parse import quote  # noqa: E402
+
+HELPER = "plugin://plugin.video.tmdb.bingie.helper/?info="
+IPLAYER = "plugin://plugin.video.iplayerwww/?mode="
+SELF = "plugin://service.kodi.addonadmin/?mode="
+
+# Listing routes as the household skin, its widget groups and the widget cache use them
+# (route names from the add-ons' routers; ids and slugs are synthetic).
+SKIN_AND_CACHE_LISTINGS = [
+    "plugin://plugin.video.pov/",
+    "plugin://plugin.video.pov/?name=32107&iconImage=downloads.png&mode=navigator.downloads",
+    POV + "navigator.main&action=MovieList",
+    POV + "navigator.main&action=TVShowList",
+    POV + "navigator.because_you_watched",
+    POV + "navigator.trakt_watchlists",
+    POV + "build_movie_list&action=tmdb_movies_blockbusters",
+    POV + "build_movie_list&action=tmdb_movies_collection&key_id=10",
+    POV + "build_movie_list&action=tmdb_media_discover&name=Hidden+gems&url=https%3A%2F%2Fapi.example.invalid%2Fdiscover",
+    POV + "build_movie_list&action=trakt_movies_most_watched&reload=$INFO[Window(Home).Property(km_widgets)]",
+    POV + "build_movie_list&action=in_progress_movies",
+    POV + "build_tvshow_list&action=tmdb_tv_networks&key_id=49",
+    POV + "build_tvshow_list&action=trakt_watchlist_lists",
+    POV + "build_trakt_list.get_trakt_lists&list_type=my_lists",
+    POV + "build_trakt_list.get_trakt_trending_popular_lists&list_type=trending",
+    POV + "build_tmdb_list.get_tmdb_lists",
+    POV + "build_next_episode",
+    POV + "build_in_progress_episode",
+    "plugin://plugin.video.fenlight/?mode=navigator.main",
+    "plugin://plugin.video.fen/?mode=build_tvshow_list&action=trakt_tv_trending",
+    HELPER + "now_playing&tmdb_type=movie",
+    HELPER + "trakt_upnext&tmdb_type=tv&widget=true",
+    HELPER + "trakt_inprogress&tmdb_type=tv",
+    HELPER + "trakt_userlist&list_slug=play-time&user_slug=me",
+    HELPER + "trakt_watchlist_released&tmdb_type=movie",
+    HELPER + "discover&tmdb_type=movie&with_genres=16",
+    HELPER + "seasons&tmdb_type=tv&tmdb_id=1",
+    HELPER + "dir_calendar_trakt",
+    HELPER + "random_trending&tmdb_type=movie",
+    HELPER + "mdblist_userlist&list_id=1",
+    "plugin://plugin.video.themoviedb.helper/",
+    IPLAYER + "107&url=watching",
+    IPLAYER + "141&url=next",
+    IPLAYER + "128&url=https%3A%2F%2Fwww.bbc.co.uk%2Fiplayer%2Fepisodes%2Fplay-school&name=Play+School"
+              "&description=Songs+to+sing+and+play+along",
+    IPLAYER + "140&url=https%3A%2F%2Fwww.bbc.co.uk%2Fiplayer%2Fepisodes%2Fexample",
+    "plugin://plugin.video.iplayerwww/",
+]
+
+
+@pytest.mark.parametrize("source", SKIN_AND_CACHE_LISTINGS)
+def test_real_listing_routes_pass(source):
+    assert route_guard.blocked_reason(source) == ""
+    assert route_guard.check_directory(source) == source
+
+
+@pytest.mark.parametrize("source", [
+    # Routes outside the allowlists, even without an action word.
+    POV + "navigator", POV + "tmdb_movies", POV + "discover.router", POV + "discover.help",
+    POV + "build_navigate_to_page", POV + "build_trakt_list.search_trakt_lists", POV + "trakt.list_items",
+    POV + "torbox.browse_cloud", POV + "navigator.settings", POV + "navigator.search",
+    POV + "build_movie_list&mode=play_media",                    # a second mode= is ambiguous
+    "plugin://plugin.video.pov/build_movie_list",                 # POV never routes by path
+    HELPER + "play&tmdb_type=movie&tmdb_id=1", HELPER + "textviewer", HELPER + "imageviewer",
+    HELPER + "authenticate_trakt", HELPER + "dir_settings", HELPER + "dir_search", HELPER + "dir_multisearch",
+    HELPER + "user_discover&method=edit", HELPER + "trakt_sync",
+    IPLAYER + "1", IPLAYER + "104&keyword=x", IPLAYER + "118", IPLAYER + "119", IPLAYER + "122&url=x",
+    IPLAYER + "142&url=x&state=watched", IPLAYER + "201&url=x", IPLAYER + "202&url=x", IPLAYER + "203&url=x",
+    IPLAYER + "301&episode_id=x", IPLAYER + "302&episode_id=x",
+])
+def test_known_addon_routes_outside_the_allowlist_are_refused(source):
+    assert route_guard.blocked_reason(source)
+    with pytest.raises(ValueError):
+        route_guard.check_directory(source)
+
+
+def test_previous_false_positives_now_pass():
+    # The action-word check read "now_playing", "playing" in a description and "play-school"
+    # in an iPlayer programme URL as playback routes.
+    for source in (HELPER + "now_playing&tmdb_type=movie",
+                   IPLAYER + "128&url=x&description=Now+playing+on+BBC+One",
+                   IPLAYER + "128&url=https%3A%2F%2Fwww.bbc.co.uk%2Fiplayer%2Fepisodes%2Fplay-school"):
+        assert route_guard.blocked_reason(source) == "", source
+
+
+def test_other_parameters_of_a_known_listing_are_still_checked():
+    assert route_guard.blocked_reason(POV + "build_movie_list&action=delete_list") == "action=delete"
+    assert route_guard.blocked_reason(POV + "build_movie_list&isFolder=false") == "not a folder"
+    assert route_guard.blocked_reason(HELPER + "popular&tmdb_type=movie&command=clear_cache")
+
+
+def test_bingie_widgets_lists_but_never_plays():
+    widgets = "plugin://script.bingie.widgets/?action="
+    for action in ("recent", "popular", "random", "newrelease", "forgenre", "inprogress", "inprogressnextepisode", "mylist", "similar"):
+        assert route_guard.blocked_reason(widgets + action + "&mediatype=movies") == "", action
+    assert route_guard.blocked_reason(widgets + "play&dbid=1")
+    assert route_guard.blocked_reason("plugin://script.bingie.widgets/")
+    assert route_guard.blocked_reason("plugin://script.bingie.widgets/?action=")
+
+
+def test_kodi_manager_rows_check_their_source_too():
+    listing = POV + "build_movie_list&action=trakt_watchlist"
+    for mode in ("cached", "family"):
+        assert route_guard.blocked_reason(SELF + mode + "&source=" + quote(listing, safe="") + "&pages=2") == ""
+        assert route_guard.blocked_reason(SELF + mode + "&source=" + quote(POV + "play_media&tmdb_id=1", safe=""))
+        assert route_guard.blocked_reason(SELF + mode + "&source=https%3A%2F%2Fexample.invalid%2F")
+    assert route_guard.blocked_reason(SELF + "continue") == ""
+    assert route_guard.blocked_reason(SELF + "rows") == ""
+    assert route_guard.blocked_reason("plugin://service.kodi.addonadmin/") == ""
+    assert route_guard.blocked_reason(SELF + "dashboard")
+    nested = SELF + "cached&source=" + quote(SELF + "cached&source=" + quote(listing, safe=""), safe="")
+    assert route_guard.blocked_reason(nested) == ""
+    deeper = SELF + "cached&source=" + quote(nested, safe="")
+    assert route_guard.blocked_reason(deeper)
+
+
+def test_unknown_addons_fall_back_to_action_words():
+    assert route_guard.blocked_reason("plugin://plugin.video.example/?mode=list&genre=playful") == ""
+    assert route_guard.blocked_reason("plugin://plugin.video.example/?mode=tmdb_movies") == ""
+    assert route_guard.blocked_reason("plugin://plugin.video.example/?route=play") == "route=play"
+    assert route_guard.blocked_reason("plugin://plugin.video.example/play/1") == "path segment 'play'"
+
+
+def test_item_actions_of_tmdb_helper_items_are_refused():
+    helper_item = {"file": "plugin://plugin.video.tmdb.bingie.helper/?info=play&tmdb_type=movie&tmdb_id=603"}
+    _props, actions = item_actions(helper_item, "movie", HELPER + "trakt_watchlist&tmdb_type=movie")
+    assert actions
+    for _label, action in actions:
+        target = action[len("RunPlugin("):-1]
+        with pytest.raises(ValueError):
+            route_guard.check_directory(target)
+    with pytest.raises(ValueError):
+        route_guard.check_directory(helper_item["file"])
+
+
+def test_every_allowlisted_route_is_accepted_on_its_own():
+    for host, routes in route_guard.KNOWN_ROUTES.items():
+        for route in routes.exact:
+            source = "plugin://%s/?%s=%s" % (host, routes.key, route)
+            if routes.nested:
+                continue
+            assert route_guard.blocked_reason(source) == "", source

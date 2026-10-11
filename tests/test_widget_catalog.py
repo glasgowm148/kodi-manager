@@ -83,16 +83,16 @@ class CatalogTests(unittest.TestCase):
         kodi.jsonrpc = request
         return kodi
 
-    def folder(self, label, route='navigator', **metadata):
+    def folder(self, label, route='navigator.main', **metadata):
         return dict({'label': label, 'filetype': 'directory', 'file': 'plugin://plugin.video.pov/?mode=' + route}, **metadata)
 
     def test_automatic_children_are_safe_menu_routes_only(self):
         kodi = self.listing([
-            self.folder('Movies', 'navigator_movies'), self.folder('TV Shows', 'navigator_tvshows'),
+            self.folder('Movies', 'navigator.main&action=MovieList'), self.folder('TV Shows', 'navigator.main&action=TVShowList'),
             self.folder('A show', 'build_season_list', type='tvshow', year=2025),
             self.folder('Season 1', 'build_episode_list', type='season', season=1),
-            self.folder('Settings', 'navigator_settings'), self.folder('Search', 'navigator_search'),
-            self.folder('My Services', 'navigator'), self.folder('Next page', 'build_movie_list&page=2'),
+            self.folder('Settings', 'navigator.settings'), self.folder('Search', 'navigator.search'),
+            self.folder('My Services', 'myservices'), self.folder('Next page', 'build_movie_list&page=2'),
             self.folder('Malformed', file={'invalid': 'url'}),
         ])
         result = browse_directory(kodi, Index(), 'plugin://plugin.video.pov/')
@@ -174,7 +174,7 @@ class CatalogTests(unittest.TestCase):
             return {'result': {'files': []}}
         kodi.jsonrpc = request
         with ThreadPoolExecutor(max_workers=8) as pool:
-            results = list(pool.map(lambda n: browse_directory(kodi, Index(), 'plugin://plugin.video.pov/?mode=navigator&menu=' + str(n)), range(8)))
+            results = list(pool.map(lambda n: browse_directory(kodi, Index(), 'plugin://plugin.video.pov/?mode=navigator.main&menu=' + str(n)), range(8)))
         self.assertLessEqual(maximum, 2)
         self.assertTrue(all(result['classification'] == 'empty' for result in results))
 

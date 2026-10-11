@@ -597,7 +597,8 @@ LISTING_ROUTES = [
     "plugin://plugin.video.pov/?mode=build_trakt_list&slug=x&list_id=1&user=markus-kids-1&list_type=my_lists",
     "plugin://plugin.video.example/?mode=list&genre=playful&studio=Playground+Ltd",
     "plugin://plugin.video.pov/?mode=build_movie_list&action=tmdb_media_discover&name=Hidden+gems",
-    "plugin://plugin.video.pov/?mode=trakt_lists&action=popular",
+    # An add-on without a reviewed router: the action-word check decides.
+    "plugin://plugin.video.example/?mode=trakt_lists&action=popular",
     "plugin://plugin.video.fenlight/?mode=build_movie_list&action=tmdb_movies_latest_releases",
     "plugin://plugin.video.tmdb.bingie.helper/?info=trakt_trending&tmdb_type=movie&widget=true",
     "plugin://plugin.video.tmdb.bingie.helper/?info=trakt_ondeck_unwatched&tmdb_type=movie&widget=true",

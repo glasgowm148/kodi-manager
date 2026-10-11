@@ -124,7 +124,7 @@ class WidgetFilterTests(unittest.TestCase):
     def test_validated_source_invokes_only_directory_method(self):
         item = movie('PG')
         kodi = Kodi([item, movie('18')])
-        source = 'plugin://plugin.video.pov/?mode=tmdb_movies&genre=10751'
+        source = 'plugin://plugin.video.pov/?mode=build_movie_list&action=tmdb_movies_genres&genre_id=10751'
         result = collect_family_directory(kodi, Index(), source)
         self.assertEqual(result['files'], [item])
         self.assertEqual(result['source'], source)

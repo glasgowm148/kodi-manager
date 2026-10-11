@@ -113,6 +113,14 @@ the revision you edited from, not the one the preview returns: a different revis
 changed on the TV (another device or Kodi's own editor), and applying an older plan would undo that.
 The dashboard then re-reads the layout and continues only if that section is unchanged.
 
+Browse, row previews, family rows and cached rows only ever run read-only listings. For POV, Fen,
+Fen Light, TMDb Helper (and its Bingie fork), BBC iPlayer, Bingie Widgets and Kodi Manager's own
+rows, the routing parameter (`mode=`, `info=` or `action=`) must name one of that add-on's listing
+routes (`KNOWN_ROUTES` in `src/kodi_manager/route_guard.py`, taken from each router); any other
+route, a path-based route or a repeated routing parameter is refused with `400` `bad_request`.
+Other add-ons are refused when a query value or path segment reads as an action (play, settings,
+sign-in, cache, …).
+
 ## Cached rows (optional widget cache)
 
 | Method and path | Writes | Request | Response `data` |
