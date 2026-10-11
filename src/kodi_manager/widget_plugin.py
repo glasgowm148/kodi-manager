@@ -179,6 +179,25 @@ def _set_video_info(li, info, resume, unique_ids=None):
     set_video_info(li, info, resume=resume, unique_ids=unique_ids)
 
 
+def _legacy_resume(item, info):
+    """JSON-RPC ``resume``, or the ResumeTime/TotalTime properties older add-ons set instead."""
+    resume = dict(item.get("resume") or {})
+    legacy = {str(k).lower(): v for k, v in (item.get("properties") or {}).items()}
+    try:
+        if not resume.get("position") and legacy.get("resumetime"):
+            resume = {"position": float(legacy["resumetime"]),
+                      "total": float(legacy.get("totaltime") or info.get("duration") or 0)}
+    except (TypeError, ValueError):
+        pass
+    return resume
+
+
+def _native_resume(li):
+    """True when the ListItem has Kodi 20+'s InfoTagVideo.setResumePoint."""
+    tag = getattr(li, "getVideoInfoTag", lambda: None)()
+    return callable(getattr(tag, "setResumePoint", None))
+
+
 def render_directory(xbmcgui, xbmcplugin, handle, result):
     content = directory_content(result)
     xbmcplugin.setContent(handle, content)
@@ -194,7 +213,7 @@ def render_directory(xbmcgui, xbmcplugin, handle, result):
             if parsed.scheme != "plugin" or not re.fullmatch(r"plugin\.video\.[A-Za-z0-9_.-]+", parsed.netloc):
                 continue
             url = family_directory_url(url, result["max_rating"], result["family_only"])
-        li = xbmcgui.ListItem(label=item.get("label") or item.get("title") or "", path=url)
+        li = xbmcgui.ListItem(label=item.get("label") or item.get("title") or "", path=url, offscreen=True)
         metadata = item.get("info") if isinstance(item.get("info"), dict) else {}
         info = dict(metadata.get("video", metadata)) if isinstance(metadata.get("video", metadata), dict) else {}
         for key in ("title", "genre", "year", "mpaa", "plot", "showtitle", "tvshowtitle", "season", "episode", "playcount", "lastplayed", "mediatype", "imdbnumber", "originaltitle", "duration", "studio", "director", "tagline"):
@@ -208,7 +227,7 @@ def render_directory(xbmcgui, xbmcplugin, handle, result):
                                          "seasons": "season", "episodes": "episode"}.get(content)
         if "mediatype" not in info and media_type:
             info["mediatype"] = media_type
-        _set_video_info(li, info, item.get("resume") or {},
+        _set_video_info(li, info, _legacy_resume(item, info),
                         item.get("uniqueid") if isinstance(item.get("uniqueid"), dict) else None)
         art = dict(item.get("art") or {})
         if item.get("thumbnail"):
@@ -216,7 +235,10 @@ def render_directory(xbmcgui, xbmcplugin, handle, result):
         if item.get("fanart"):
             art.setdefault("fanart", item["fanart"])
         li.setArt(art)
+        native_resume = _native_resume(li)
         for key, value in (item.get("properties") or {}).items():
+            if native_resume and str(key).lower() in ("resumetime", "totaltime"):
+                continue  # Set through the info tag's resume point instead.
             li.setProperty(str(key), str(value))
         if info.get('lastplayed'):
             li.setProperty('km_watched_today', 'true' if str(info['lastplayed'])[:10] == datetime.now().strftime('%Y-%m-%d') else 'false')
