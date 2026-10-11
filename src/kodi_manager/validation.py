@@ -67,6 +67,8 @@ def _number_text(value, whole):
     if isinstance(value, bool):
         raise ValueError("Expected a number")
     text = str(value).strip()
+    if "_" in text:  # Python reads "1_0" as 10; Kodi does not
+        raise ValueError("Expected a number")
     try:
         number = float(text)
     except ValueError:

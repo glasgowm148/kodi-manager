@@ -28,6 +28,8 @@
 - **Account checks work on Kodi's Python 3.8.** The TorBox expiry date is parsed without
   `datetime.strptime`, which fails once another add-on has used it, and each account check runs on
   its own so one failure no longer hides the others.
+- **Fen Light settings.db numbers are checked like settings.xml ones.** NaN, infinity, overflowing
+  values such as `1e999` and Python-only forms such as `1_0` are refused in both places.
 
 ## 0.7.5 — 2026-10-11 (prerelease)
 

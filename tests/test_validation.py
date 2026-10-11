@@ -44,9 +44,20 @@ class ValidationTests(unittest.TestCase):
         for typ in ("number", "slider"):
             s = {"id": "volume", "label": "Volume", "type": typ}
             self.assertEqual(coerce_value(s, "0.5"), "0.5")
-            for bad in ("nan", "inf", False):
+            for bad in ("nan", "inf", "1e999", "1_0", False):
                 with self.assertRaises(ValueError, msg=repr(bad)):
                     coerce_value(s, bad)
+
+    def test_fen_light_database_numbers_are_checked_like_settings_xml(self):
+        from fenlight_db import coerce_db_value
+        self.assertEqual(coerce_db_value("number", " 0.5 "), "0.5")
+        self.assertEqual(coerce_db_value("integer", "5.0"), "5")
+        for typ in ("number", "integer"):
+            for bad in ("nan", "inf", "-Infinity", "1e999", "1_0", True, "", "ten"):
+                with self.assertRaises(ValueError, msg="%s %r" % (typ, bad)):
+                    coerce_db_value(typ, bad)
+        with self.assertRaises(ValueError):
+            coerce_db_value("integer", "1.5")
 
     def test_missing_or_structured_values_are_not_stored_as_python_text(self):
         for typ in ("text", "string", "password", "integer", "enum"):

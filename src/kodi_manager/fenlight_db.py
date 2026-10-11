@@ -13,10 +13,10 @@ from pathlib import Path
 
 try:
     from .kodi_api import translate
-    from .validation import coerce_value
+    from .validation import coerce_value, _number_text
 except ImportError:
     from kodi_api import translate
-    from validation import coerce_value
+    from validation import coerce_value, _number_text
 
 FENLIGHT_ID = "plugin.video.fenlight"
 DB_EDITABLE_TYPES = {"boolean", "bool", "string", "text", "path", "name", "action", "integer", "int", "number"}
@@ -87,22 +87,9 @@ def coerce_db_value(setting_type, value):
         raise ValueError("Expected a single value")
     if stype in ("boolean", "bool"):
         return coerce_value({"type": "bool"}, value)
-    if stype in ("integer", "int"):
-        if isinstance(value, bool):
-            raise ValueError("Expected a whole number")
-        try:
-            return str(int(str(value).strip()))
-        except ValueError:
-            raise ValueError("Expected a whole number") from None
-    if stype == "number":
-        if isinstance(value, bool):
-            raise ValueError("Expected a number")
-        text = str(value).strip()
-        try:
-            float(text)
-        except ValueError:
-            raise ValueError("Expected a number") from None
-        return text
+    if stype in ("integer", "int", "number"):
+        # The same checks as settings.xml: finite, no "1_0", whole for integers.
+        return _number_text(value, whole=stype != "number")
     return "" if value is None else str(value)
 
 
