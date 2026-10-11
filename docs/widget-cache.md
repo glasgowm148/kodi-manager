@@ -94,6 +94,17 @@ Add these to a cached path:
 
 ## Row item limit
 
+Cached URLs accept `exclude_genres=family,kids` and `hide_watched=true` to curate a
+row from its existing metadata. Genre matching ignores case; items without genre
+metadata remain visible. Preferences belong to the row, so profiles sharing the
+same source can show different suggestions without changing the cached source or
+Trakt list. This is a discovery preference, not an age-certification filter.
+
+Filtered rows keep these preferences when opening **View more**. Its
+`full=true` URL displays the entire cached selection without the skin's row item
+limit. If more provider pages exist, the provider's normal browser remains
+available beyond that selection.
+
 Many skins show only so many items per row. Set **Row item limit** to that number so the View more
 item is never cut off. With 0, Kodi Manager uses Bingie's own limit
 (`Skin.String(WidgetsGlobalLimit)`) when it finds one.

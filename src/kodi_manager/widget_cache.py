@@ -70,7 +70,7 @@ def strip_skin_reload(source):
     return re.sub(r"&reload=\$INFO\[[^\]]*\]", "", source)
 
 
-def cache_url(source, reload=True, pages=None, hide_watched=False):
+def cache_url(source, reload=True, pages=None, hide_watched=False, exclude_genres=(), full=False):
     """Cached widget URL. ``pages`` reads that many source pages (following the
     add-on's Next page item); ``hide_watched`` drops watched items when shown."""
     params = {"mode": "cached", "source": validate_source(strip_skin_reload(source))}
@@ -78,8 +78,33 @@ def cache_url(source, reload=True, pages=None, hide_watched=False):
         params["pages"] = str(_clamp_pages(pages))
     if hide_watched:
         params["hide_watched"] = "true"
+    if exclude_genres:
+        params["exclude_genres"] = ",".join(normalize_genres(exclude_genres))
+    if full:
+        params["full"] = "true"
     url = PLUGIN_URL + "?" + urlencode(params)
     return url + "&reload=" + RELOAD_INFO if reload else url
+
+
+def normalize_genres(values):
+    """Bound display preferences; absent metadata never excludes an item."""
+    if not isinstance(values, (list, tuple, set)) or len(values) > 16:
+        raise ValueError("Genres must be a list of at most 16 names")
+    result = set()
+    for value in values:
+        if not isinstance(value, str) or not value.strip() or len(value) > 64 or "," in value:
+            raise ValueError("Invalid genre name")
+        result.add(value.strip().casefold())
+    return tuple(sorted(result))
+
+
+def genre_excluded(item, excluded):
+    genres = item.get("genre") or []
+    if isinstance(genres, str):
+        genres = re.split(r"\s*[,/|;]\s*", genres)
+    if not isinstance(genres, (list, tuple)):
+        return False
+    return bool(set(excluded).intersection(g.strip().casefold() for g in genres if isinstance(g, str)))
 
 
 def source_from_cache_url(url):
@@ -527,7 +552,7 @@ def _set_info(xbmc, li, item, kind):
 
 
 def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable=True,
-           hide_watched=False, view_more=None, limit=0, view_more_art=None):
+           hide_watched=False, view_more=None, limit=0, view_more_art=None, exclude_genres=()):
     content = entry.get("content") or content_for(entry["source"], entry["files"])
     xbmcplugin.setContent(handle, content)
     today = today or time.strftime("%Y-%m-%d")
@@ -537,6 +562,8 @@ def render(xbmc, xbmcgui, xbmcplugin, handle, entry, today=None, helper_playable
         from item_actions import item_actions
     items = []
     for item in entry["files"]:
+        if genre_excluded(item, exclude_genres):
+            continue
         if hide_watched and int(item.get("playcount") or 0) > 0:
             continue
         url = item["file"]
@@ -630,6 +657,8 @@ def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
         query = parse_qs(argv[2].lstrip("?"))
         source = validate_source(query.get("source", [""])[0])
         pages, hide_watched = row_options(query)
+        excluded = normalize_genres(query.get("exclude_genres", [""])[0].split(",")) if query.get("exclude_genres") else ()
+        full = query.get("full") == ["true"]
         cache = WidgetCache(cache_root(xbmcvfs))
         entry = cache.load(source)
         if entry is None:
@@ -646,9 +675,16 @@ def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
             elif cache.is_stale(entry):
                 cache.request(source, priority=True)
             cache.touch(source)
+        more = view_more_url(source, entry.get("more"))
+        if excluded and not full:
+            more = cache_url(source, reload=False, pages=pages, hide_watched=hide_watched,
+                             exclude_genres=excluded, full=True)
+        elif full and not entry.get("more"):
+            more = None
         render(xbmc, xbmcgui, xbmcplugin, handle, entry, helper_playable=helper_resolves(source),
-               hide_watched=hide_watched, view_more=view_more_url(source, entry.get("more")),
-               limit=skin_widget_limit(xbmc, configured_row_limit()), view_more_art=entry.get("next_art"))
+               hide_watched=hide_watched, view_more=more,
+               limit=0 if full else skin_widget_limit(xbmc, configured_row_limit()),
+               view_more_art=entry.get("next_art"), exclude_genres=excluded)
     except Exception as exc:
         if cache is not None and source is not None:
             try:

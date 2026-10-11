@@ -459,6 +459,50 @@ def test_render_hides_watched_on_request_and_appends_view_more():
     assert [li.label for _, li, _ in plugin.items] == ["Film 1-0", "Film 1-1", "Film 1-2"]
 
 
+def test_genre_preferences_roundtrip_without_changing_shared_cache_identity():
+    url = wc.cache_url(MOVIES, exclude_genres=[" Family ", "Kids", "family"])
+    query = parse_qs(urlsplit(url).query)
+    assert query["exclude_genres"] == ["family,kids"]
+    assert wc.source_from_cache_url(url) == MOVIES
+    for invalid in ("Family", [""], ["Family,Kids"], [None], ["x" * 65]):
+        with pytest.raises(ValueError):
+            wc.normalize_genres(invalid)
+
+
+def test_genre_filter_keeps_unclassified_items_and_fills_row_before_limit():
+    files = listing("Family film", "Unclassified", "Crime film", "Watched film")["result"]["files"][:-1]
+    files[0]["genre"] = "Adventure / Family"
+    files[2]["genre"] = ["Crime", None]
+    files[3]["playcount"] = 1
+    plugin = FakePlugin()
+    wc.render(SimpleNamespace(), SimpleNamespace(ListItem=FakeListItem), plugin, 1,
+              {"source": MOVIES, "files": files, "content": "movies"},
+              exclude_genres=("family", "kids"), hide_watched=True, limit=3, view_more=MOVIES)
+    assert [li.label for _, li, _ in plugin.items] == ["Unclassified", "Crime film", "View more"]
+    assert plugin.items[1][0] == files[2]["file"]
+
+
+def test_filtered_view_more_keeps_preferences_and_shows_entire_cached_list(tmp_path, monkeypatch):
+    files = listing("Family", *["Crime %d" % i for i in range(9)])["result"]["files"][:-1]
+    files[0]["genre"] = ["Family"]
+    rpc = FakeRPC({"result": {"files": files}})
+    xbmc, gui, plugin, vfs = kodi_modules(tmp_path, rpc)
+    cache = wc.WidgetCache(str(tmp_path))
+    cache.save(MOVIES, files, more=False)
+    monkeypatch.setattr(wc, "configured_row_limit", lambda: 4)
+    url = wc.cache_url(MOVIES, exclude_genres=["Family"], hide_watched=True, reload=False)
+    wc.serve(["x", "1", "?" + url.split("?", 1)[1]], xbmc, gui, plugin, vfs)
+    assert len(plugin.items) == 4 and plugin.items[-1][1].label == "View more"
+    more = plugin.items[-1][0]
+    assert parse_qs(urlsplit(more).query)["exclude_genres"] == ["family"]
+    assert parse_qs(urlsplit(more).query)["hide_watched"] == ["true"]
+    plugin.items.clear()
+    wc.serve(["x", "1", "?" + more.split("?", 1)[1]], xbmc, gui, plugin, vfs)
+    assert [li.label for _, li, _ in plugin.items] == ["Crime %d" % i for i in range(9)]
+    assert rpc.calls == []
+    assert cache.load(MOVIES)["files"] == files
+
+
 def test_serve_with_more_pages_than_cached_queues_a_deeper_refresh(tmp_path):
     rpc = PagedRPC(pages=5)
     xbmc, gui, plugin, vfs = kodi_modules(tmp_path, rpc)
