@@ -8,7 +8,9 @@ import tarfile
 from pathlib import Path, PurePosixPath
 from zipfile import ZipFile
 
-PRIVATE_PARTS = {".private", ".venv", "__pycache__", "backups", "device_fixes"}
+# household.py is the optional private extension module (src/kodi_manager/extension.py):
+# private builds add it; a public archive must never carry one.
+PRIVATE_PARTS = {".private", ".venv", "__pycache__", "backups", "device_fixes", "household.py"}
 PRIVATE_SUFFIXES = {".apk", ".jar", ".key", ".pem", ".keystore", ".log", ".db", ".sqlite"}
 ROOT = Path(__file__).resolve().parents[1]
 ADDON_ID = "service.kodi.addonadmin"
