@@ -154,6 +154,7 @@ function catalogueHarness(layoutRows=[], options={}) {
     IntersectionObserver:class {constructor(callback){context.intersection=callback;}observe(){}disconnect(){}},navigator:{clipboard:{writeText:async()=>{}}},prompt:()=>null,confirm:()=>true,promptDialog:async()=>null,confirmDialog:async()=>true,copyText:async()=>'clipboard',
     api:async (path,body)=>{
       calls.push({path,body});
+      if(options.api){const value=await options.api(path,body,calls);if(value!==undefined)return value;}
       if(path==='/api/widgets/sources')return {sources:options.sources || [{addon_id:'plugin.video.pov',label:'POV',path:rootPath,enabled:true,traversable:true}]};
       if(path==='/api/widgets/layout')return {revision:'revision-1',max_rows:20,sections:[{id:'section-1',label:options.sectionLabel || 'Movies',kind:options.sectionKind || 'hub',editable:options.editable !== false,rows:layoutRows}],new_section:{available:false}};
       if(path==='/api/widgets/row-preview' && options.rowPreview)return options.rowPreview;
@@ -445,4 +446,66 @@ test('Load preview reads only the explicitly promoted folder and does not start 
   assert.equal(mediaRequests(h).at(-1),h.lists[12].path);
   assert.ok(h.rows().some(row=>row.innerHTML.includes('Title 12')));
   assert.ok(!mediaRequests(h).includes(h.lists[13].path));
+});
+
+function layoutHarness({storage,previewRevision='revision-1',freshRows,freshRevision}={}) {
+  const rows=[{id:'row-a',label:'Popular',path:'plugin://plugin.video.pov/?mode=a',action:'ActivateWindow(Videos,plugin://plugin.video.pov/?mode=a,return)'},{id:'row-b',label:'Latest',path:'plugin://plugin.video.pov/?mode=b',action:'ActivateWindow(Videos,plugin://plugin.video.pov/?mode=b,return)'}];
+  let loads=0;
+  const h=catalogueHarness(rows,{sources:[],storage,rowPreview:{status:'ok',items:[]},api:(path,body)=>{
+    if(path==='/api/widgets/layout' && ++loads>1 && freshRows)return {revision:freshRevision,max_rows:20,sections:[{id:'section-1',label:'Movies',kind:'hub',editable:true,rows:freshRows(rows)}],new_section:{available:false}};
+    if(path==='/api/widgets/layout/preview')return {revision:previewRevision,can_apply:true,reasons:[]};
+    if(path==='/api/widgets/layout/apply')return {backup_id:'skin-layout-1'};
+  }});
+  const review=async()=>{const button=h.elements.get('#bs-review');await button.onclick({currentTarget:button});};
+  const apply=async()=>{const button=h.elements.get('#bs-apply');await button.onclick({currentTarget:button});return h.calls.filter(call=>call.path==='/api/widgets/layout/apply');};
+  return {h,rows,review,apply};
+}
+
+test('Home layout apply carries the revision the draft was loaded from', async () => {
+  const {h,review,apply}=layoutHarness();
+  await settleCatalogue(h);
+  await h.click({moveRow:'0,1'});
+  await review();
+  const applies=await apply();
+  assert.equal(applies.length,1);
+  assert.equal(applies[0].body.expected_revision,'revision-1');
+});
+
+test('a draft started before the TV layout changed is refused at review instead of overwriting newer rows', async () => {
+  const {h,review}=layoutHarness({previewRevision:'revision-2',freshRevision:'revision-2',freshRows:rows=>[...rows,{id:'row-c',label:'Added on the TV',path:'plugin://plugin.video.pov/?mode=c',action:'x'}]});
+  await settleCatalogue(h);
+  await h.click({moveRow:'0,1'});
+  await review();
+  assert.equal(h.elements.get('#bs-review-content')?.innerHTML ?? '','','No apply dialog for a stale draft');
+  assert.match(h.elements.get('#bs-notice').textContent,/changed on your TV/);
+  assert.equal(h.elements.get('#bs-notice').className,'bs-notice bs-error');
+  assert.ok(!h.calls.some(call=>call.path==='/api/widgets/layout/apply'));
+});
+
+test('an unrelated TV change keeps a draft usable when its own section is unchanged', async () => {
+  const {h,review,apply}=layoutHarness({previewRevision:'revision-2',freshRevision:'revision-2',freshRows:rows=>rows});
+  await settleCatalogue(h);
+  await h.click({moveRow:'0,1'});
+  await review();
+  assert.match(h.elements.get('#bs-review-content').innerHTML,/Apply to TV/);
+  const applies=await apply();
+  assert.equal(applies[0].body.expected_revision,'revision-2');
+});
+
+test('a restored browser draft adopts the current revision only when its base still matches the TV', async () => {
+  const storage=new Map();
+  const first=layoutHarness({storage});
+  await settleCatalogue(first.h);
+  await first.h.click({moveRow:'0,1'});
+  const saved=JSON.parse(storage.get('bingie_studio_drafts_v2'));
+  saved['section-1'].revision='revision-0';
+  storage.set('bingie_studio_drafts_v2',JSON.stringify(saved));
+  const second=layoutHarness({storage});
+  await settleCatalogue(second.h);
+  assert.equal(second.h.elements.get('#bs-review').disabled,false,'restored draft is still dirty');
+  await second.review();
+  const applies=await second.apply();
+  assert.equal(applies.length,1);
+  assert.equal(applies[0].body.expected_revision,'revision-1');
+  assert.deepEqual(JSON.parse(JSON.stringify(applies[0].body.rows.map(row=>row.id))),['row-b','row-a']);
 });
