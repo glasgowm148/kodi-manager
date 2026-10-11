@@ -22,7 +22,10 @@ for checkpoints. Keep a separate private copy before replacing a customized inst
 - **Kodi Manager itself.** Restoring Kodi Manager's own folder keeps its current `settings.xml`
   (access token, LAN access, Enable writes); change those in Kodi.
 - **Nightly checkpoint.** Taken after 03:00 while the TV is idle. If something starts playing while it
-  is copying, it stops, deletes the partial copy and tries again later.
+  is copying, or Kodi quits or switches profile, it stops, deletes the partial copy and tries again
+  later.
+- **Which profile.** Backups, restores and checkpoints always use the active profile's
+  `addon_data`, as Kodi does; a folder that only exists in the master profile is not included.
 
 Restores need **Enable writes**. If an add-on does not pick up restored settings, restart Kodi when
 viewing has finished, then check the settings and behaviour: an HTTP success alone does not prove the
