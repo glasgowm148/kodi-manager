@@ -60,3 +60,45 @@ class RenderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CancellationTests(unittest.TestCase):
+    def tearDown(self):
+        widget_plugin._active_invocation = None
+
+    def test_a_cancelled_invocation_stops_rendering(self):
+        invocation = Mock()
+        invocation.cancelled.side_effect = [False, True]
+        widget_plugin._active_invocation = invocation
+        gui = SimpleNamespace(ListItem=Mock(return_value=Mock()))
+        plugin = Mock()
+        files = [{"file": "plugin://plugin.video.example/?mode=play&id=%d" % n} for n in range(3)]
+        widget_plugin.render_directory(gui, plugin, 7, dict(RESULT, files=files))
+        self.assertEqual(plugin.addDirectoryItem.call_count, 1)
+        plugin.endOfDirectory.assert_called_once_with(7, succeeded=False, cacheToDisc=False)
+
+    def test_run_answers_a_cancelled_call_without_work(self):
+        from unittest.mock import patch
+        import profile_transition
+        invocation = Mock()
+        invocation.cancelled.return_value = True
+        invocation.__enter__ = Mock(return_value=invocation)
+        invocation.__exit__ = Mock(return_value=False)
+        plugin = Mock()
+        with patch.object(profile_transition, "Invocation", Mock(return_value=invocation)), \
+                patch.dict(sys.modules, {"xbmcplugin": plugin}), patch.object(widget_plugin, "main") as main:
+            widget_plugin.run(["plugin://service.kodi.addonadmin/", "4", "?mode=cached"])
+        main.assert_not_called()
+        plugin.endOfDirectory.assert_called_once_with(4, succeeded=False, cacheToDisc=False)
+        self.assertIsNone(widget_plugin._active_invocation)
+
+    def test_run_calls_main_inside_the_invocation(self):
+        from unittest.mock import patch
+        import profile_transition
+        seen = []
+        argv = ["plugin://service.kodi.addonadmin/", "4", "?mode=rows"]
+        with patch.object(widget_plugin, "main", side_effect=lambda a: seen.append((a, widget_plugin._active_invocation))):
+            widget_plugin.run(argv)
+        self.assertEqual(seen[0][0], argv)
+        self.assertIsInstance(seen[0][1], profile_transition.Invocation)
+        self.assertFalse(seen[0][1].cancelled())

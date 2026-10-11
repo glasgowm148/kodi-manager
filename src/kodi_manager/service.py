@@ -9,6 +9,7 @@ except ImportError:
     xbmc = None
 
 try:
+    from . import profile_transition
     from .auth import generate_token
     from .kodi_api import KodiAPI, service_addon, translate
     from .netconfig import DEFAULT_PORT, effective_host, parse_int
@@ -16,6 +17,7 @@ try:
     from .shield_exit import ShieldExitGuard, supported_build
     from .widget_cache import Refresher, WidgetCache, jsonrpc_via, RELOAD_PROPERTY
 except ImportError:
+    import profile_transition
     from auth import generate_token
     from kodi_api import KodiAPI, service_addon, translate
     from netconfig import DEFAULT_PORT, effective_host, parse_int
@@ -314,6 +316,10 @@ def apply_settings_change(kodi, server, old_config, new_config, web_root, server
 
 
 def main():
+    # A coordinated profile switch may already be cancelling this generation.
+    startup_monitor = profile_transition.Monitor() if xbmc else None
+    if startup_monitor is not None and startup_monitor.abortRequested():
+        return
     addon = service_addon()
     kodi = KodiAPI()
     if not addon:
@@ -326,6 +332,8 @@ def main():
         pass
     if not config["enabled"]:
         kodi.log("Service disabled")
+        return
+    if startup_monitor is not None and startup_monitor.abortRequested():
         return
     root = os.path.abspath(addon.getAddonInfo("path"))
     web_root = os.path.join(root, "resources", "web")
@@ -363,8 +371,10 @@ def main():
         except Exception as error:
             kodi.log('Connection watchdog unavailable: %s' % type(error).__name__)
     if xbmc:
-        class ServiceMonitor(xbmc.Monitor):
+        class ServiceMonitor(profile_transition.Monitor):
             def onSettingsChanged(self):
+                if self.abortRequested():
+                    return
                 try:
                     new_config = load_config(service_addon())
                     kodi.installer_seed = new_config.get("installer_seed", {})
@@ -374,6 +384,8 @@ def main():
                     kodi.log("Settings reload failed: %s" % type(error).__name__)
 
             def onNotification(self, sender, method, data):
+                if self.abortRequested() and method != "System.OnQuit":
+                    return
                 if method in ('Player.OnPlay', 'Player.OnAVStart') and refresher:
                     if refresher.playback_started_at is None:
                         refresher.playback_started()
@@ -408,7 +420,12 @@ def main():
             kodi.log('Shield exit guard unavailable: %s' % type(error).__name__)
         if running["server"]:
             running["server"].stop()
+        kodi.log('Manager network shutdown complete')
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        # Acknowledge a coordinated profile switch (a no-op without a coordinator).
+        profile_transition.drained("service.kodi.addonadmin")

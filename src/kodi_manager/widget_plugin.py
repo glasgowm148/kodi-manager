@@ -17,6 +17,9 @@ except ImportError:
 
 _PROGRESS_ROUTES = {('build_tvshow_list', 'in_progress_tvshows'),
                     ('build_continue_episode', ''), ('build_next_episode', ''), ('build_in_progress_episode', '')}
+# The running plugin call's profile_transition.Invocation (see run()); a profile
+# switch cancels it so long directory work stops before Kodi takes its locks.
+_active_invocation = None
 _MAX_PROGRESS_PAGES = 6
 _MAX_PROGRESS_ITEMS = 600
 
@@ -198,10 +201,17 @@ def _native_resume(li):
     return callable(getattr(tag, "setResumePoint", None))
 
 
+def _cancelled():
+    return _active_invocation is not None and bool(_active_invocation.cancelled())
+
+
 def render_directory(xbmcgui, xbmcplugin, handle, result):
     content = directory_content(result)
     xbmcplugin.setContent(handle, content)
     for item in result["files"]:
+        if _cancelled():
+            xbmcplugin.endOfDirectory(handle, succeeded=False, cacheToDisc=False)
+            return
         url = item.get("file") or item.get("url") or ""
         if not url:
             continue
@@ -269,6 +279,8 @@ def focus_episode(result):
         wanted = int(query['km_focus_episode'][0])
         season = int(query['season'][0])
         for _ in range(80):
+            if _cancelled():
+                return
             current = parse_qs(urlsplit(xbmc.getInfoLabel('Container.FolderPath')).query)
             if (current.get('source') == [result['source']] and
                 xbmc.getCondVisibility('Window.IsActive(videos)') and
@@ -361,5 +373,30 @@ def main(argv=None):
         xbmcplugin.endOfDirectory(handle, succeeded=False, cacheToDisc=False)
 
 
+def run(argv=None):
+    """Plugin entry point: main() inside a profile-transition invocation (a no-op without a coordinator)."""
+    global _active_invocation
+    try:
+        from .profile_transition import Invocation
+    except ImportError:
+        from profile_transition import Invocation
+    argv = sys.argv if argv is None else argv
+    with Invocation("service.kodi.addonadmin") as invocation:
+        _active_invocation = invocation
+        try:
+            if invocation.cancelled():
+                import xbmcplugin
+                try:
+                    handle = int(argv[1])
+                except (IndexError, ValueError):
+                    handle = -1
+                if handle >= 0:
+                    xbmcplugin.endOfDirectory(handle, succeeded=False, cacheToDisc=False)
+            else:
+                main(argv)
+        finally:
+            _active_invocation = None
+
+
 if __name__ == "__main__":
-    main()
+    run()
