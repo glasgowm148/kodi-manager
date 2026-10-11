@@ -8,7 +8,7 @@ try:
     from .validation import setting_editable, coerce_value, redact
     from .kodi_api import read_text, translate
     from .account_evidence import credential_present, summarize_account, account_provider, is_auth_field
-    from .backup import allocate_backup, finish_backup, create_file_backup, _copytree
+    from .backup import allocate_backup, finish_backup, discard_on_failure, create_file_backup, _copytree
     from . import fenlight_db
     from .fenlight_db import DB_EDITABLE_TYPES
     from .write_policy import check_writable
@@ -18,7 +18,7 @@ except ImportError:
     from validation import setting_editable, coerce_value, redact
     from kodi_api import read_text, translate
     from account_evidence import credential_present, summarize_account, account_provider, is_auth_field
-    from backup import allocate_backup, finish_backup, create_file_backup, _copytree
+    from backup import allocate_backup, finish_backup, discard_on_failure, create_file_backup, _copytree
     import fenlight_db
     from fenlight_db import DB_EDITABLE_TYPES
     from write_policy import check_writable
@@ -427,18 +427,19 @@ def build_pipeline(kodi, index):
 
 def pipeline_backup(index, kodi_version="", pipeline_obj=None):
     ts, backup_id, dest = allocate_backup("pipeline")
-    included, skipped = [], []
-    for aid in PIPELINE_IDS:
-        addon = index.get(aid)
-        src = addon.get("addon_data_path") if addon else ""
-        if src and os.path.isdir(src):
-            _copytree(src, os.path.join(dest, aid))
-            included.append(aid)
-        else:
-            skipped.append(aid)
-    summary = (pipeline_obj or {}).get("summary", {})
-    manifest = {"backup_id": backup_id, "timestamp": ts, "included_components": included, "skipped_components": skipped, "Kodi version": kodi_version, "active_skin": summary.get("active_skin", {}), "detected_helper": summary.get("helper", {}), "detected_primary_player": summary.get("primary_player", {}), "account_status": redact(summary.get("accounts", {})), "warnings": summary.get("health", {}).get("warnings", [])}
-    finish_backup("pipeline", dest, manifest)
+    with discard_on_failure(dest):
+        included, skipped = [], []
+        for aid in PIPELINE_IDS:
+            addon = index.get(aid)
+            src = addon.get("addon_data_path") if addon else ""
+            if src and os.path.isdir(src):
+                _copytree(src, os.path.join(dest, aid))
+                included.append(aid)
+            else:
+                skipped.append(aid)
+        summary = (pipeline_obj or {}).get("summary", {})
+        manifest = {"backup_id": backup_id, "timestamp": ts, "included_components": included, "skipped_components": skipped, "Kodi version": kodi_version, "active_skin": summary.get("active_skin", {}), "detected_helper": summary.get("helper", {}), "detected_primary_player": summary.get("primary_player", {}), "account_status": redact(summary.get("accounts", {})), "warnings": summary.get("health", {}).get("warnings", [])}
+        finish_backup("pipeline", dest, manifest)
     return manifest
 
 

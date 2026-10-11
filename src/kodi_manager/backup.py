@@ -1,6 +1,8 @@
+import contextlib
 import json
 import os
 import shutil
+import tempfile
 import time
 from pathlib import Path
 import re
@@ -15,6 +17,14 @@ except ImportError:
 
 
 DEFAULT_RETENTION = 20
+
+
+class BackupAborted(Exception):
+    """A snapshot was stopped on request (for example because playback started).
+
+    The partial snapshot is discarded; ``deferred`` tells callers to retry later.
+    """
+    deferred = True
 _retention = DEFAULT_RETENTION
 SELF_ID = "service.kodi.addonadmin"
 
@@ -81,14 +91,35 @@ def _source_files(src, skip_top=()):
     return files
 
 
-def _copytree(src, dst, skip_top=()):
+def _copy_file(src, dst):
+    """Copy one file via a temporary sibling, so ``dst`` is never left half-written."""
+    fd, tmp = tempfile.mkstemp(prefix="." + os.path.basename(dst) + ".", suffix=".km-tmp",
+                               dir=os.path.dirname(dst))
+    os.close(fd)
+    try:
+        shutil.copy2(src, tmp, follow_symlinks=False)
+        os.replace(tmp, dst)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _copytree(src, dst, skip_top=(), should_stop=None):
     """Copy the regular files under src into dst. Symlinks are skipped on both sides:
-    a link in src is not followed, and a link in dst is replaced, never written through."""
+    a link in src is not followed, and a link in dst is replaced, never written through.
+
+    Each file is replaced atomically. ``should_stop`` is asked before every file;
+    when it returns true the copy raises BackupAborted."""
     files = []
     if not src or not os.path.isdir(src):
         return files
     os.makedirs(dst, exist_ok=True)
     for rel_file in _source_files(src, skip_top):
+        if should_stop is not None and should_stop():
+            raise BackupAborted("Snapshot stopped before it completed")
         target = dst
         for part in os.path.dirname(rel_file).split(os.sep) if os.path.dirname(rel_file) else []:
             target = os.path.join(target, part)
@@ -99,9 +130,23 @@ def _copytree(src, dst, skip_top=()):
         d = os.path.join(dst, rel_file)
         if os.path.islink(d):
             os.remove(d)
-        shutil.copy2(os.path.join(src, rel_file), d, follow_symlinks=False)
+        _copy_file(os.path.join(src, rel_file), d)
         files.append(rel_file)
     return files
+
+
+@contextlib.contextmanager
+def discard_on_failure(dest):
+    """Remove a snapshot folder whose copy did not finish.
+
+    An unfinished snapshot has no manifest, so it is never listed, restored or
+    pruned: without this it would hold its disk space forever.
+    """
+    try:
+        yield
+    except BaseException:
+        shutil.rmtree(dest, ignore_errors=True)
+        raise
 
 
 def allocate_backup(scope, protect=()):
@@ -191,19 +236,20 @@ def create_backup(addon_info, kodi_version="", adapter="", protect=()):
     aid = addon_info["addon_id"]
     ts, backup_id, dest = allocate_backup(aid, protect)
     src = addon_info.get("addon_data_path") or translate("special://profile/addon_data/%s" % aid)
-    files = _copytree(src, os.path.join(dest, "addon_data"), skip_top=("backups",) if aid == SELF_ID else ())
-    manifest = {
-        "backup_id": backup_id,
-        "addon_id": aid,
-        "addon_name": addon_info.get("name", ""),
-        "addon_version": addon_info.get("version", ""),
-        "timestamp": ts,
-        "files_copied": len(files),
-        "Kodi version": kodi_version,
-        "adapter": adapter or addon_info.get("adapter_name", ""),
-    }
-    os.makedirs(os.path.join(dest, "addon_data"), exist_ok=True)
-    finish_backup(aid, dest, manifest, protect)
+    with discard_on_failure(dest):
+        files = _copytree(src, os.path.join(dest, "addon_data"), skip_top=("backups",) if aid == SELF_ID else ())
+        manifest = {
+            "backup_id": backup_id,
+            "addon_id": aid,
+            "addon_name": addon_info.get("name", ""),
+            "addon_version": addon_info.get("version", ""),
+            "timestamp": ts,
+            "files_copied": len(files),
+            "Kodi version": kodi_version,
+            "adapter": adapter or addon_info.get("adapter_name", ""),
+        }
+        os.makedirs(os.path.join(dest, "addon_data"), exist_ok=True)
+        finish_backup(aid, dest, manifest, protect)
     return manifest
 
 
@@ -211,18 +257,19 @@ def create_file_backup(scope, files, kodi_version="", note=""):
     """Snapshot only the given files: {relative name: absolute path}. Missing files are recorded."""
     ts, backup_id, dest = allocate_backup(scope)
     copied, missing = [], []
-    for rel, path in sorted(files.items()):
-        target = _backup_path(scope, backup_id, *rel.split("/"))
-        if path and os.path.isfile(path) and not os.path.islink(path):
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            shutil.copy2(path, target, follow_symlinks=False)
-            copied.append(rel)
-        else:
-            missing.append(rel)
-    manifest = {"backup_id": backup_id, "timestamp": ts, "included_files": copied, "missing_files": missing,
-                "included_components": sorted({rel.split("/")[0] for rel in copied}),
-                "skipped_components": [], "Kodi version": kodi_version, "note": note}
-    finish_backup(scope, dest, manifest)
+    with discard_on_failure(dest):
+        for rel, path in sorted(files.items()):
+            target = _backup_path(scope, backup_id, *rel.split("/"))
+            if path and os.path.isfile(path) and not os.path.islink(path):
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.copy2(path, target, follow_symlinks=False)
+                copied.append(rel)
+            else:
+                missing.append(rel)
+        manifest = {"backup_id": backup_id, "timestamp": ts, "included_files": copied, "missing_files": missing,
+                    "included_components": sorted({rel.split("/")[0] for rel in copied}),
+                    "skipped_components": [], "Kodi version": kodi_version, "note": note}
+        finish_backup(scope, dest, manifest)
     return manifest
 
 
@@ -254,28 +301,54 @@ def restore_backup(addon_info, backup_id):
         raise ValueError("Backup is incomplete or empty; nothing was restored")
     dest = addon_info.get("addon_data_path") or translate("special://profile/addon_data/%s" % aid)
     undo = create_backup(addon_info, adapter=addon_info.get("adapter_name", ""), protect=(backup_id,))
-    _replace_tree(src, dest, skip, expected_files=expected)
+    try:
+        _replace_tree(src, dest, skip, expected_files=expected)
+    except BaseException as exc:
+        _roll_back([(aid, dest, skip, undo)], exc)
+        raise
     return {"restored": True, "backup_id": backup_id,
             "undo_backup_id": undo["backup_id"], "restart_required": True}
 
 
-def create_stack_backup(addons, kodi_version="", note=""):
+def _roll_back(done, error):
+    """Put back the live folders a failed restore already touched, newest first.
+
+    ``done`` holds (addon_id, live folder, skip_top, undo manifest). If a
+    rollback itself fails, the error names the undo snapshot to restore by hand.
+    """
+    failed = []
+    for aid, dest, skip, undo in reversed(done):
+        undo_src = os.path.join(_backup_path(aid, undo["backup_id"]), "addon_data")
+        try:
+            _replace_tree(undo_src, dest, skip, expected_files=undo.get("files_copied"))
+        except Exception:
+            failed.append("%s (undo backup %s)" % (aid, undo["backup_id"]))
+    if failed:
+        raise RuntimeError("Restore failed (%s) and could not be rolled back for %s; restore those undo "
+                           "backups" % (type(error).__name__, ", ".join(failed))) from error
+
+
+def create_stack_backup(addons, kodi_version="", note="", should_stop=None):
+    """Snapshot several add-ons' addon_data. ``should_stop`` (optional) aborts and discards it."""
     ts, backup_id, root = allocate_backup("_stack")
     included, skipped, counts = [], [], {}
-    for addon in addons:
-        if not addon or not addon.get("addon_id"):
-            continue
-        src = addon.get("addon_data_path")
-        if src and os.path.isdir(src):
-            files = _copytree(src, os.path.join(root, addon["addon_id"]), skip_top=("backups",) if addon["addon_id"] == SELF_ID else ())
-            os.makedirs(os.path.join(root, addon["addon_id"]), exist_ok=True)
-            counts[addon["addon_id"]] = len(files)
-            included.append(addon["addon_id"])
-        else:
-            skipped.append(addon["addon_id"])
-    manifest = {"backup_id": backup_id, "timestamp": ts, "included_folders": included, "skipped_folders": skipped,
-                "file_counts": counts, "Kodi version": kodi_version, "note": note}
-    finish_backup("_stack", root, manifest)
+    with discard_on_failure(root):
+        for addon in addons:
+            if not addon or not addon.get("addon_id"):
+                continue
+            src = addon.get("addon_data_path")
+            if src and os.path.isdir(src):
+                files = _copytree(src, os.path.join(root, addon["addon_id"]),
+                                  skip_top=("backups",) if addon["addon_id"] == SELF_ID else (),
+                                  should_stop=should_stop)
+                os.makedirs(os.path.join(root, addon["addon_id"]), exist_ok=True)
+                counts[addon["addon_id"]] = len(files)
+                included.append(addon["addon_id"])
+            else:
+                skipped.append(addon["addon_id"])
+        manifest = {"backup_id": backup_id, "timestamp": ts, "included_folders": included, "skipped_folders": skipped,
+                    "file_counts": counts, "Kodi version": kodi_version, "note": note}
+        finish_backup("_stack", root, manifest)
     return manifest
 
 
@@ -313,10 +386,17 @@ def restore_stack_backup(index, backup_id):
             skipped.append(aid)
             continue
         plan.append((aid, addon, src, dest, skip, expected))
-    # Every component is checked before the first one is replaced.
+    # Every component is checked before the first one is replaced. A failure part
+    # way through puts every component already touched back as it was.
+    done = []
     for aid, addon, src, dest, skip, expected in plan:
         undo = create_backup(addon, adapter=addon.get("adapter_name", ""))
         undo_backups[aid] = undo["backup_id"]
-        _replace_tree(src, dest, skip, expected_files=expected)
+        done.append((aid, dest, skip, undo))
+        try:
+            _replace_tree(src, dest, skip, expected_files=expected)
+        except BaseException as exc:
+            _roll_back(done, exc)
+            raise
         restored.append(aid)
     return {"restored": restored, "skipped": skipped, "undo_backups": undo_backups, "restart_required": True}

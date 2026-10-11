@@ -94,3 +94,80 @@ def test_failed_backup_preserves_last_complete_snapshot(storage, monkeypatch, ki
     create()
     assert original_copy.read_bytes() == b"original"
     assert len(backup.list_backups(scope)) == 2
+
+
+@pytest.mark.parametrize("kind", ["addon", "stack", "files", "pipeline"])
+def test_failed_backup_leaves_no_partial_snapshot_folder(storage, monkeypatch, kind):
+    root, settings, info = storage
+    index = SimpleNamespace(get=lambda aid: info if aid == info["addon_id"] else None)
+    create = {
+        "addon": lambda: backup.create_backup(info),
+        "stack": lambda: backup.create_stack_backup([info]),
+        "files": lambda: backup.create_file_backup("selected", {"settings.xml": str(settings)}),
+        "pipeline": lambda: pipeline_backup(index),
+    }[kind]
+    scope = {"addon": info["addon_id"], "stack": "_stack", "files": "selected", "pipeline": "pipeline"}[kind]
+    settings.write_bytes(b"original")
+    first = create()
+    monkeypatch.setattr(backup.shutil, "copy2", lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full")))
+    with pytest.raises(OSError, match="disk full"):
+        create()
+    # The unfinished folder has no manifest: it would never be listed, restored or pruned.
+    assert sorted(p.name for p in (root / scope).iterdir()) == [first["backup_id"]]
+
+
+def _fail_on(monkeypatch, live, name):
+    """Make copying ``name`` into the live folder fail once (disk full part way through a restore)."""
+    real = backup._copy_file
+    state = {"failed": False}
+
+    def copy(src, dst):
+        if not state["failed"] and Path(dst).parent == live and Path(dst).name == name:
+            state["failed"] = True
+            raise OSError("disk full")
+        return real(src, dst)
+    monkeypatch.setattr(backup, "_copy_file", copy)
+
+
+def test_restore_failing_part_way_puts_the_live_folder_back(storage, monkeypatch):
+    root, settings, info = storage
+    live = settings.parent
+    (live / "a.xml").write_bytes(b"old a")
+    (live / "b.xml").write_bytes(b"old b")
+    snap = backup.create_backup(info)
+    (live / "a.xml").write_bytes(b"new a")
+    (live / "b.xml").write_bytes(b"new b")
+    (live / "c.xml").write_bytes(b"new c")
+    _fail_on(monkeypatch, live, "b.xml")
+    with pytest.raises(OSError, match="disk full"):
+        backup.restore_backup(info, snap["backup_id"])
+    assert {p.name: p.read_bytes() for p in live.iterdir()} == {
+        "a.xml": b"new a", "b.xml": b"new b", "c.xml": b"new c"}
+
+
+def test_stack_restore_failing_part_way_rolls_back_earlier_components(tmp_path, storage, monkeypatch):
+    root, settings, info = storage
+    other_live = tmp_path / "other"
+    other_live.mkdir()
+    other = {"addon_id": "plugin.video.fenlight", "addon_data_path": str(other_live)}
+    settings.write_bytes(b"pov old")
+    (other_live / "settings.xml").write_bytes(b"fen old")
+    snap = backup.create_stack_backup([info, other])
+    settings.write_bytes(b"pov new")
+    (other_live / "settings.xml").write_bytes(b"fen new")
+    index = SimpleNamespace(get={info["addon_id"]: info, other["addon_id"]: other}.get)
+    # Components restore in name order: Fen Light first, then POV fails.
+    _fail_on(monkeypatch, settings.parent, "settings.xml")
+    with pytest.raises(OSError, match="disk full"):
+        backup.restore_stack_backup(index, snap["backup_id"])
+    assert (other_live / "settings.xml").read_bytes() == b"fen new"
+    assert settings.read_bytes() == b"pov new"
+
+
+def test_stack_backup_stops_on_request_and_discards_the_partial_snapshot(storage):
+    root, settings, info = storage
+    settings.write_bytes(b"original")
+    with pytest.raises(backup.BackupAborted):
+        backup.create_stack_backup([info], should_stop=lambda: True)
+    assert not list((root / "_stack").iterdir())
+    assert backup.create_stack_backup([info], should_stop=lambda: False)["file_counts"] == {info["addon_id"]: 1}
