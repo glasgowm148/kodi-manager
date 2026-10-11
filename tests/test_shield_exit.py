@@ -11,6 +11,14 @@ import shield_exit
 
 
 class ShieldExitTests(unittest.TestCase):
+    def test_validated_builds_are_exactly_beta2_and_rc1(self):
+        for version in ('22.0-BETA2 (21.90.802) Git:20250901-abc', '22.0-RC1 (21.95.900) Git:20260927-28ea2eac1e',
+                        '22.0-RC1', '22.0-BETA2'):
+            self.assertTrue(shield_exit.supported_build(version), version)
+        for version in ('22.0-RC2 (21.96) Git:x', '22.0-RC10', '22.0-RC12 Git:x', '22.0-BETA21', '22.0-BETA3',
+                        '22.0 (22.0.0) Git:20261101-final', '22.1-RC1', '21.2 (21.2.0)', '', None, 'x22.0-RC1'):
+            self.assertFalse(shield_exit.supported_build(version), version)
+
     def test_start_time_with_spaces_and_parentheses(self):
         stat = '123 (Kodi (worker)) ' + ' '.join(['S'] + ['0'] * 18 + ['12345', '0'])
         with patch('builtins.open', return_value=io.StringIO(stat)):

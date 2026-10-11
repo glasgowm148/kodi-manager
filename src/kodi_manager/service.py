@@ -13,14 +13,14 @@ try:
     from .kodi_api import KodiAPI, service_addon, translate
     from .netconfig import DEFAULT_PORT, effective_host, parse_int
     from .server import ServerThread
-    from .shield_exit import ShieldExitGuard
+    from .shield_exit import ShieldExitGuard, supported_build
     from .widget_cache import Refresher, WidgetCache, jsonrpc_via, RELOAD_PROPERTY
 except ImportError:
     from auth import generate_token
     from kodi_api import KodiAPI, service_addon, translate
     from netconfig import DEFAULT_PORT, effective_host, parse_int
     from server import ServerThread
-    from shield_exit import ShieldExitGuard
+    from shield_exit import ShieldExitGuard, supported_build
     from widget_cache import Refresher, WidgetCache, jsonrpc_via, RELOAD_PROPERTY
 
 # Settings that need a new listening socket when they change.
@@ -321,7 +321,7 @@ def main():
     running = {"server": start_server(kodi, config, web_root, announce=True), "config": config}
     supported = bool(xbmc and config['shield_exit_workaround']
                      and xbmc.getCondVisibility('System.Platform.Android')
-                     and xbmc.getInfoLabel('System.BuildVersion').startswith('22.0-BETA2')
+                     and supported_build(xbmc.getInfoLabel('System.BuildVersion'))
                      and os.path.isfile('/vendor/lib64/libnvglsi.so'))
     guard = ShieldExitGuard(supported, translate('special://logpath/kodi.log'),
                             os.path.join(os.path.dirname(__file__), 'shield_exit_guard.sh'),

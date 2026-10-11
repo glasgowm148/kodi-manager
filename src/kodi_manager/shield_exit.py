@@ -5,6 +5,17 @@ import subprocess
 import time
 
 
+# Kodi builds whose Shield exit crash this workaround was validated against.
+# Exactly 22.0 BETA2 and RC1: RC2, later RCs and the final release must be
+# checked on a Shield before they are added here.
+_VALIDATED_BUILD = re.compile(r'^22\.0-(?:BETA2|RC1)(?:\b|$)')
+
+
+def supported_build(version):
+    """True for a System.BuildVersion the workaround is validated on."""
+    return _VALIDATED_BUILD.match(str(version or '')) is not None
+
+
 def process_start(pid):
     with open('/proc/%d/stat' % pid, encoding='utf-8') as handle:
         # comm may contain spaces or parentheses; field 22 follows its closing ).
