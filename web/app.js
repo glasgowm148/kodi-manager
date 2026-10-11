@@ -66,6 +66,9 @@ function renderSubnav(group, route){
   const items = group ? group.items.filter(item => !item[2]?.sub) : [];
   host.hidden = items.length < 2;
   host.innerHTML = items.length < 2 ? "" : `<ul>${items.map(([label, target]) => `<li><a href="${esc(target)}"${target === route || (route.startsWith("#/addon/") && target === "#/components") ? ' aria-current="page"' : ""}>${esc(label)}</a></li>`).join("")}</ul>`;
+  // On a narrow screen keep the current tab in view.
+  const list = host.querySelector?.("ul"), current = host.querySelector?.('[aria-current="page"]');
+  if (list && current && list.scrollWidth > list.clientWidth) list.scrollLeft = Math.max(0, current.offsetLeft - (list.clientWidth - current.offsetWidth) / 2);
 }
 function highlightNav(){
   const current = currentRoute();
