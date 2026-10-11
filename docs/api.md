@@ -13,10 +13,12 @@ The dashboard is a static page plus this JSON API, served by the Kodi Manager se
   "message": "…", "details": {…}}}`. Clients should branch on `code`, not on the message text.
 - **Writes.** Every `POST` or `PATCH` needs **Enable writes** turned on in the add-on settings, except
   the read-only posts marked *read* below. With writes off they answer `403` `write_disabled`.
-  A write that changes settings makes a backup first.
-- **Busy Kodi.** Actions that would interrupt viewing (install dialog, fix repair, menu rebuild) refuse
-  while something is playing. Restores answer `409` when Kodi is busy; resend the same body with
-  `"force": true` to restore anyway.
+  A write that changes settings makes a backup first. A `POST` or `PATCH` whose `Origin` header names
+  another host answers `403` `origin_mismatch`; the dashboard itself is same-origin.
+- **Busy Kodi.** Actions that would interrupt viewing refuse with code `playback_active` while
+  something is playing. Install from zip, fix repair, menu rebuild, opening an add-on's or the skin's
+  settings on the TV and Trakt sync answer `400` and cannot be forced. Add-on and stack restores answer
+  `409`; resend the same body with `"force": true` to restore anyway.
 - Bodies are JSON objects of at most 1 MB. `ID` is a Kodi add-on id, URL-encoded.
 
 ## Status and discovery
@@ -86,7 +88,7 @@ Other skins report read-only sections with `reasons`.
 | Method and path | Writes | Request | Response `data` |
 |---|---|---|---|
 | `GET /api/widgets/sources` | – | – | `{sources[{addon_id, label, path, enabled, traversable}]}` |
-| `GET /api/widgets/layout` | – | – | `{revision, sections[], inactive_sections[], menu_entries[], max_rows, can_apply, new_section, reasons[]}` |
+| `GET /api/widgets/layout` | – | – | `{revision, sections[], inactive_sections[], menu_entries[], max_rows, can_apply, new_section_available, new_section_reasons[], reasons[]}`. With writes off, `can_apply` is false and every entry in `sections[]` has `editable: false`. |
 | `POST /api/widgets/browse` | read | `{"path": "plugin://…", "start": 0, "limit": 48, "refresh": false, "family_preview": false, "max_rating": "12A"}` | One page of a folder: `{items[], children[], skips[], classification, can_use_as_widget, …}` plus `family_preview` when asked |
 | `POST /api/widgets/suggestions` | read | `{}` | Suggested family rows |
 | `POST /api/widgets/row-preview` | read | `{"section_id", "row_id", "limit"}` | Titles a saved row shows today |
@@ -94,8 +96,11 @@ Other skins report read-only sections with `reasons`.
 | `POST /api/widgets/layout/apply` | yes | The same plan | `{applied, backup_id, changed_files, …}` after re-checking the profile and revision |
 | `POST /api/widgets/layout/rebuild` | yes | `{}` | `{started}`: asks the skin to rebuild its menu. Refused while playing. |
 
-Get the layout, pick a section, keep `expected_revision` and the existing row ids and actions, preview
-the complete plan, check `can_apply` and `reasons`, then apply **the same plan**.
+Get the layout, pick a section, keep its `revision` as `expected_revision` and the existing row ids and
+actions, preview the complete plan, check `can_apply` and `reasons`, then apply **the same plan**. Send
+the revision you edited from, not the one the preview returns: a different revision means the layout
+changed on the TV (another device or Kodi's own editor), and applying an older plan would undo that.
+The dashboard then re-reads the layout and continues only if that section is unchanged.
 
 ## Cached rows (optional widget cache)
 
@@ -105,7 +110,7 @@ the complete plan, check `can_apply` and `reasons`, then apply **the same plan**
 | `POST /api/widget-cache/refresh` | read | `{}` | `{queued}`: number of cached sources queued for refresh |
 | `GET /api/widget-cache/url?source=plugin://…&pages=2&hide_watched=true` | – | – | `{url}`: the cached URL to give a skin widget; `400 bad_request` for an unsupported source |
 | `GET /api/widget-cache/rows` | – | – | Array of rows `{id, label, source, pages, hide_watched, widget_url}` |
-| `POST /api/widget-cache/rows` | yes | `{"label", "source", "pages", "hide_watched"}` | The saved row. Saving an existing source updates it. |
+| `POST /api/widget-cache/rows` | yes | `{"label", "source", "pages", "hide_watched"}`; `pages` is 1–5 (larger values are clamped to 5) | The saved row. Saving an existing source updates it. |
 | `POST /api/widget-cache/rows/remove` | yes | `{"id"}` | `{removed: true}` |
 
 See [widget cache](widget-cache.md) for how skins use these rows.

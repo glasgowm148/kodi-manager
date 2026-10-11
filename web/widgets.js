@@ -201,7 +201,8 @@ async function widgetStudioView() {
     if (discard) { drafts = {}; savedDrafts = {}; saveDrafts(); }
     // Drafts of sections that are unchanged on the TV follow the new revision; others stay stale and are refused at review.
     for (const [id,value] of Object.entries(drafts)) { const source = [...layout.sections,...inactive].find(s => s.id === id); if (source && widgetSectionBase(id,source) === value.base) value.revision = layout.revision; }
-    $b("#bs-connection").textContent = layout.read_only ? "Layout read only" : "Connected to Kodi";
+    // The server reports can_apply:false when Write Mode is off or the skin profile is unsupported.
+    $b("#bs-connection").textContent = layout.read_only || layout.can_apply === false ? "Layout read only" : "Connected to Kodi";
     const available = layout.sections.filter(s => s.rows.length);
     selectSection([...layout.sections,...(layout.inactive_sections || [])].some(s => s.id === selected) ? selected : (available.find(s => s.editable) || available[0] || layout.sections[0])?.id || "");
     notice("");

@@ -530,3 +530,12 @@ test('a playback refusal keeps an enabled Rebuild button and explains what to do
   assert.match(notice.textContent,/Rebuild requested/);
   assert.equal(h.calls.filter(call=>call.path==='/api/widgets/layout/rebuild').length,2);
 });
+
+test('a layout the server cannot apply is labelled read only', async () => {
+  const h=catalogueHarness([],{sources:[],api:path=>path==='/api/widgets/layout' ? {revision:'r',can_apply:false,max_rows:20,sections:[{id:'section-1',label:'Movies',editable:false,rows:[]}],new_section_available:false} : undefined});
+  await settleCatalogue(h);
+  assert.equal(h.elements.get('#bs-connection').textContent,'Layout read only');
+  const writable=catalogueHarness([],{sources:[]});
+  await settleCatalogue(writable);
+  assert.equal(writable.elements.get('#bs-connection').textContent,'Connected to Kodi');
+});

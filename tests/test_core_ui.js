@@ -59,8 +59,8 @@ test('api reports network failures, non-JSON replies and error codes clearly', a
   await assert.rejects(ui.api('/api/status'), error => error.code === 'network' && /Couldn’t reach Kodi Manager/.test(error.message));
   ui.fetch = async () => response(502, null, false);
   await assert.rejects(ui.api('/api/status'), error => error.code === 'bad_response' && /HTTP 502/.test(error.message));
-  ui.fetch = async () => response(409, {ok:false, error:{code:'kodi_busy', message:'Kodi is playing'}});
-  await assert.rejects(ui.api('/api/stack/restore', {backup_id:'x'}), error => error.status === 409 && error.code === 'kodi_busy');
+  ui.fetch = async () => response(409, {ok:false, error:{code:'playback_active', message:'Stop playback before restoring a backup'}});
+  await assert.rejects(ui.api('/api/stack/restore', {backup_id:'x'}), error => error.status === 409 && error.code === 'playback_active');
   ui.fetch = async () => response(200, {ok:true, data:{fine:true}});
   assert.equal((await ui.api('/api/status')).fine, true);
 });
@@ -290,4 +290,9 @@ test('Health Re-apply asks before overwriting protected settings', async () => {
   assert.match(h.confirms[0].title, /Re-apply: Protected settings\?/);
   assert.match(h.confirms[0].detail, /expected 1080p/);
   assert.deepEqual(h.posts, []);
+});
+
+test('cached-row Pages field matches the server limit of five', () => {
+  assert.match(web('app.js'), /id="cachePages" type="number" min="1" max="5"/);
+  assert.match(fs.readFileSync(path.resolve(__dirname, '../src/kodi_manager/widget_cache.py'), 'utf8'), /^MAX_PAGES = 5$/m);
 });
