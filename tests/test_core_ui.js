@@ -260,3 +260,34 @@ test('settings save offers a clearly labelled restore that asks first after the 
   assert.deepEqual(confirms, ['Save 2 changes?', 'Restore this backup?']);
   assert.equal(posts.length, 0, 'declining the late confirmation restores nothing');
 });
+
+function viewHarness(replies) {
+  const elements = new Map(), posts = [], confirms = [];
+  const element = selector => { if (!elements.has(selector)) elements.set(selector, {textContent:'', innerHTML:'', dataset:{}}); return elements.get(selector); };
+  const healthButton = {textContent:'Re-apply', dataset:{healthAction:'/api/baseline/apply', healthLabel:'Protected settings', healthDetail:'1 changed: Max resolution is 720p, expected 1080p'}};
+  const {ui} = withApp({document:{querySelector:element, querySelectorAll:selector => selector === '[data-health-action]' ? [healthButton] : []}});
+  ui.api = async (pathName, body) => { if (body) { posts.push(pathName); return {applied:[], failed:[], detail:'done'}; } return replies[pathName]; };
+  ui.confirmDialog = async options => { confirms.push(options); return false; };
+  return {ui, element, posts, confirms, healthButton};
+}
+
+test('Restore tested fixes asks before overwriting add-on files', async () => {
+  const h = viewHarness({'/api/status':{write_enabled:true}, '/api/fixes':{bundled:true, repairable:true, healthy:false, detail:'x', groups:[{label:'POV playback', status:'changed'}]}});
+  await h.ui.fixesView();
+  await h.element('#restoreFixes').onclick({currentTarget:{}});
+  assert.equal(h.confirms.length, 1);
+  assert.equal(h.confirms[0].title, 'Restore tested fixes?');
+  assert.match(h.confirms[0].detail, /POV playback/);
+  assert.deepEqual(h.posts, [], 'declined: nothing is repaired');
+});
+
+test('Health Re-apply asks before overwriting protected settings', async () => {
+  const h = viewHarness({'/api/health':{status:'warning', checks:[{label:'Protected <settings>', detail:'d', status:'warning', action:{label:'Re-apply', path:'/api/baseline/apply'}}]}});
+  await h.ui.healthView();
+  assert.match(h.element('#content').innerHTML, /data-health-label="Protected &lt;settings&gt;"/);
+  await h.healthButton.onclick({currentTarget:{}});
+  assert.equal(h.confirms.length, 1);
+  assert.match(h.confirms[0].title, /Re-apply: Protected settings\?/);
+  assert.match(h.confirms[0].detail, /expected 1080p/);
+  assert.deepEqual(h.posts, []);
+});

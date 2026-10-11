@@ -524,10 +524,11 @@ async function healthView(){
 function healthAction(check){
   const action = check && check.action;
   if (!action || typeof action.path !== "string" || !action.path.startsWith("/api/")) return "";
-  return `<br><button type="button" class="action" data-health-action="${esc(action.path)}" ${writeAttrs()}>${esc(action.label || "Fix")}</button>`;
+  return `<br><button type="button" class="action" data-health-action="${esc(action.path)}" data-health-label="${esc(check.label || "")}" data-health-detail="${esc(check.detail || "")}" ${writeAttrs()}>${esc(action.label || "Fix")}</button>`;
 }
 function bindHealthActions(){
   document.querySelectorAll("[data-health-action]").forEach(button => button.onclick = withErrors(async () => {
+    if (!(await confirmDialog({title:`${button.textContent || "Fix"}: ${button.dataset.healthLabel || "this check"}?`, message:"The current values in the affected add-ons are overwritten with the expected ones. Stop playback first.", detail:button.dataset.healthDetail || "", confirmLabel:button.textContent || "Fix"}))) return;
     const r = await api(button.dataset.healthAction, {});
     const applied = (r && r.applied) ? r.applied.length : 0;
     const failed = (r && r.failed) ? r.failed.length : 0;
@@ -932,6 +933,7 @@ async function fixesView(){
     ${fixes.healthy?'<p>All custom fixes are intact.</p>':'<p>Known older files can be restored from the verified copy. A new version or an unrecognised change needs review.</p>'}
     <button id="restoreFixes" class="primary" ${!state.writeEnabled ? writeAttrs() : fixes.repairable ? '' : 'disabled title="Nothing here can be restored automatically."'}>Restore tested fixes</button><p class="muted">Creates a backup before restoring. Stop playback first; restart Kodi afterwards.</p><p id="fixResult" role="status"></p></div>`);
   $('#restoreFixes').onclick = withErrors(async () => {
+    if (!(await confirmDialog({title:"Restore tested fixes?", message:"Changed add-on files are overwritten with their tested copies. A backup is created first. Stop playback first; restart Kodi afterwards.", detail:(fixes.groups || []).filter(g => g.status !== "ok").map(g => g.label).join("\n"), confirmLabel:"Restore fixes"}))) return;
     const result = await api('/api/fixes/repair', {});
     $('#fixResult').textContent = result.detail;
   });
