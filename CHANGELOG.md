@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.12 — 2026-10-12 (prerelease)
+
+- **Log health follows log levels.** Words such as "error" inside an INFO message no longer
+  raise an alert. A settings schema warning followed by its JSON-RPC resolution, and the
+  reviewed focus-button compatibility notice on active Bingie 2.0.2.3, are reported as known
+  notices. Other warnings, unresolved schema warnings, unknown skin/control versions and real
+  errors still alert. Raw warning lines remain available in diagnostics.
+
 ## 0.7.11 — 2026-10-11 (prerelease)
 
 - **Only real listings run from the dashboard.** Browsing, row previews, family rows and cached rows

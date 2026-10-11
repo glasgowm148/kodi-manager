@@ -48,6 +48,13 @@ The dashboard is a static page plus this JSON API, served by the Kodi Manager se
 | `GET /api/debug/paths` | – | – | Kodi version, platform and resolved profile paths |
 | `GET /api/debug/stack-raw` | – | – | Raw add-on probes, merged records and the classified stack |
 
+Health's log check uses each line's log level. Its `kodi_log_warnings` statistic counts actionable
+warning lines; `kodi_log_notices` counts evidenced startup/compatibility notices and
+`kodi_log_warning_lines` counts all raw warning lines. `recent_warnings` retains raw warnings,
+including notices. The focus-button exception applies only to active `skin.bingie` version
+2.0.2.3; other skins, versions and unsupported controls still raise warnings. A duplicate-message
+notice without a known harmless original remains actionable.
+
 ## Add-on settings and backups
 
 | Method and path | Writes | Request | Response `data` |
