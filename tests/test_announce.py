@@ -11,7 +11,7 @@ import service  # noqa: E402
 class AddressTests(unittest.TestCase):
     def test_wildcard_bind_shows_the_lan_address_or_loopback(self):
         config = {"host": "0.0.0.0", "port": 8765}
-        self.assertEqual(service.dashboard_address(config, lambda: "192.168.1.147"), "http://192.168.1.147:8765")
+        self.assertEqual(service.dashboard_address(config, lambda: "192.168.1.50"), "http://192.168.1.50:8765")
         self.assertEqual(service.dashboard_address(config, lambda: ""), "http://127.0.0.1:8765")
         self.assertEqual(service.dashboard_address(config, Mock(side_effect=OSError)), "http://127.0.0.1:8765")
         self.assertEqual(service.dashboard_address({"host": "::", "port": 1}, "fd00::5"), "http://[fd00::5]:1")
