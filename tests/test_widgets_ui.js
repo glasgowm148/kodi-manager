@@ -448,13 +448,14 @@ test('Load preview reads only the explicitly promoted folder and does not start 
   assert.ok(!mediaRequests(h).includes(h.lists[13].path));
 });
 
-function layoutHarness({storage,previewRevision='revision-1',freshRows,freshRevision}={}) {
+function layoutHarness({storage,previewRevision='revision-1',freshRows,freshRevision,rebuildReplies=[]}={}) {
   const rows=[{id:'row-a',label:'Popular',path:'plugin://plugin.video.pov/?mode=a',action:'ActivateWindow(Videos,plugin://plugin.video.pov/?mode=a,return)'},{id:'row-b',label:'Latest',path:'plugin://plugin.video.pov/?mode=b',action:'ActivateWindow(Videos,plugin://plugin.video.pov/?mode=b,return)'}];
   let loads=0;
   const h=catalogueHarness(rows,{sources:[],storage,rowPreview:{status:'ok',items:[]},api:(path,body)=>{
     if(path==='/api/widgets/layout' && ++loads>1 && freshRows)return {revision:freshRevision,max_rows:20,sections:[{id:'section-1',label:'Movies',kind:'hub',editable:true,rows:freshRows(rows)}],new_section:{available:false}};
     if(path==='/api/widgets/layout/preview')return {revision:previewRevision,can_apply:true,reasons:[]};
     if(path==='/api/widgets/layout/apply')return {backup_id:'skin-layout-1'};
+    if(path==='/api/widgets/layout/rebuild'){if(rebuildReplies.length)return rebuildReplies.shift()();return {started:true};}
   }});
   const review=async()=>{const button=h.elements.get('#bs-review');await button.onclick({currentTarget:button});};
   const apply=async()=>{const button=h.elements.get('#bs-apply');await button.onclick({currentTarget:button});return h.calls.filter(call=>call.path==='/api/widgets/layout/apply');};
@@ -508,4 +509,24 @@ test('a restored browser draft adopts the current revision only when its base st
   assert.equal(applies.length,1);
   assert.equal(applies[0].body.expected_revision,'revision-1');
   assert.deepEqual(JSON.parse(JSON.stringify(applies[0].body.rows.map(row=>row.id))),['row-b','row-a']);
+});
+
+test('a playback refusal keeps an enabled Rebuild button and explains what to do', async () => {
+  const busy=()=>{const error=new Error('Stop playback before rebuilding');error.code='playback_active';error.status=400;throw error;};
+  const {h,review,apply}=layoutHarness({rebuildReplies:[busy]});
+  await settleCatalogue(h);
+  await h.click({moveRow:'0,1'});
+  await review();
+  await apply();
+  const notice=h.elements.get('#bs-notice');
+  await notice.children.at(-1).onclick();
+  const button=notice.children.at(-1);
+  assert.equal(button.textContent,'Rebuild skin menu');
+  assert.equal(button.disabled,false,'Rebuild stays available after a refusal');
+  assert.match(notice.textContent,/^Stop playback, then rebuild/);
+  assert.doesNotMatch(notice.textContent,/restart Kodi/);
+  assert.equal(notice.className,'bs-notice bs-error');
+  await button.onclick();
+  assert.match(notice.textContent,/Rebuild requested/);
+  assert.equal(h.calls.filter(call=>call.path==='/api/widgets/layout/rebuild').length,2);
 });
