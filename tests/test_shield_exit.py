@@ -56,7 +56,24 @@ class ShieldExitTests(unittest.TestCase):
                 args = spawn.call_args.args[0]
                 self.assertEqual(args[2:4], [str(os.getpid()), '9988'])
                 self.assertEqual(args[5], '8')
+                self.assertEqual(args[7], str(shield_exit.STALL_POLLS))
+                self.assertGreaterEqual(shield_exit.STALL_POLLS * 0.02, 60)
                 self.assertTrue(spawn.call_args.kwargs['start_new_session'])
+
+    def test_previous_watcher_outcome_is_reported_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = Path(directory) / 'shield-exit-result.json'
+            guard = shield_exit.ShieldExitGuard(False, '/missing', '/script', str(result))
+            self.assertIsNone(guard.previous_report())
+            result.write_text('{"result":"saved_stopping_all_stalled","pid":5,"start_tick":"7"}\n')
+            Path(str(result) + '.stderr').write_text('0 armed\n3 started\n3 saved\n3 stopping_all\n3003 stalled\n')
+            report = guard.previous_report()
+            self.assertEqual(report, 'result={"result":"saved_stopping_all_stalled","pid":5,"start_tick":"7"}; '
+                                     'trace=0 armed | 3 started | 3 saved | 3 stopping_all | 3003 stalled')
+            self.assertIsNone(guard.previous_report())
+            self.assertTrue(Path(str(result) + '.last').is_file())
+            Path(str(result) + '.stderr').write_bytes(b'x' * 10000)
+            self.assertEqual(len(guard.previous_report()), len('trace=') + shield_exit.REPORT_LIMIT)
 
     def test_shutdown_marker_can_arrive_after_abort_callback(self):
         with tempfile.TemporaryDirectory() as directory:

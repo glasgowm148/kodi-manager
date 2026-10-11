@@ -26,6 +26,14 @@ def shutdown_started(text):
     return bool(re.search(r'^.*\binfo <general>: (?:XBMCApp: )?Stopping the application\.\.\.$', text, re.M))
 
 
+# After "Stopping all" (settings and skin settings already saved) the watcher
+# ends an exit that has not finished within this many polls of at least 20 ms,
+# so 60 s or more. A normal Shield exit gets from "Stopping all" to
+# "Application stopped" in 1-4 s.
+STALL_POLLS = 3000
+REPORT_LIMIT = 2048
+
+
 class ShieldExitGuard:
     def __init__(self, enabled, log_path, script_path, result_path):
         self.enabled = enabled
@@ -50,12 +58,31 @@ class ShieldExitGuard:
         try:
             self.child = subprocess.Popen(
                 ['/system/bin/sh', self.script_path, str(pid), start,
-                 self.log_path, str(offset), self.result_path],
+                 self.log_path, str(offset), self.result_path, str(STALL_POLLS)],
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=stderr, start_new_session=True, close_fds=True)
         finally:
             if hasattr(stderr, 'close'):
                 stderr.close()
+
+    def previous_report(self):
+        """What the last armed watcher saw, once: its result and progress trace (bounded).
+
+        The files move to ``.last`` so the next start does not report them again.
+        """
+        parts = []
+        for suffix, label in (("", "result"), (".stderr", "trace")):
+            path = self.result_path + suffix
+            try:
+                with open(path, "rb") as handle:
+                    text = handle.read(REPORT_LIMIT).decode("utf-8", errors="replace")
+                os.replace(path, path + ".last")
+            except OSError:
+                continue
+            text = " | ".join(line.strip() for line in text.splitlines() if line.strip())
+            if text:
+                parts.append("%s=%s" % (label, text))
+        return "; ".join(parts) or None
 
     def on_abort(self):
         # Profile changes also abort services. Launch only for a real Kodi Stop.

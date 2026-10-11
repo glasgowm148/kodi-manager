@@ -47,7 +47,7 @@ msgid "Delete installer result after first login"
 msgstr ""
 
 msgctxt "#32014"
-msgid "Shield: prevent graphics-driver crash on exit (Kodi 22 beta 2)"
+msgid "Shield: end a crashing or stalled exit after settings are saved (Kodi 22 beta 2, RC1)"
 msgstr ""
 
 msgctxt "#32015"

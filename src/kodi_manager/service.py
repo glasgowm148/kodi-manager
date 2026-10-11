@@ -435,6 +435,12 @@ def main():
                             os.path.join(os.path.dirname(__file__), 'shield_exit_guard.sh'),
                             translate('special://temp/shield-exit-result.json'))
     kodi.log('Shield exit workaround active=%s' % supported)
+    try:
+        previous_exit = guard.previous_report()
+        if previous_exit:
+            kodi.log('Previous Shield exit guard: %s' % previous_exit)
+    except Exception as error:
+        kodi.log('Shield exit guard report unavailable: %s' % type(error).__name__)
     private = start_extension(kodi, startup_monitor)
     if config.get("widget_cache_auto"):
         try:
@@ -484,6 +490,8 @@ def main():
                 if method == 'System.OnQuit':
                     try:
                         guard.arm()
+                        if guard.child is not None:
+                            kodi.log('Shield exit guard armed on quit')
                     except Exception as error:
                         kodi.log('Shield exit guard could not start: %s' % type(error).__name__)
         monitor = ServiceMonitor()
