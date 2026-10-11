@@ -78,12 +78,18 @@ The service keeps a small history so the charts have something to show:
 - Each sample: free/total memory, Kodi's memory, swap use, the newest internet probe (only when a new
   probe ran since the last sample; probes are not added), and cached-row counts (cached, failing,
   failing three times or more).
+- Each sample also records when the Kodi process started, so Trends can mark every restart
+  (including Android closing Kodi in the background).
 - Kept for 7 days and at most 800 samples (about 100 KB); written atomically, and a damaged file
   starts a fresh history instead of failing.
 - Read with `GET /api/metrics/history?days=1..7` ([API](api.md)).
 
 ## Words
 
+- Rows are called what the skin calls them (the Skin Shortcuts label, string ids resolved), with
+  where they appear; only rows the skin doesn't name fall back to a name built from their path.
+- Tile sentences use the same states as the page they open: a row due a refresh "refreshes soon"
+  on both, and full swap on Android is explained rather than flagged.
 - Say what the household sees: "rows on the home screen", not "widget cache entries".
 - Errors say what happened and what to do: `playback_active` reads "Something is playing on the TV.
   Try again when viewing has finished." Every API error code maps to such a sentence

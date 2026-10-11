@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.7.9 — 2026-10-11 (prerelease)
+
+Polish from the first week of 0.7.8 on a real TV.
+
+- **Row names you recognise.** Row health and Cached rows show the label the skin gives each row
+  (Skin Shortcuts widget groups and `widgetName` properties), with string ids such as `32043`,
+  `$LOCALIZE[32043]` and `$ADDON[skin.bingie 32043]` resolved through Kodi, the add-on or the
+  skin's strings.po, and say where the row appears ("Home", "Movies hub"). Rows the skin doesn't
+  name get a readable name from their path ("Trakt history (movies)", TMDb Helper) instead of
+  `plugin.video.tmdb.bingie.helper · trakt_history`. The add-on path stays under Details.
+- **Words that match the pages.** The Home rows tile says "46 rows, all working" and how many
+  refresh soon or came back empty; a row due a refresh is "Refreshes soon" everywhere, not a
+  warning, and "Needs a look" lists failing and empty rows.
+- **Memory on Android.** Nearly full swap is normal on Android and stays OK. With swap nearly full
+  *and* less than a quarter of memory free, Health and the overview say memory is tight and that
+  Android may close Kodi when it is in the background (the Android screensaver or another app).
+  Only real shortage still raises a TV notification.
+- **Kodi restarts.** The history records when Kodi started; Trends marks each start on the memory
+  chart and the overview shows how long Kodi has been running.
+- **Readable charts.** X-axis labels are thinned to the width they have, so half-width charts no
+  longer print "Sat 10Sun 11".
+- **API additions:** `/api/widget-cache` entries carry `title`, `title_from`, `addon_name` and
+  `where`; the memory check carries `pressure` (`ok`, `tight`, `low`); `/api/overview` carries
+  `kodi_started_at` and `rows.stale` / `rows.empty`; `/api/metrics/history` carries
+  `series.kodi_started_at` and `kodi_starts`.
+
 ## 0.7.8 — 2026-10-11 (prerelease)
 
 A redesigned dashboard ([design notes](docs/ui.md)). The API only gains endpoints and fields.
