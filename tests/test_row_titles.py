@@ -120,7 +120,7 @@ def test_kodi_starts_are_recorded_and_listed(tmp_path):
     (proc / "self").mkdir(parents=True)
     (proc / "self" / "stat").write_text("123 (kodi (main)) S " + " ".join(["0"] * 18) + " 50000 0 0\n")
     (proc / "stat").write_text("cpu 1 2 3\nbtime 1799990000\n")
-    hertz = os.sysconf("SC_CLK_TCK")
+    hertz = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
     assert process_started_at(str(proc)) == int(1799990000 + 50000 / hertz)
     assert process_started_at(str(tmp_path / "none")) is None
     h = MetricsHistory(str(tmp_path / "h.json"))
