@@ -30,6 +30,11 @@
   its own so one failure no longer hides the others.
 - **Fen Light settings.db numbers are checked like settings.xml ones.** NaN, infinity, overflowing
   values such as `1e999` and Python-only forms such as `1_0` are refused in both places.
+- **No stale warnings after a film.** A connection, memory, protected-setting or account problem
+  found just as playback started is checked again once the TV is quiet and shown only if it is still
+  there, instead of being replayed (for example "Restart the Shield" after the connection had
+  recovered). The nightly checkpoint and connection probes also stop when Kodi quits or switches
+  profile.
 
 ## 0.7.5 — 2026-10-11 (prerelease)
 

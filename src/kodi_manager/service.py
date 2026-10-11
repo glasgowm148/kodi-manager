@@ -181,8 +181,12 @@ def media_playing():
         return False
 
 
-def start_maintenance(kodi, is_busy=tv_busy):
-    """Nightly checkpoint, protected-settings check and account checks (see maintenance.py)."""
+def start_maintenance(kodi, is_busy=tv_busy, stopping=lambda: False):
+    """Nightly checkpoint, protected-settings check and account checks (see maintenance.py).
+
+    ``stopping`` is true once the service is exiting: a checkpoint in progress stops and is
+    discarded, so Kodi does not have to wait for it or kill it part way.
+    """
     try:
         try:
             from .maintenance import Maintenance, nightly_checkpoint
@@ -204,9 +208,10 @@ def start_maintenance(kodi, is_busy=tv_busy):
     def checkpoint():
         index.refresh(force=True)
         return nightly_checkpoint(
-            # Copying addon_data competes with playback for storage: stop if the TV gets busy.
+            # Copying addon_data competes with playback for storage: stop if the TV gets busy
+            # or the service is exiting.
             lambda: create_stack_backup(stack_backup_addons(kodi, index), kodi.get_kodi_version(), note="nightly",
-                                        should_stop=is_busy),
+                                        should_stop=lambda: stopping() or is_busy()),
             lambda: list_backups(stack=True), delete_stack_backup)
 
     def accounts():
@@ -237,15 +242,15 @@ def start_watchdog(kodi):
                         is_quiet=lambda: not tv_busy(),
                         memory=memory_status, log=kodi.log)
     watchdog.stop = threading.Event()
-    housekeeping = start_maintenance(kodi)
+    housekeeping = start_maintenance(kodi, stopping=watchdog.stop.is_set)
 
     def run():
         while not watchdog.stop.is_set():
             try:
-                watchdog.tick()
+                watchdog.tick(watchdog.stop.is_set)
             except Exception as error:
                 kodi.log("Connection watchdog error: %s" % type(error).__name__)
-            if housekeeping is not None:
+            if housekeeping is not None and not watchdog.stop.is_set():
                 try:
                     housekeeping.tick(not tv_busy())
                 except Exception as error:

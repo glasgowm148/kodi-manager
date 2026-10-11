@@ -5,8 +5,9 @@
 * Protected settings: compared shortly after start and every 6 hours.
 * Accounts: Trakt and TorBox checked twice a day.
 Each problem raises at most one TV notification per day, and never while
-something is playing: a notification found during playback waits for a quiet
-moment. A checkpoint interrupted by playback is discarded and retried later.
+something is playing: a problem found during playback is checked again at the
+next quiet moment and shown only if it is still there. A checkpoint interrupted
+by playback is discarded and retried later.
 """
 import threading
 import time
@@ -67,9 +68,15 @@ class Maintenance:
         """Run whatever is due. ``quiet`` is True when the TV is idle."""
         now = self.clock()
         ran = []
-        if quiet:
-            for key, (title, message) in list(self.pending.items()):
-                self._notify_once(key, title, message)
+        if quiet and self.pending:
+            # Held notifications are not replayed as they were: the setting may have been
+            # re-applied or the account renewed meanwhile. Their checks run again now and
+            # notify only if the problem is still there.
+            if any(key.startswith("baseline:") for key in self.pending):
+                self.next_baseline = min(self.next_baseline, now)
+            if any(key.startswith("account:") for key in self.pending):
+                self.next_accounts = min(self.next_accounts, now)
+            self.pending = {}
         if quiet and self.checkpoint is not None and now >= self.next_nightly:
             local = self.localtime(now)
             day = time.strftime("%Y-%m-%d", local)

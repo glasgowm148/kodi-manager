@@ -71,7 +71,9 @@ def test_notification_waits_when_playback_starts_during_the_check():
     clock, notes = Clock(), []
 
     def slow_probe(host):
-        state["quiet"] = False          # playback starts while probing
+        if not state.get("started"):
+            state["quiet"] = False      # playback starts while probing
+            state["started"] = True
         return None
     dog = Watchdog(lambda title, msg: notes.append(title), lambda: state["quiet"], probe=slow_probe, clock=clock)
     dog.next_check = 0
@@ -81,6 +83,45 @@ def test_notification_waits_when_playback_starts_during_the_check():
     dog.tick()                          # still playing
     assert notes == []
     state["quiet"] = True
-    dog.tick()                          # shown at the next quiet moment
+    dog.tick()                          # checked again at the next quiet moment: still stuck
     assert notes == ["Internet connection stuck"]
+
+
+def test_a_problem_that_cleared_during_the_film_is_not_announced_afterwards():
+    state = {"quiet": True, "up": False, "memory": "warning"}
+    clock, notes = Clock(), []
+
+    def probe(host):
+        if not state["up"]:
+            state["quiet"] = False      # a film starts during the probes
+        return 0.2 if state["up"] else None
+    dog = Watchdog(lambda title, msg: notes.append(title), lambda: state["quiet"],
+                   memory=lambda: {"status": state["memory"]}, probe=probe, clock=clock)
+    dog.next_check = 0
+    dog.failures = 1
+    dog.tick()
+    assert notes == [] and set(dog.pending) == {"internet", "memory"}
+    for _ in range(480):                # a two-hour film, ticking every 15 s
+        clock.t += 15
+        dog.tick()
+    state.update(up=True, memory="ok")  # the connection and memory recovered meanwhile
+    state["quiet"] = True
+    clock.t += 15
+    dog.tick()
+    assert notes == [] and dog.pending == {}
+
+
+def test_probes_stop_when_the_service_is_exiting():
+    calls = []
+    dog = Watchdog(lambda title, msg: None, lambda: True, probe=lambda host: calls.append(host) or 0.1,
+                   clock=Clock())
+    dog.next_check = 0
+    stop = {"set": False}
+
+    def stopping():
+        if calls:
+            stop["set"] = True
+        return stop["set"]
+    assert dog.tick(stopping) is None
+    assert calls == ["api.torbox.app"]  # no further 8-second probes once Kodi asks to stop
 

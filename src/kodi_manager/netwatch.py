@@ -51,7 +51,7 @@ class Watchdog:
         self.next_check = clock() + 120
         self.failures = 0
         self.notified = {}
-        self.pending = {}   # notifications held back until the TV is quiet
+        self.pending = {}   # problems found as playback started: checked again once quiet
 
     def _quiet(self):
         try:
@@ -72,8 +72,13 @@ class Watchdog:
         self.log("%s: %s" % (title, message))
         self.notify(title, message)
 
-    def check_internet(self):
-        results = [(name, self.probe(host)) for name, host in self.hosts]
+    def check_internet(self, should_stop=lambda: False):
+        """Probe each host in turn; None if ``should_stop`` turns true part way (service exit)."""
+        results = []
+        for name, host in self.hosts:
+            if should_stop():
+                return None
+            results.append((name, self.probe(host)))
         failed = [name for name, seconds in results if seconds is None]
         slow = [name for name, seconds in results if seconds is not None and seconds > 4]
         status = "error" if len(failed) * 2 > len(results) else "warning" if failed or slow else "ok"
@@ -84,17 +89,23 @@ class Watchdog:
             LAST["internet"] = result
         return result
 
-    def tick(self):
+    def tick(self, should_stop=lambda: False):
         now = self.clock()
-        for key, (title, message) in list(self.pending.items()):
-            self._notify_once(key, title, message)
+        if self.pending and now < self.next_check and self._quiet():
+            # A notification held back during playback is never replayed as it was: the
+            # problem may have cleared during the film. Check again now instead.
+            self.next_check = now
         if now < self.next_check:
             return None
         quiet = self._quiet()
         if not quiet:
             self.next_check = now + 60
             return None
-        result = self.check_internet()
+        # This check decides afresh what to say; a problem that is still there notifies again.
+        self.pending = {}
+        result = self.check_internet(should_stop)
+        if result is None:   # the service is stopping
+            return None
         if result["status"] == "error":
             self.failures += 1
             self.next_check = now + self.RECHECK_EVERY
