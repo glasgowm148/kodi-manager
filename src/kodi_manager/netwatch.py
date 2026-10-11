@@ -84,7 +84,8 @@ class Watchdog:
         status = "error" if len(failed) * 2 > len(results) else "warning" if failed or slow else "ok"
         parts = ["%s %s" % (name, "timed out" if s is None else "%.1fs" % s) for name, s in results]
         result = {"status": status, "detail": " · ".join(parts), "checked_at": int(self.clock()),
-                  "failed": failed}
+                  "failed": failed,
+                  "hosts": [{"name": name, "seconds": None if s is None else round(s, 3)} for name, s in results]}
         with _LOCK:
             LAST["internet"] = result
         return result
@@ -122,6 +123,13 @@ class Watchdog:
             self._notify_once("memory", "Kodi is low on memory",
                               "Close apps you're not using, or restart Kodi if add-ons start timing out.")
         return result
+
+
+def latest_internet():
+    """The newest connection check as recorded (None before the first one)."""
+    with _LOCK:
+        result = LAST["internet"]
+    return dict(result) if result else None
 
 
 def internet_check():

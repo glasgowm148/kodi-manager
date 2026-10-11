@@ -349,6 +349,22 @@ def fetch_listing(jsonrpc, source, pages=1):
     return out[:MAX_ITEMS], more, art
 
 
+def preview_items(files, limit=6):
+    """A few titles and HTTPS poster URLs from a cached listing, for the dashboard's row cards."""
+    out = []
+    for item in files if isinstance(files, list) else []:
+        if not isinstance(item, dict):
+            continue
+        art = item.get("art") if isinstance(item.get("art"), dict) else {}
+        poster = next((v for v in (art.get("poster"), art.get("thumb")) if isinstance(v, str) and v.startswith("https://") and len(v) <= 600), "")
+        title = re.sub(r"\[/?(?:COLOR[^\]]*|B|I)\]", "", str(item.get("title") or item.get("label") or ""), flags=re.I).strip()[:80]
+        if title or poster:
+            out.append({"title": title, "poster": poster})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _digest(files):
     return hashlib.sha1(json.dumps(files, sort_keys=True).encode("utf-8")).hexdigest()
 
@@ -534,6 +550,8 @@ class WidgetCache:
         rows = []
         for entry in self.all_entries():
             rows.append({"source": entry["source"], "items": len(entry.get("files", [])),
+                         "fetched_at": int(float(entry.get("fetched_at", 0) or 0)),
+                         "preview": preview_items(entry.get("files", [])),
                          "age_seconds": int(now - float(entry.get("fetched_at", 0))),
                          "stale": self.is_stale(entry, now), "progress": is_progress(entry["source"]),
                          "health": self.health(entry["source"])})

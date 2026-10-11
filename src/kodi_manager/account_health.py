@@ -44,13 +44,14 @@ def trakt_status(get_setting, now=None, addon="plugin.video.pov"):
     if not expires:
         return {"id": "trakt", "label": label, "status": "ok", "detail": "Signed in%s" % who}
     if expires > now:
-        return {"id": "trakt", "label": label, "status": "ok",
+        return {"id": "trakt", "label": label, "status": "ok", "expires_at": int(expires), "days_left": _days(expires - now),
+                "renews": True,
                 "detail": "Signed in%s · renews automatically (current sign-in valid %s more days)" % (who, _days(expires - now))}
     late = now - expires
     if late < DAY:
         return {"id": "trakt", "label": label, "status": "ok",
                 "detail": "Signed in%s · sign-in renewal due now" % who}
-    return {"id": "trakt", "label": label, "status": "warning",
+    return {"id": "trakt", "label": label, "status": "warning", "expires_at": int(expires), "days_left": -_days(late),
             "detail": "The Trakt sign-in expired %s days ago and was not renewed. Open POV → Settings → Accounts and sign in to Trakt again." % _days(late)}
 
 
@@ -100,13 +101,14 @@ def torbox_status(get_setting, translate=lambda p: p, now=None, fetch=None, addo
         return {"id": "torbox", "label": label, "status": "ok", "detail": "Account active"}
     left = expires - now
     if left <= 0:
-        return {"id": "torbox", "label": label, "status": "error",
+        return {"id": "torbox", "label": label, "status": "error", "expires_at": int(expires), "days_left": _days(left),
                 "detail": "The TorBox subscription ended on %s. Streams will fail until it is renewed." % stamp[:10]}
     status = "warning" if left < TORBOX_WARN_DAYS * DAY else "ok"
     detail = "Active until %s (%s days)" % (stamp[:10], _days(left))
     if status == "warning":
         detail += ". Renew soon so streams keep working."
-    return {"id": "torbox", "label": label, "status": status, "detail": detail}
+    return {"id": "torbox", "label": label, "status": status, "detail": detail, "expires_at": int(expires),
+            "days_left": _days(left)}
 
 
 def run_checks(checks, log=lambda msg: None):

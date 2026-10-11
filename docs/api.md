@@ -33,6 +33,8 @@ The dashboard is a static page plus this JSON API, served by the Kodi Manager se
 | Method and path | Writes | Request | Response `data` |
 |---|---|---|---|
 | `GET /api/status` | – | – | `service_version`, `Kodi version`, `server` `{host, port}`, `write_enabled`, `allow_lan`, `active_skin`, `current_time`, `platform`, `stack` (detected skin, helpers, players, `warnings`) |
+| `GET /api/overview` | – | – | The dashboard's first screen in one cheap call (no add-on scan, log read or network request): `profile`, `kodi_version`, `service_version`, `write_enabled`, `playback` `{active, type, title, media}` (`active` is `null` when Kodi did not answer), `memory` (as the Health check, with `available_mb`, `total_mb`, `kodi_mb`, `swap_used_pct`), `internet` (the newest connection check with `hosts[{name, seconds}]` and `age_seconds`, or `null`), `rows` `{cached, failing, persistent}`, `backups` `{count, last, times[], nightly}`, `protection` `{fixes, baseline}`, `accounts[{id, label, status, detail, days_left, renews}]` |
+| `GET /api/metrics/history?days=1..7` | – | – | The 7-day history behind the charts (see below): `{resolution_seconds, retention_days, days, now, count, series{t[], memory_available_mb[], memory_total_mb[], kodi_mb[], swap_used_pct[], rows_cached[], rows_failing[], rows_persistent[], network_status[]}, hosts[], latency_ms{HOST: [ms]}}`. Arrays are aligned with `t` (Unix seconds); `null` marks a figure that was not sampled. `days` outside 1–7 answers `400` `bad_request`. |
 | `GET /api/bootstrap/status` | – | – | `{installed, web_url, needs_auth, nonce_present}` (legacy installer only) |
 | `GET /api/stack` | – | – | Detected stack: `skin` (with `bingie_like`), `tmdbhelper`, `fenlight`, `fen`, `pov`, `cocoscrapers`, `trakt`, `trakt_integration`, `warnings`, … |
 | `GET /api/health` | – | – | `{status, checks[], stats{}, recent_errors[], recent_warnings[]}` (log lines masked like `/api/kodi/logs`) |
@@ -59,6 +61,8 @@ The dashboard is a static page plus this JSON API, served by the Kodi Manager se
 | `GET /api/stack/backups` | – | – | `{backups[]}`: checkpoint manifests |
 | `GET /api/backups/timeline` | – | – | `{items[], count}`: checkpoints and playback-setting backups, newest first, each with `kind`, `component_count`, `skipped_count` |
 | `POST /api/stack/restore` | yes | `{"backup_id": "…", "force": false}` | `{restored[], skipped[], undo_backups{ADDON_ID: BACKUP_ID}, restart_required}`. Restore each undo backup with `POST /api/addons/ID/restore` to undo. |
+
+Checkpoint manifests made by 0.7.8 and later also carry `total_bytes`.
 
 Backups live in the Kodi profile under `addon_data/service.kodi.addonadmin/backups`. See
 [recovery](recovery.md) for retention and restoring by hand.
@@ -113,7 +117,7 @@ The dashboard then re-reads the layout and continues only if that section is unc
 
 | Method and path | Writes | Request | Response `data` |
 |---|---|---|---|
-| `GET /api/widget-cache` | – | – | `{root, entries[{source, items, age_seconds, stale, progress}], queued}` |
+| `GET /api/widget-cache` | – | – | `{root, entries[{source, items, age_seconds, fetched_at, stale, progress, health{failures, last_failure, reason, retry_at}, preview[{title, poster}]}], queued}`. `preview` holds up to six titles with their HTTPS poster URLs (empty when the artwork is not HTTPS). |
 | `POST /api/widget-cache/refresh` | read | `{}` | `{queued}`: number of cached sources queued for refresh |
 | `GET /api/widget-cache/url?source=plugin://…&pages=2&hide_watched=true` | – | – | `{url}`: the cached URL to give a skin widget; `400 bad_request` for an unsupported source |
 | `GET /api/widget-cache/rows` | – | – | Array of rows `{id, label, source, pages, hide_watched, widget_url}` |
@@ -154,3 +158,13 @@ help with discovery and are not parental access control.
 Health also lists **Protected settings**, **Trakt sign-in**, **TorBox subscription**, **Nightly
 checkpoint**, **Internet (add-on services)** and **Memory**; a check may carry
 `action: {label, path}` that the dashboard offers as a button.
+
+### History for the charts (0.7.8)
+
+The service keeps `addon_data/service.kodi.addonadmin/metrics_history.json` in each Kodi profile. It
+samples from its watchdog loop at most every 15 minutes and **only while the TV is idle**, so
+playback adds no work and shows as a gap. A sample holds memory figures, cached-row counts and the
+newest internet check, the latter only when a new check ran since the previous sample (the history
+never makes a request of its own). Samples older than 7 days are dropped, the file is capped at 800
+samples and 256 KB and written atomically; a damaged file starts a fresh history. Account checks
+(Health, `/api/overview`) also carry `days_left`, and the internet check carries `hosts[]`.

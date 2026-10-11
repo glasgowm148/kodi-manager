@@ -319,20 +319,36 @@ def start_maintenance(kodi, is_busy=tv_busy, stopping=lambda: False):
                        is_quiet=lambda: not is_busy())
 
 
+def start_sampler(kodi, memory, internet):
+    """The dashboard's 7-day history (metrics.py), sampled from the watchdog loop while idle."""
+    try:
+        try:
+            from .metrics import HISTORY_FILE, MetricsHistory, Sampler, widget_row_counts
+        except ImportError:
+            from metrics import HISTORY_FILE, MetricsHistory, Sampler, widget_row_counts
+        rows_root = translate("special://profile/addon_data/service.kodi.addonadmin/widget_cache")
+        return Sampler(MetricsHistory(translate(HISTORY_FILE)), memory, internet,
+                       lambda: widget_row_counts(rows_root))
+    except Exception as error:
+        kodi.log("Metrics history unavailable: %s" % type(error).__name__)
+        return None
+
+
 def start_watchdog(kodi):
     """Background connection and memory check; notifies once when something is wrong."""
     import threading
     try:
-        from .netwatch import Watchdog
+        from .netwatch import Watchdog, latest_internet
         from .memstat import memory_status
     except ImportError:
-        from netwatch import Watchdog
+        from netwatch import Watchdog, latest_internet
         from memstat import memory_status
     watchdog = Watchdog(lambda title, message: kodi.notify(title, message),
                         is_quiet=lambda: not tv_busy(),
                         memory=memory_status, log=kodi.log)
     watchdog.stop = threading.Event()
     housekeeping = start_maintenance(kodi, stopping=watchdog.stop.is_set)
+    sampler = start_sampler(kodi, memory_status, latest_internet)
 
     def run():
         while not watchdog.stop.is_set():
@@ -345,6 +361,12 @@ def start_watchdog(kodi):
                     housekeeping.tick(not tv_busy())
                 except Exception as error:
                     kodi.log("Maintenance error: %s" % type(error).__name__)
+            if sampler is not None and not watchdog.stop.is_set():
+                try:
+                    # Idle only: nothing extra runs while something plays.
+                    sampler.tick(not tv_busy())
+                except Exception as error:
+                    kodi.log("Metrics history error: %s" % type(error).__name__)
             watchdog.stop.wait(15)
 
     threading.Thread(target=run, name="km-watchdog", daemon=True).start()

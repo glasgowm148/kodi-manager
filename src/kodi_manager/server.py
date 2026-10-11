@@ -32,7 +32,8 @@ try:
     from .write_policy import WriteRefused, check_writable, read_only_reason
     from .netconfig import host_allowed, is_loopback
     from .memstat import memory_status
-    from .netwatch import internet_check
+    from .netwatch import internet_check, latest_internet
+    from .metrics import HISTORY_FILE, MetricsHistory, widget_row_counts
     from .baseline import Baseline
     from . import maintenance
 except ImportError:
@@ -57,7 +58,8 @@ except ImportError:
     from write_policy import WriteRefused, check_writable, read_only_reason
     from netconfig import host_allowed, is_loopback
     from memstat import memory_status
-    from netwatch import internet_check
+    from netwatch import internet_check, latest_internet
+    from metrics import HISTORY_FILE, MetricsHistory, widget_row_counts
     from baseline import Baseline
     import maintenance
 
@@ -280,6 +282,86 @@ def backup_timeline():
     return {"items": items, "count": len(items)}
 
 
+def playback_state(kodi):
+    """What the TV is doing: {active, type, title}. ``active`` is None when Kodi did not answer."""
+    players = kodi.jsonrpc("Player.GetActivePlayers")
+    result = players.get("result") if isinstance(players, dict) else None
+    if not isinstance(result, list):
+        return {"active": None, "type": "", "title": ""}
+    if not result:
+        return {"active": False, "type": "", "title": ""}
+    player = result[0] if isinstance(result[0], dict) else {}
+    state = {"active": True, "type": str(player.get("type") or "")[:20], "title": ""}
+    if isinstance(player.get("playerid"), int):
+        item = kodi.jsonrpc("Player.GetItem", {"playerid": player["playerid"], "properties": ["title", "showtitle"]})
+        item = item.get("result", {}).get("item", {}) if isinstance(item, dict) else {}
+        if isinstance(item, dict):
+            title = item.get("title") or item.get("label") or ""
+            show = item.get("showtitle") or ""
+            state["title"] = str("%s: %s" % (show, title) if show and title else title or show)[:120]
+            state["media"] = str(item.get("type") or "")[:20]
+    return state
+
+
+def current_profile(kodi):
+    result = kodi.jsonrpc("Profiles.GetCurrentProfile")
+    profile = result.get("result") if isinstance(result, dict) else None
+    return str(profile.get("label") or "")[:60] if isinstance(profile, dict) else ""
+
+
+def overview_summary(kodi, config):
+    """Everything the dashboard's first screen needs, from figures the service already keeps.
+
+    Cheap by design: no add-on scan, no log read and no network request.
+    """
+    memory = memory_status()
+    internet = latest_internet()
+    if internet:
+        internet["age_seconds"] = max(0, int(time.time() - internet.get("checked_at", time.time())))
+    try:
+        stack_backups = list_backups(stack=True)
+    except Exception:
+        stack_backups = []
+    stack_backups.sort(key=lambda b: str(b.get("timestamp") or b.get("backup_id") or ""), reverse=True)
+    last = stack_backups[0] if stack_backups else None
+    snap = maintenance.snapshot()
+    baseline = snap["baseline"]
+    if baseline is None:
+        try:
+            rows = make_baseline(kodi).check()
+            drift = [r for r in rows if not r["ok"] and not r["missing"]]
+            baseline = {"at": int(time.time()), "total": len(rows), "drifted": drift}
+        except Exception:
+            baseline = None
+    try:
+        fixes = protection_for_kodi().status()
+        fixes = {"healthy": fixes.get("healthy"), "bundled": fixes.get("bundled"),
+                 "attention": len([g for g in fixes.get("groups") or [] if g.get("status") != "ok"]),
+                 "groups": len(fixes.get("groups") or [])}
+    except Exception:
+        fixes = {"healthy": None, "bundled": None, "attention": 0, "groups": 0}
+    return {
+        "generated_at": int(time.time()),
+        "service_version": VERSION,
+        "kodi_version": kodi.get_kodi_version(),
+        "profile": current_profile(kodi),
+        "write_enabled": config.get("write_enabled") is True,
+        "playback": playback_state(kodi),
+        "memory": memory,
+        "internet": internet,
+        "rows": widget_row_counts(translate(WIDGET_CACHE_DIR)),
+        "backups": {"count": len(stack_backups),
+                    "last": {k: last.get(k) for k in ("backup_id", "timestamp", "note", "total_bytes")} if last else None,
+                    "times": [b.get("timestamp") or b.get("backup_id") for b in stack_backups[:60]],
+                    "nightly": snap["nightly"]},
+        "protection": {"fixes": fixes,
+                       "baseline": {"total": baseline["total"], "drifted": len(baseline["drifted"]),
+                                    "labels": [r.get("label") for r in baseline["drifted"][:5]]} if baseline else None},
+        "accounts": [{k: a.get(k) for k in ("id", "label", "status", "detail", "days_left", "renews") if k in a}
+                     for a in snap["accounts"]],
+    }
+
+
 def playback_test(kodi, index, body):
     index.refresh()
     pipe = build_pipeline(kodi, index)
@@ -339,6 +421,8 @@ ROUTES = [
     ("POST", r"/api/widgets/layout/apply", "widget_layout_apply", True, "bad_request"),
     ("POST", r"/api/widgets/layout/rebuild", "widget_layout_rebuild", True, "bad_request"),
     ("GET", r"/api/status", "status", False, "bad_request"),
+    ("GET", r"/api/overview", "overview", False, "bad_request"),
+    ("GET", r"/api/metrics/history", "metrics_history", False, "bad_request"),
     ("GET", r"/api/bootstrap/status", "bootstrap_status", False, "bad_request"),
     ("GET", r"/api/stack", "stack", False, "bad_request"),
     ("GET", r"/api/health", "health", False, "bad_request"),
@@ -759,6 +843,12 @@ def make_handler(state):
                 "platform": platform.platform(),
                 "stack": detect_stack(state.kodi, state.index),
             }
+
+        def api_overview(self):
+            return overview_summary(state.kodi, state.config)
+
+        def api_metrics_history(self):
+            return MetricsHistory(translate(HISTORY_FILE)).series(self.query("days", "7") or "7", now=time.time())
 
         def api_bootstrap_status(self):
             seed = state.config.get("installer_seed", {})

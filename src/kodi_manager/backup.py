@@ -363,7 +363,7 @@ def _roll_back(done, error):
 def create_stack_backup(addons, kodi_version="", note="", should_stop=None):
     """Snapshot several add-ons' addon_data. ``should_stop`` (optional) aborts and discards it."""
     ts, backup_id, root = allocate_backup("_stack")
-    included, skipped, counts = [], [], {}
+    included, skipped, counts, total_bytes = [], [], {}, 0
     with discard_on_failure(root):
         for addon in addons:
             if not addon or not addon.get("addon_id"):
@@ -375,11 +375,16 @@ def create_stack_backup(addons, kodi_version="", note="", should_stop=None):
                                   should_stop=should_stop)
                 os.makedirs(os.path.join(root, addon["addon_id"]), exist_ok=True)
                 counts[addon["addon_id"]] = len(files)
+                for rel in files:
+                    try:
+                        total_bytes += os.path.getsize(os.path.join(root, addon["addon_id"], rel))
+                    except OSError:
+                        pass
                 included.append(addon["addon_id"])
             else:
                 skipped.append(addon["addon_id"])
         manifest = {"backup_id": backup_id, "timestamp": ts, "included_folders": included, "skipped_folders": skipped,
-                    "file_counts": counts, "Kodi version": kodi_version, "note": note}
+                    "file_counts": counts, "total_bytes": total_bytes, "Kodi version": kodi_version, "note": note}
         finish_backup("_stack", root, manifest)
     return manifest
 
