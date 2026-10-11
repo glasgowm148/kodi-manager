@@ -258,6 +258,9 @@ a.tile--warn:hover{background:var(--warning-soft);border-color:var(--warning)}a.
 .row-card-source{color:var(--muted);font-size:13px;margin:2px 0 8px}.row-card-reason{font-size:14px;color:var(--ink-2);margin:0 0 10px}
 .row-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;margin:0}
 .row-facts dt{font-size:12.5px;color:var(--muted)}.row-facts dd{margin:0;font-size:14px}
+.row-path{margin-top:10px;font-size:13px;color:var(--muted)}.row-path summary{cursor:pointer;min-height:32px;display:inline-flex;align-items:center}.row-path code{display:block;font-size:12px;color:var(--ink-2)}
+.stackbar--info{background:var(--accent)}
+.chart-canvas .event line{stroke:var(--ink-2);stroke-width:1;opacity:.55}.chart-canvas .event path{fill:var(--ink-2)}
 
 /* Backups --------------------------------------------------------------------------------- */
 .backup-list{list-style:none;padding:0;margin:0}

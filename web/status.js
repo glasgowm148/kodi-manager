@@ -48,7 +48,10 @@ function memoryTile(memory, history) {
   const spark = sparkline(s.t || [], s.memory_available_mb || [], {label:"Free memory over the last 7 days", maxGap:historyGap(history), min:0});
   if (!finite(m.available_mb)) return {key:"memory", name:"Memory", icon:"memory", tone:"muted", value:"Unknown", text:m.detail || "This device doesn’t report memory figures.", href:"#/trends", spark};
   const tone = toneOf(m.status);
-  const text = tone === "ok" ? `Kodi is using ${formatMB(m.kodi_mb)} of ${formatMB(m.total_mb)}.` : "Running low. Close apps you’re not using, or restart Kodi if add-ons start timing out.";
+  const swapFull = finite(m.swap_used_pct) && m.swap_used_pct >= 90;
+  const text = m.pressure === "tight" ? "Memory is tight: swap is nearly full. Android may close Kodi when it’s in the background (screensaver or another app). Restarting Kodi frees memory."
+    : tone !== "ok" ? "Running low. Close apps you’re not using, or restart Kodi if add-ons start timing out."
+    : `Kodi is using ${formatMB(m.kodi_mb)} of ${formatMB(m.total_mb)}.${swapFull ? " Swap is nearly full, which is normal on Android." : ""}`;
   return {key:"memory", name:"Memory", icon:"memory", tone, value:`${formatMB(m.available_mb)} free`, text, href:"#/trends", spark};
 }
 function internetTile(internet, history) {
@@ -69,8 +72,15 @@ function rowsTile(rows, history) {
   const spark = sparkline(s.t || [], s.rows_failing || [], {label:"Rows failing over the last 7 days", maxGap:historyGap(history), min:0, kind:"bars"});
   if (!r.cached) return {key:"rows", name:"Home rows", icon:"rows", tone:"muted", value:"No cached rows", text:"Rows load straight from your add-ons. Cached rows make the home screen fill in instantly.", href:"#/rows", spark};
   const tone = r.persistent ? "bad" : r.failing ? "warn" : "ok";
-  const value = r.failing ? `${r.failing} of ${r.cached} failing` : `${r.cached} rows filling in`;
-  const text = r.failing ? `${r.failing === 1 ? "One row isn’t" : `${r.failing} rows aren’t`} refreshing; the last good copy is still shown. Tap to see which.` : "Every cached row refreshed on its last try.";
+  const value = r.failing ? `${r.failing} of ${r.cached} failing` : `${r.cached} row${r.cached === 1 ? "" : "s"}, all working`;
+  const stale = finite(r.stale) ? r.stale : 0, empty = finite(r.empty) ? r.empty : 0;
+  const parts = [];
+  if (r.failing) parts.push(`${r.failing === 1 ? "One row isn’t" : `${r.failing} rows aren’t`} refreshing; the last good copy is still shown. Tap to see which.`);
+  else if (stale) parts.push(`${r.cached - stale} fresh; ${stale} refresh${stale === 1 ? "es" : ""} the next time the TV is idle.`);
+  else if (finite(r.stale)) parts.push("All fresh.");
+  else parts.push("None failed on its last refresh.");
+  if (empty) parts.push(`${empty} came back empty.`);
+  const text = parts.join(" ");
   return {key:"rows", name:"Home rows", icon:"rows", tone, value, text, href:"#/rows", spark};
 }
 function backupsTile(backups, now) {
@@ -131,7 +141,8 @@ function tileMarkup(tile) {
   return `<a class="tile tile--${esc(tile.tone)}" href="${esc(tile.href)}" data-tile="${esc(tile.key)}"><span class="tile-head">${dashboardIcon(tile.icon)}<span class="tile-name">${esc(tile.name)}</span>${tonePill(tile.tone, TONE_WORD[tile.tone] || "")}</span><strong class="tile-value">${esc(tile.value)}</strong><span class="tile-text">${esc(tile.text)}</span>${tile.spark ? `<span class="tile-spark">${tile.spark}</span>` : ""}</a>`;
 }
 function screenMarkup(o, verdict, checkedAt) {
-  const chips = [o.profile ? `Profile: ${o.profile}` : "", o.kodi_version ? `Kodi ${o.kodi_version}` : "", o.write_enabled ? "Changes allowed" : "View only"].filter(Boolean);
+  const uptime = finite(o.kodi_started_at) && finite(o.generated_at) ? o.generated_at - o.kodi_started_at : null;
+  const chips = [o.profile ? `Profile: ${o.profile}` : "", o.kodi_version ? `Kodi ${o.kodi_version}` : "", finite(uptime) && uptime >= 0 ? `Kodi started ${formatRelative(uptime)}` : "", o.write_enabled ? "Changes allowed" : "View only"].filter(Boolean);
   return `<section class="screen screen--${esc(verdict.tone)}${verdict.playing ? " screen--playing" : ""}" aria-labelledby="screenTitle">
     <div class="screen-glass"><p class="screen-state">${dashboardIcon(verdict.playing ? "play" : "tv")}<span>${verdict.playing ? "Playing now" : o.playback?.active === false ? "Idle" : "State unknown"}</span></p>
     <h2 id="screenTitle">${esc(verdict.headline)}</h2><p class="screen-detail">${esc(verdict.detail)}</p>
@@ -189,11 +200,13 @@ function memoryChartSpec(history) {
   const total = Math.max(0, ...(s.memory_total_mb || []).filter(finite));
   const low = free.reduce((best, v, i) => finite(v) && (best < 0 || v < free[best]) ? i : best, -1);
   const now = [...free].reverse().find(finite);
-  const summary = low < 0 ? "" : `Free memory now ${formatMB(now)}. Lowest ${formatMB(free[low])}, ${formatWhen(s.t[low])}.`;
+  const starts = (history?.kodi_starts || []).filter(finite);
+  const restarts = starts.length ? ` Kodi started ${starts.length === 1 ? "once" : `${starts.length} times`} in this period (marked): ${starts.slice(-3).map(formatWhen).join("; ")}.` : "";
+  const summary = low < 0 ? "" : `Free memory now ${formatMB(now)}. Lowest ${formatMB(free[low])}, ${formatWhen(s.t[low])}.${restarts}`;
   const gb = values => values.map(v => finite(v) ? v / 1024 : v);
   const formatGB = v => v >= 1 ? `${v.toFixed(1)} GB` : `${Math.round(v * 1024)} MB`;
   return {title:"Memory", summary, t:s.t || [], format:formatGB, tickFormat:v => `${Number.isInteger(v) ? v : v.toFixed(1)} GB`, yMin:0, yMax:total ? total / 1024 : undefined, maxGap:historyGap(history),
-    series:[{name:"Free", values:gb(free), cls:"s1", area:true}, {name:"Used by Kodi", values:gb(kodi), cls:"s2"}],
+    series:[{name:"Free", values:gb(free), cls:"s1", area:true}, {name:"Used by Kodi", values:gb(kodi), cls:"s2"}], events:starts.map(t => ({t, label:"Kodi started"})),
     empty:"No memory samples yet. The TV records one every 15 minutes while it’s idle."};
 }
 function internetChartSpec(history) {
@@ -245,7 +258,7 @@ function rowHealthState(entry) {
 }
 const ROW_STATES = {
   persistent:{tone:"bad", label:"Keeps failing", rank:0}, failing:{tone:"warn", label:"Failed last time", rank:1},
-  stale:{tone:"warn", label:"Due a refresh", rank:2}, empty:{tone:"muted", label:"Empty", rank:3},
+  stale:{tone:"info", label:"Refreshes soon", rank:2}, empty:{tone:"muted", label:"Empty", rank:3},
   waiting:{tone:"muted", label:"Not cached yet", rank:4}, fresh:{tone:"ok", label:"Fresh", rank:5}
 };
 function rowCards(cache, savedRows) {
@@ -254,9 +267,9 @@ function rowCards(cache, savedRows) {
   const cards = (cache?.entries || []).map(entry => {
     seen.add(entry.source);
     const row = saved.get(entry.source);
-    return {source:entry.source, label:row?.label || cacheSourceLabel(entry.source), saved:!!row, entry, state:rowHealthState(entry)};
+    return {source:entry.source, label:row?.label || entry.title || cacheSourceLabel(entry.source), addon:entry.addon_name || "", where:Array.isArray(entry.where) ? entry.where : [], saved:!!row, entry, state:rowHealthState(entry)};
   });
-  for (const row of saved.values()) if (!seen.has(row.source)) cards.push({source:row.source, label:row.label, saved:true, entry:null, state:"waiting"});
+  for (const row of saved.values()) if (!seen.has(row.source)) cards.push({source:row.source, label:row.label, addon:"", where:[], saved:true, entry:null, state:"waiting"});
   return cards;
 }
 function sortRowCards(cards, sort = "attention") {
@@ -269,7 +282,7 @@ function sortRowCards(cards, sort = "attention") {
 }
 function filterRowCards(cards, filter = "all", query = "") {
   const q = String(query || "").trim().toLowerCase();
-  const groups = {attention:["persistent", "failing", "stale"], failing:["persistent", "failing"], fresh:["fresh"], stale:["stale"]};
+  const groups = {attention:["persistent", "failing", "empty"], failing:["persistent", "failing"], fresh:["fresh"], stale:["stale"]};
   return cards.filter(c => (filter === "all" || (groups[filter] || []).includes(c.state)) && (!q || `${c.label} ${c.source}`.toLowerCase().includes(q)));
 }
 function rowAddonName(source) {
@@ -295,12 +308,12 @@ function rowCardMarkup(card, now) {
       if (finite(h.retry_at)) facts.push(["Next try", h.retry_at > now ? formatRelative(now - h.retry_at) : "soon"]);
     }
   }
-  const reason = h.failures ? (ROW_REASONS[h.reason] || "The last refresh failed; the last good copy is kept.") : card.state === "stale" ? "Older than its refresh interval. It refreshes the next time the TV is idle." : card.state === "waiting" ? "Saved here, but no widget has asked for it yet." : "";
-  return `<article class="row-card row-card--${esc(st.tone)}" data-row-state="${esc(card.state)}">${posterStrip(e?.preview)}<div class="row-card-body"><div class="row-card-head"><h3>${esc(card.label)}</h3>${tonePill(st.tone, st.label)}</div><p class="row-card-source">${esc(rowAddonName(card.source) || "Kodi")}${card.saved ? " (added here)" : ""}</p>${reason ? `<p class="row-card-reason">${esc(reason)}</p>` : ""}${facts.length ? `<dl class="row-facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>` : ""}</div></article>`;
+  const reason = h.failures ? (ROW_REASONS[h.reason] || "The last refresh failed; the last good copy is kept.") : card.state === "stale" ? "Older than its refresh interval: nothing is wrong, it refreshes the next time the TV is idle." : card.state === "waiting" ? "Saved here, but no widget has asked for it yet." : "";
+  return `<article class="row-card row-card--${esc(st.tone)}" data-row-state="${esc(card.state)}">${posterStrip(e?.preview)}<div class="row-card-body"><div class="row-card-head"><h3>${esc(card.label)}</h3>${tonePill(st.tone, st.label)}</div><p class="row-card-source">${esc([card.where.length ? card.where.join(", ") : "", card.addon || rowAddonName(card.source) || "Kodi"].filter(Boolean).join(" · "))}${card.saved ? " (added here)" : ""}</p>${reason ? `<p class="row-card-reason">${esc(reason)}</p>` : ""}${facts.length ? `<dl class="row-facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>` : ""}<details class="row-path"><summary>Add-on path</summary><code>${esc(card.source)}</code></details></div></article>`;
 }
 function rowSummaryBar(cards) {
   const count = s => cards.filter(c => s.includes(c.state)).length;
-  const parts = [["Fresh", count(["fresh"]), "ok"], ["Due a refresh", count(["stale"]), "warn"], ["Failing", count(["failing", "persistent"]), "bad"], ["Empty or waiting", count(["empty", "waiting"]), "muted"]];
+  const parts = [["Fresh", count(["fresh"]), "ok"], ["Refresh soon", count(["stale"]), "info"], ["Failing", count(["failing", "persistent"]), "bad"], ["Empty or waiting", count(["empty", "waiting"]), "muted"]];
   const total = cards.length;
   return `<div class="stackbar" role="img" aria-label="${esc(parts.map(([l, n]) => `${l} ${n}`).join(", "))}">${parts.filter(p => p[1]).map(([label, n, tone]) => `<span class="stackbar-seg stackbar--${tone}" style="flex-grow:${n}" title="${esc(`${label}: ${n}`)}"></span>`).join("")}</div><ul class="stackbar-legend">${parts.map(([label, n, tone]) => `<li>${tonePill(tone, `${n} ${label.toLowerCase()}`)}</li>`).join("")}</ul><p class="sr-only">${esc(`${total} rows in total.`)}</p>`;
 }
@@ -316,7 +329,7 @@ async function rowHealthView() {
     const trend = history?.count ? chartFigure({...rowsChartSpec(history), height:150}) : "";
     out(`${head}<section class="panel row-summary" aria-label="Summary">${rowSummaryBar(cards)}</section>${trend ? `<div class="chart-grid chart-grid--one">${trend}</div>` : ""}
       <div class="filterbar"><label class="search-field">${dashboardIcon("search")}<span class="sr-only">Find a row</span><input id="rowSearch" type="search" placeholder="Find a row" value="${esc(state.rowQuery || "")}"></label>
-      <div class="segmented" role="group" aria-label="Show">${[["all", "All"], ["attention", "Needs a look"], ["failing", "Failing"], ["stale", "Due a refresh"], ["fresh", "Fresh"]].map(([v, l]) => `<button type="button" data-row-filter="${v}" aria-pressed="${(state.rowFilter || "all") === v}">${esc(l)}</button>`).join("")}</div>
+      <div class="segmented" role="group" aria-label="Show">${[["all", "All"], ["attention", "Needs a look"], ["failing", "Failing"], ["stale", "Refresh soon"], ["fresh", "Fresh"]].map(([v, l]) => `<button type="button" data-row-filter="${v}" aria-pressed="${(state.rowFilter || "all") === v}">${esc(l)}</button>`).join("")}</div>
       <label class="sort-field">Sort<select id="rowSort"><option value="attention">Needs a look first</option><option value="name">Name</option><option value="items">Most titles</option><option value="oldest">Least recently updated</option></select></label></div>
       <p id="rowCount" class="muted" role="status"></p><div id="rowCards" class="row-cards"></div>`);
     const draw = () => {

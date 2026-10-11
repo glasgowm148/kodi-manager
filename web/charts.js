@@ -102,6 +102,25 @@ function timeTicks(t0, t1, width = 600) {
   for (let d = new Date(start); d.getTime() / 1000 <= t1; d.setDate(d.getDate() + 1), i++) if (i % step === 0) ticks.push({t:Math.floor(d.getTime() / 1000), label:formatDay(d.getTime() / 1000)});
   return ticks;
 }
+/* Drop x labels that would overlap or spill past the plot: each needs its own width plus a gap. */
+function thinTicks(ticks, x, minX, maxX) {
+  const kept = [];
+  let lastRight = -Infinity;
+  const width = tick => String(tick.label).length * 7 + 10;
+  const inside = ticks.filter(tick => x(tick.t) - width(tick) / 2 >= minX - 20 && x(tick.t) + width(tick) / 2 <= maxX + 20);
+  // Keep every n-th label so the spacing stays even, choosing the smallest n that never overlaps.
+  for (let step = 1; step <= Math.max(1, inside.length); step++) {
+    kept.length = 0; lastRight = -Infinity;
+    let ok = true;
+    for (let i = inside.length - 1; i >= 0; i -= step) {
+      const tick = inside[i], centre = x(tick.t), half = width(tick) / 2;
+      if (kept.length && centre + half > lastRight) { ok = false; break; }
+      kept.unshift(tick); lastRight = centre - half;
+    }
+    if (ok) return kept;
+  }
+  return inside.slice(-1);
+}
 /* Split a series into drawable runs: a missing value or a gap longer than maxGap breaks the line. */
 function splitSegments(t, values, maxGap = Infinity) {
   const segments = [];
@@ -207,7 +226,7 @@ function chartSvg(spec, width) {
   const columns = spec.kind === "columns";
   const {height, top, plotH, plotW, left, labels, ticks, tickText, t0, t1, format, x, y} = chartLayout(spec, width);
   const grid = ticks.ticks.map(v => `<line class="grid" x1="${left}" x2="${left + plotW}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text class="tick" x="${left - 6}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${esc(tickText(v))}</text>`).join("");
-  const xTicks = (columns && spec.columnLabels ? spec.columnLabels(t, plotW) : timeTicks(t0, t1, width)).map(tick => `<text class="tick" x="${x(tick.t).toFixed(1)}" y="${height - 8}" text-anchor="middle">${esc(tick.label)}</text>`).join("");
+  const xTicks = thinTicks(columns && spec.columnLabels ? spec.columnLabels(t, plotW) : timeTicks(t0, t1, width), x, left, left + plotW).map(tick => `<text class="tick" x="${x(tick.t).toFixed(1)}" y="${height - 8}" text-anchor="middle">${esc(tick.label)}</text>`).join("");
   let marks = "";
   if (columns) {
     const slotPx = plotW / Math.max(1, t.length);
@@ -247,6 +266,7 @@ function chartSvg(spec, width) {
         ends.push({y:y(lv), text:`${s.name} ${format(lv)}`, x:x(lt)});
       }
     });
+    (spec.events || []).forEach(e => { if (finite(e.t) && e.t >= t0 && e.t <= t1) marks += `<g class="event"><line x1="${x(e.t).toFixed(1)}" x2="${x(e.t).toFixed(1)}" y1="${top}" y2="${(top + plotH).toFixed(1)}"/><path d="M${x(e.t).toFixed(1)} ${top}l-5 -6h10z"/></g>`; });
     (spec.markers || []).forEach(m => { if (finite(m.t) && m.t >= t0 && m.t <= t1) marks += `<path class="marker ${esc(m.cls || "s1")}" d="M${x(m.t).toFixed(1)} ${(top + 1).toFixed(1)}l4 4l-4 4l-4 -4z"/>`; });
     // Direct end labels only when they don't collide; otherwise the legend and tooltip carry identity.
     if (labels && ends.length <= 4) {

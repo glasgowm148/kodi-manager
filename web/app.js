@@ -986,7 +986,7 @@ function cacheSourceLabel(source){
 }
 function cachedEntryMarkup(entry){
   const status = cachedRowStatus(entry);
-  return `<tr><th scope="row"><b>${esc(cacheSourceLabel(entry.source))}</b><br><span class="muted cached-source">${esc(entry.source)}</span></th><td data-label="Status">${dashboardPill(status.tone, status.label, status.icon)}</td><td data-label="Items">${esc(entry.items)}</td><td data-label="Updated">${esc(formatAge(entry.age_seconds))}</td></tr>`;
+  return `<tr><th scope="row"><b>${esc(entry.title || cacheSourceLabel(entry.source))}</b><br><span class="muted cached-source">${esc(entry.source)}</span></th><td data-label="Status">${dashboardPill(status.tone, status.label, status.icon)}</td><td data-label="Items">${esc(entry.items)}</td><td data-label="Updated">${esc(formatAge(entry.age_seconds))}</td></tr>`;
 }
 async function cachedRowsView(){
   const [rowData, cache] = await Promise.all([api("/api/widget-cache/rows"), api("/api/widget-cache").catch(() => null)]);

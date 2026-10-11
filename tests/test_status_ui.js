@@ -167,7 +167,7 @@ test('row health groups, sorts, filters and escapes rows', () => {
   assert.deepEqual(plain(cards.map(c => c.state)), ['fresh', 'persistent', 'stale', 'waiting']);
   assert.equal(cards[0].label, 'Saved <name>');
   assert.deepEqual(plain(ui.sortRowCards(cards).map(c => c.state)), ['persistent', 'stale', 'waiting', 'fresh']);
-  assert.deepEqual(plain(ui.filterRowCards(cards, 'attention').map(c => c.state)), ['persistent', 'stale']);
+  assert.deepEqual(plain(ui.filterRowCards(cards, 'attention').map(c => c.state)), ['persistent'], 'a row due a refresh is not a problem');
   assert.deepEqual(plain(ui.filterRowCards(cards, 'all', 'waiting').map(c => c.label)), ['Waiting']);
   const markup = ui.rowCardMarkup(cards[0], NOW);
   assert.match(markup, /Saved &lt;name&gt;/);
@@ -232,4 +232,49 @@ test('theme choice cycles and ignores stored junk', () => {
 test('index.html loads the chart and status scripts before app.js', () => {
   const scripts = [...web('index.html').matchAll(/<script src="([^"]+)"/g)].map(m => m[1]);
   assert.deepEqual(scripts, ['core.js', 'settings-ui.js', 'widgets.js', 'charts.js', 'status.js', 'app.js']);
+});
+
+test('x-axis labels never overlap, however narrow the chart', () => {
+  const t = Array.from({length:7 * 96}, (_, i) => NOW - 7 * 86400 + i * 900);
+  for (const width of [300, 360, 470, 640, 900]) {
+    const layout = ui.chartLayout({title:'M', t, series:[{name:'A', values:t.map(() => 1)}, {name:'B', values:t.map(() => 2)}]}, width);
+    const ticks = ui.thinTicks(ui.timeTicks(layout.t0, layout.t1, width), layout.x, layout.left, layout.left + layout.plotW);
+    assert.ok(ticks.length >= 1, `labels at ${width}px`);
+    for (let i = 1; i < ticks.length; i++) {
+      const gap = layout.x(ticks[i].t) - layout.x(ticks[i - 1].t);
+      const need = (String(ticks[i].label).length * 7 + 10 + String(ticks[i - 1].label).length * 7 + 10) / 2;
+      assert.ok(gap >= need, `${width}px: ${ticks[i - 1].label} and ${ticks[i].label} overlap`);
+    }
+  }
+});
+
+test('the rows tile and row cards say what the page says', () => {
+  const tile = ui.rowsTile({cached:46, failing:0, persistent:0, stale:4, empty:0}, null);
+  assert.equal(tile.tone, 'ok');
+  assert.equal(tile.value, '46 rows, all working');
+  assert.equal(tile.text, '42 fresh; 4 refresh the next time the TV is idle.');
+  assert.equal(ui.rowsTile({cached:46, failing:0, persistent:0, stale:0, empty:2}, null).text, 'All fresh. 2 came back empty.');
+  assert.equal(ui.rowsTile({cached:5, failing:0, persistent:0}, null).text, 'None failed on its last refresh.', 'older services send no stale count');
+  const cards = ui.rowCards({entries:[{source:'plugin://plugin.video.tmdb.bingie.helper/?info=trakt_history', title:'Recently <watched>', addon_name:'TMDb Helper', where:['Home', 'Movies hub'], items:3, age_seconds:60, health:{}}]}, []);
+  assert.equal(cards[0].label, 'Recently <watched>');
+  const markup = ui.rowCardMarkup(cards[0], NOW);
+  assert.match(markup, /Recently &lt;watched&gt;/);
+  assert.match(markup, /Home, Movies hub · TMDb Helper/);
+  assert.match(markup, /Add-on path<\/summary><code>plugin:\/\/plugin\.video\.tmdb\.bingie\.helper\/\?info=trakt_history/);
+  assert.equal(ui.cachedEntryMarkup({source:'plugin://x/?info=y', title:'Nice <b>', items:1, age_seconds:5}).includes('Nice &lt;b&gt;'), true);
+});
+
+test('memory explains tight memory on Android and marks Kodi restarts', () => {
+  const tight = ui.memoryTile({status:'warning', pressure:'tight', available_mb:600, total_mb:2900, kodi_mb:700, swap_used_pct:96}, null);
+  assert.equal(tight.tone, 'warn');
+  assert.match(tight.text, /Android may close Kodi when it’s in the background/);
+  const roomy = ui.memoryTile({status:'ok', pressure:'ok', available_mb:1200, total_mb:2900, kodi_mb:600, swap_used_pct:96}, null);
+  assert.equal(roomy.tone, 'ok');
+  assert.match(roomy.text, /normal on Android/);
+  const history = {resolution_seconds:900, kodi_starts:[NOW - 3600], series:{t:[NOW - 7200, NOW], memory_available_mb:[900, 1000], kodi_mb:[500, 300], memory_total_mb:[2900, 2900]}};
+  const spec = ui.memoryChartSpec(history);
+  assert.equal(spec.events.length, 1);
+  assert.match(spec.summary, /Kodi started once in this period/);
+  assert.match(ui.chartSvg(spec, 600), /class="event"/);
+  assert.match(ui.screenMarkup({kodi_started_at:NOW - 3 * 3600, generated_at:NOW, playback:{active:false}}, {tone:'ok', headline:'All good', detail:'', issues:[]}, '12:00'), /Kodi started 3 hours ago/);
 });
