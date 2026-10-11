@@ -55,6 +55,9 @@
   Kodi settings can be protected (not network, add-on source, security or display settings); Kodi
   Manager's own and skins' addon.xml cannot be protected; labels are one line of at most 80
   characters. Items saved before these rules are skipped at re-apply and reported as failed.
+- **Slow clients cannot lock out the dashboard.** A request line and headers must arrive within 5
+  seconds in total (headers cut off by that deadline are never acted on), and one LAN address may
+  hold at most 8 of the 16 handler slots.
 
 ## 0.7.5 — 2026-10-11 (prerelease)
 
