@@ -62,8 +62,32 @@ def is_type_editable(setting_type):
     return stype in SAFE_TYPES
 
 
+def _number_text(value, whole):
+    """``value`` as the text Kodi stores for a number; ValueError unless finite (and whole when asked)."""
+    if isinstance(value, bool):
+        raise ValueError("Expected a number")
+    text = str(value).strip()
+    try:
+        number = float(text)
+    except ValueError:
+        raise ValueError("Expected a number") from None
+    if number != number or number in (float("inf"), float("-inf")):
+        raise ValueError("Expected a finite number")
+    if whole:
+        try:
+            return str(int(text))
+        except ValueError:
+            if number.is_integer():
+                return str(int(number))
+            raise ValueError("Expected a whole number") from None
+    return text
+
+
 def coerce_value(setting, value):
     stype = (setting.get("type") or "").lower()
+    if value is None or isinstance(value, (dict, list, tuple)):
+        # str() would store "None" or a Python repr in the add-on's settings.
+        raise ValueError("Expected a single value")
     if stype in ("bool", "boolean"):
         if isinstance(value, bool):
             return "true" if value else "false"
@@ -73,10 +97,10 @@ def coerce_value(setting, value):
         if val in ("false", "0", "no", "off"):
             return "false"
         raise ValueError("Expected boolean")
-    if stype in ("integer", "int", "number", "slider"):
-        text = str(value)
-        float(text)
-        return text
+    if stype in ("integer", "int"):
+        return _number_text(value, whole=True)
+    if stype in ("number", "slider"):
+        return _number_text(value, whole=False)
     if stype in ("select", "spinner", "enum"):
         opts = setting.get("options") or []
         if opts and str(value) not in [str(o.get("value", o)) for o in opts]:

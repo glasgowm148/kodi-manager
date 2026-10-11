@@ -31,6 +31,30 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             coerce_value(s, "c")
 
+    def test_integer_settings_take_whole_finite_numbers_only(self):
+        s = {"id": "limit", "label": "Limit", "type": "integer"}
+        self.assertEqual(coerce_value(s, 12), "12")
+        self.assertEqual(coerce_value(s, " 7 "), "7")
+        self.assertEqual(coerce_value(s, "5.0"), "5")
+        for bad in ("1.5", "nan", "inf", "-Infinity", True, "", "ten"):
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                coerce_value(s, bad)
+
+    def test_number_settings_reject_nan_and_infinity(self):
+        for typ in ("number", "slider"):
+            s = {"id": "volume", "label": "Volume", "type": typ}
+            self.assertEqual(coerce_value(s, "0.5"), "0.5")
+            for bad in ("nan", "inf", False):
+                with self.assertRaises(ValueError, msg=repr(bad)):
+                    coerce_value(s, bad)
+
+    def test_missing_or_structured_values_are_not_stored_as_python_text(self):
+        for typ in ("text", "string", "password", "integer", "enum"):
+            s = {"id": "x", "label": "X", "type": typ}
+            for bad in (None, {"a": 1}, ["a"]):
+                with self.assertRaises(ValueError, msg="%s %r" % (typ, bad)):
+                    coerce_value(s, bad)
+
 
 if __name__ == "__main__":
     unittest.main()
