@@ -98,3 +98,29 @@ def test_protected_settings_are_not_reapplied_during_playback(dashboard):
         baseline.return_value.apply.return_value = {"applied": [], "failed": [], "restart_required": False}
         assert dashboard.call("POST", "/api/baseline/apply", {})[0] == 200
         assert dashboard.call("POST", "/api/baseline/apply", {"keys": "x"})[0] == 400
+
+
+def assert_masked(lines):
+    text = "\n".join(lines)
+    for secret in ("abc123secret", "abcdefghijklmnop", "sk-test-12345"):
+        assert secret not in text
+    assert "token=***" in text
+
+
+def test_kodi_log_lines_are_masked(dashboard):
+    status, body = dashboard.call("GET", "/api/kodi/logs")
+    assert status == 200
+    assert len(body["data"]["lines"]) == 3
+    assert_masked(body["data"]["lines"])
+
+
+def test_health_log_lines_are_masked():
+    kodi = SimpleNamespace(get_log_lines=lambda n=300: list(SECRET_LINES), get_kodi_version=lambda: "21.0")
+    index = SimpleNamespace(refresh=Mock(), list=lambda: [])
+    with patch.object(server, "detect_stack", return_value={}), patch.object(server, "debug_paths", return_value={}), \
+            patch.object(server, "memory_status", return_value={}), patch.object(server, "internet_check", return_value=None), \
+            patch.object(server, "maintenance_checks", return_value=[]):
+        summary = server.health_summary(kodi, index, {})
+    assert summary["stats"]["kodi_log_errors"] == 1 and summary["stats"]["kodi_log_warnings"] == 1
+    assert_masked(summary["recent_errors"] + summary["recent_warnings"] + ["token=***"])
+    assert "Bearer" in summary["recent_errors"][0]

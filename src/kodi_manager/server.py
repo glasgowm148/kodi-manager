@@ -259,8 +259,9 @@ def health_summary(kodi, index, config):
             "kodi_log_warnings": len(warnings),
             "kodi_memory_mb": memory.get("kodi_mb"),
         },
-        "recent_errors": errors[-20:],
-        "recent_warnings": warnings[-20:],
+        # Log lines can carry tokens and keys (URLs, headers): mask them like API errors.
+        "recent_errors": redact(errors[-20:]),
+        "recent_warnings": redact(warnings[-20:]),
     }
 
 
@@ -869,7 +870,7 @@ def make_handler(state):
             return {"lines": state.logs[-200:]}
 
         def api_kodi_logs(self):
-            return {"lines": state.kodi.get_log_lines(500)}
+            return {"lines": redact(state.kodi.get_log_lines(500))}
 
         # --- install, backups, restores --------------------------------------------
 
