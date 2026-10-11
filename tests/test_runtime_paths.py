@@ -62,7 +62,7 @@ def test_backups_copy_and_restore_real_files_when_kodi_lists_special_paths(kodi_
     _write(roots["special://profile/"] / "addon_data/skin.bingie/settings.xml", b"skin")
     index = addon_index.AddonIndex(_Kodi())
     pov = index.get(POV)
-    assert pov["addon_data_path"] == str(live)
+    assert os.path.normpath(pov["addon_data_path"]) == os.path.normpath(str(live))
     single = backup.create_backup(pov)
     assert single["files_copied"] == 1
     stack = backup.create_stack_backup([pov])
@@ -100,6 +100,6 @@ def test_a_sparse_profile_never_resolves_addon_data_to_the_master_profile(kodi_f
         _write(roots["special://masterprofile/"] / "addon_data" / aid / "settings.xml", b"master")
     _write(roots["special://profile/"] / "addon_data" / POV / "settings.xml", b"kids")
     index = addon_index.AddonIndex(_Kodi())
-    assert index.get(POV)["addon_data_path"] == str(roots["special://profile/"] / "addon_data" / POV)
+    assert os.path.normpath(index.get(POV)["addon_data_path"]) == os.path.normpath(str(roots["special://profile/"] / "addon_data" / POV))
     # Add-ons with data only in the master profile are not attributed to this profile.
     assert index.get("skin.bingie") is None
