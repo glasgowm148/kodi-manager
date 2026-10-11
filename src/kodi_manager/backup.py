@@ -63,6 +63,14 @@ def prune_folder(folder, prefix, keep=(), limit=None):
     return removed
 
 
+def live_addon_data(addon_info):
+    """The real folder of an add-on's addon_data. Kodi may hand out special:// URLs,
+    which os.walk, shutil and open cannot use, so they are always translated."""
+    aid = (addon_info or {}).get("addon_id")
+    path = (addon_info or {}).get("addon_data_path") or ("special://profile/addon_data/%s" % aid if aid else "")
+    return translate(path) if path else ""
+
+
 def backup_root():
     root = translate("special://profile/addon_data/service.kodi.addonadmin/backups")
     os.makedirs(root, exist_ok=True)
@@ -259,7 +267,7 @@ def finish_backup(scope, dest, manifest, protect=()):
 def create_backup(addon_info, kodi_version="", adapter="", protect=()):
     aid = addon_info["addon_id"]
     ts, backup_id, dest = allocate_backup(aid, protect)
-    src = addon_info.get("addon_data_path") or translate("special://profile/addon_data/%s" % aid)
+    src = live_addon_data(addon_info)
     with discard_on_failure(dest):
         files = _copytree(src, os.path.join(dest, "addon_data"), skip_top=("backups",) if aid == SELF_ID else ())
         manifest = {
@@ -323,7 +331,7 @@ def restore_backup(addon_info, backup_id):
     count = len(_source_files(src, skip))
     if (expected is not None and count != expected) or (expected is None and count == 0):
         raise ValueError("Backup is incomplete or empty; nothing was restored")
-    dest = addon_info.get("addon_data_path") or translate("special://profile/addon_data/%s" % aid)
+    dest = live_addon_data(addon_info)
     undo = create_backup(addon_info, adapter=addon_info.get("adapter_name", ""), protect=(backup_id,))
     try:
         _restore_folder(aid, src, dest, skip, expected)
@@ -360,7 +368,7 @@ def create_stack_backup(addons, kodi_version="", note="", should_stop=None):
         for addon in addons:
             if not addon or not addon.get("addon_id"):
                 continue
-            src = addon.get("addon_data_path")
+            src = translate(addon.get("addon_data_path") or "")
             if src and os.path.isdir(src):
                 files = _copytree(src, os.path.join(root, addon["addon_id"]),
                                   skip_top=("backups",) if addon["addon_id"] == SELF_ID else (),
@@ -396,7 +404,7 @@ def restore_stack_backup(index, backup_id):
         if aid == "manifest.json" or not os.path.isdir(src) or os.path.islink(src):
             continue
         addon = index.get(aid)
-        dest = (addon or {}).get("addon_data_path") or (translate("special://profile/addon_data/%s" % aid) if addon else "")
+        dest = live_addon_data(addon) if addon else ""
         if not (addon and dest):
             skipped.append(aid)
             continue

@@ -51,7 +51,7 @@ def enrich_addon(addon, kodi=None, index=None):
     info = dict(addon)
     info["addon_id"] = aid
     info["path"] = path
-    info["addon_data_path"] = addon.get("addon_data_path_override") or (addon_data_path(aid) if aid else "")
+    info["addon_data_path"] = translate(addon.get("addon_data_path_override") or "") or (addon_data_path(aid) if aid else "")
     info["settings_schema_path"] = schema
     info["user_settings_path"] = user
     info["has_settings_schema"] = bool(schema and exists(schema))
@@ -150,11 +150,15 @@ class AddonIndex:
             base["builtin_addons_present"] = True
             base["builtin_addon_path"] = folder
             addons[aid] = enrich_addon(base, self.kodi, addons)
-        data_root = probe.get("addon_data_probe", {}).get("selected_path") or "special://profile/addon_data/"
+        # Settings, backups and restores always use the active profile's addon_data, as
+        # Kodi does. The probe (which may fall back to the master profile) is diagnostics
+        # only. Paths are translated: file operations cannot open special:// URLs.
+        data_root = "special://profile/addon_data/"
+        live_root = translate(data_root)
         for aid in safe_listdir(data_root)["dirs"]:
             base = addons.get(aid, {"addon_id": aid, "name": aid, "enabled": None, "type": ""})
             base["addon_data_present"] = True
-            base["addon_data_path_override"] = data_root + ("" if data_root.endswith(("/", "\\")) else "/") + aid
+            base["addon_data_path_override"] = os.path.join(live_root, aid)
             addons[aid] = enrich_addon(base, self.kodi, addons)
         return addons, probe
 

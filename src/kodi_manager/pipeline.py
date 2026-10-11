@@ -431,7 +431,7 @@ def pipeline_backup(index, kodi_version="", pipeline_obj=None):
         included, skipped = [], []
         for aid in PIPELINE_IDS:
             addon = index.get(aid)
-            src = addon.get("addon_data_path") if addon else ""
+            src = translate(addon.get("addon_data_path") or "") if addon else ""
             if src and os.path.isdir(src):
                 _copytree(src, os.path.join(dest, aid))
                 included.append(aid)

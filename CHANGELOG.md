@@ -20,6 +20,11 @@
   can no longer leave an add-on's addon.xml malformed.
 - **Kodi Manager's own access settings are not restored.** Restoring its folder keeps the live
   `settings.xml` (token, LAN access, Enable writes), so a replaced token cannot come back.
+- **Backups and checkpoints copy real files again.** On Kodi, add-on data folders were listed as
+  `special://` URLs that file copies cannot open, so per-add-on backups, the snapshot before each
+  settings save, nightly checkpoints and pipeline backups copied nothing and restores wrote to the
+  wrong place. Paths are now translated, and backups, restores and settings always use the active
+  profile's addon_data (the master-profile fallback is diagnostics only).
 
 ## 0.7.5 — 2026-10-11 (prerelease)
 
