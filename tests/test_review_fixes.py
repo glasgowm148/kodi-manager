@@ -110,14 +110,18 @@ def test_self_snapshot_skips_and_preserves_backup_store(tmp_path, monkeypatch):
     store = data / "backups"
     store.mkdir(parents=True)
     (data / "settings.xml").write_text("original")
+    (data / "baseline.json").write_text("original")
     monkeypatch.setattr(backup, "backup_root", lambda: str(store))
     info = {"addon_id": backup.SELF_ID, "addon_data_path": str(data)}
     snap = backup.create_backup(info)
     copied = store / backup.SELF_ID / snap["backup_id"] / "addon_data"
     assert (copied / "settings.xml").exists() and not (copied / "backups").exists()
     (data / "settings.xml").write_text("changed")
+    (data / "baseline.json").write_text("changed")
     backup.restore_backup(info, snap["backup_id"])
-    assert (data / "settings.xml").read_text() == "original"
+    assert (data / "baseline.json").read_text() == "original"
+    # Kodi Manager's own token and access switches are never rolled back by a restore.
+    assert (data / "settings.xml").read_text() == "changed"
     assert (store / backup.SELF_ID / snap["backup_id"]).is_dir()
 
 

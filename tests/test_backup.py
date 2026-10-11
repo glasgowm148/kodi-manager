@@ -171,3 +171,22 @@ def test_stack_backup_stops_on_request_and_discards_the_partial_snapshot(storage
         backup.create_stack_backup([info], should_stop=lambda: True)
     assert not list((root / "_stack").iterdir())
     assert backup.create_stack_backup([info], should_stop=lambda: False)["file_counts"] == {info["addon_id"]: 1}
+
+
+@pytest.mark.parametrize("stack", [False, True])
+def test_restoring_kodi_managers_own_folder_keeps_its_live_access_settings(storage, tmp_path, stack):
+    root, _settings, _info = storage
+    live = tmp_path / "self"
+    live.mkdir()
+    me = {"addon_id": backup.SELF_ID, "addon_data_path": str(live)}
+    (live / "settings.xml").write_bytes(b'<setting id="auth_token">leaked</setting><setting id="allow_lan">true</setting>')
+    (live / "baseline.json").write_bytes(b"old")
+    snap = backup.create_stack_backup([me]) if stack else backup.create_backup(me)
+    (live / "settings.xml").write_bytes(b'<setting id="auth_token">replaced</setting><setting id="allow_lan">false</setting>')
+    (live / "baseline.json").write_bytes(b"new")
+    if stack:
+        backup.restore_stack_backup(SimpleNamespace(get={backup.SELF_ID: me}.get), snap["backup_id"])
+    else:
+        backup.restore_backup(me, snap["backup_id"])
+    assert (live / "baseline.json").read_bytes() == b"old"
+    assert b"replaced" in (live / "settings.xml").read_bytes()

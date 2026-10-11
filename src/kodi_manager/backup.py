@@ -10,10 +10,10 @@ import uuid
 
 try:
     from .kodi_api import translate
-    from .fsutil import atomic_write_json
+    from .fsutil import atomic_write_bytes, atomic_write_json
 except ImportError:
     from kodi_api import translate
-    from fsutil import atomic_write_json
+    from fsutil import atomic_write_bytes, atomic_write_json
 
 
 DEFAULT_RETENTION = 20
@@ -27,6 +27,10 @@ class BackupAborted(Exception):
     deferred = True
 _retention = DEFAULT_RETENTION
 SELF_ID = "service.kodi.addonadmin"
+# Kodi Manager's access token and LAN/write switches are only changed in Kodi:
+# restoring an old copy of its own folder keeps the live settings.xml, so a
+# replaced token or a LAN switch turned off cannot come back from a backup.
+SELF_KEEP = ("settings.xml",)
 
 
 def set_retention(count):
@@ -213,6 +217,26 @@ def _replace_tree(src, dst, skip_top=(), expected_files=None):
             os.rmdir(root)
 
 
+def _restore_folder(aid, src, dest, skip, expected):
+    """Make the live folder of ``aid`` match a snapshot (see _replace_tree)."""
+    kept = {}
+    if aid == SELF_ID:
+        for name in SELF_KEEP:
+            path = os.path.join(dest, name)
+            if os.path.isfile(path) and not os.path.islink(path):
+                with open(path, "rb") as handle:
+                    kept[name] = handle.read()
+            else:
+                kept[name] = None
+    _replace_tree(src, dest, skip, expected_files=expected)
+    for name, data in kept.items():
+        path = os.path.join(dest, name)
+        if data is not None:
+            atomic_write_bytes(path, data)
+        elif os.path.isfile(path) and not os.path.islink(path):
+            os.remove(path)
+
+
 def _write_manifest(dest, manifest):
     atomic_write_json(os.path.join(dest, "manifest.json"), manifest, indent=2)
 
@@ -302,7 +326,7 @@ def restore_backup(addon_info, backup_id):
     dest = addon_info.get("addon_data_path") or translate("special://profile/addon_data/%s" % aid)
     undo = create_backup(addon_info, adapter=addon_info.get("adapter_name", ""), protect=(backup_id,))
     try:
-        _replace_tree(src, dest, skip, expected_files=expected)
+        _restore_folder(aid, src, dest, skip, expected)
     except BaseException as exc:
         _roll_back([(aid, dest, skip, undo)], exc)
         raise
@@ -394,7 +418,7 @@ def restore_stack_backup(index, backup_id):
         undo_backups[aid] = undo["backup_id"]
         done.append((aid, dest, skip, undo))
         try:
-            _replace_tree(src, dest, skip, expected_files=expected)
+            _restore_folder(aid, src, dest, skip, expected)
         except BaseException as exc:
             _roll_back(done, exc)
             raise
