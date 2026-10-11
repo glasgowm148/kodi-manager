@@ -67,6 +67,7 @@ function hasDocument() {
   return typeof document !== "undefined" && !!document.body && typeof document.createElement === "function";
 }
 
+const ACTION_TOAST_MS = 60000;
 function toast(message, tone = "info", options = {}) {
   if (!hasDocument()) return null;
   let host = document.getElementById("toasts");
@@ -84,14 +85,19 @@ function toast(message, tone = "info", options = {}) {
   text.textContent = message;
   node.append(text);
   const actions = options.actions || [];
+  // Action toasts (Undo…) expire: a stray tap much later must not roll back newer changes.
+  const timeout = options.timeout ?? (actions.length ? ACTION_TOAST_MS : tone === "error" ? 0 : 6000);
+  const shownAt = Date.now();
   for (const action of actions) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "action";
     button.textContent = action.label;
-    button.addEventListener("click", withErrors(async () => { node.remove(); await action.run(); }));
+    // Timers can fire late in a suspended tab; an expired action does nothing.
+    button.addEventListener("click", withErrors(async () => { node.remove(); if (timeout && Date.now() - shownAt > timeout) return; await action.run(); }));
     node.append(button);
   }
+  if (actions.length && typeof window !== "undefined" && typeof window.addEventListener === "function") window.addEventListener("hashchange", () => node.remove(), {once:true});
   const close = document.createElement("button");
   close.type = "button";
   close.className = "toast-close";
@@ -100,7 +106,6 @@ function toast(message, tone = "info", options = {}) {
   close.addEventListener("click", () => node.remove());
   node.append(close);
   host.append(node);
-  const timeout = options.timeout ?? (tone === "error" || actions.length ? 0 : 6000);
   if (timeout) setTimeout(() => node.remove(), timeout);
   return node;
 }

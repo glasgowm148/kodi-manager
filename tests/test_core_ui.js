@@ -200,3 +200,63 @@ test('index.html loads only local scripts under a strict script-src policy', () 
   const scripts = [...html.matchAll(/<script src="([^"]+)"/g)].map(match => match[1]);
   assert.equal(scripts[0], 'core.js');
 });
+
+function fakeDom() {
+  const make = tag => ({tagName:tag.toUpperCase(), children:[], listeners:{}, textContent:'', className:'', parent:null, removed:false, disabled:false,
+    append(...nodes){ for (const node of nodes) if (node && typeof node === 'object') { node.parent = this; this.children.push(node); } },
+    setAttribute(){}, addEventListener(type, fn){ (this.listeners[type] ||= []).push(fn); },
+    remove(){ this.removed = true; if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); }});
+  const body = make('body');
+  return {body, createElement:make, getElementById:id => body.children.find(child => child.id === id) || null, querySelector:() => null, querySelectorAll:() => []};
+}
+function toastHarness() {
+  const timers = [], hashListeners = [], dom = fakeDom();
+  let clock = 1000;
+  const FakeDate = class extends Date { static now() { return clock; } };
+  const harness = withApp({document:dom, Date:FakeDate, setTimeout:(fn, ms) => { timers.push({fn, ms}); return timers.length; },
+    window:{addEventListener:(type, fn) => { if (type === 'hashchange') hashListeners.push(fn); }}, location:{hash:'#/addon/plugin.video.pov', pathname:'/', search:''}});
+  const toasts = () => dom.getElementById('toasts')?.children || [];
+  return {...harness, dom, timers, hashListeners, toasts, advance:ms => { clock += ms; }};
+}
+const click = async button => { for (const fn of button.listeners.click) await fn({currentTarget:button}); };
+
+test('action toasts expire after a minute and on navigation', () => {
+  const h = toastHarness();
+  h.ui.toast('Saved', 'ok', {actions:[{label:'Undo', run:() => {}}]});
+  assert.equal(h.toasts().length, 1);
+  assert.equal(h.timers.at(-1).ms, 60000);
+  h.hashListeners.forEach(fn => fn());
+  assert.equal(h.toasts().length, 0);
+  h.ui.toast('Saved', 'ok', {actions:[{label:'Undo', run:() => {}}]});
+  h.timers.at(-1).fn();
+  assert.equal(h.toasts().length, 0);
+  h.ui.toast('Failed', 'error');
+  assert.equal(h.timers.length, 2, 'plain error toasts still stay until dismissed');
+});
+
+test('an expired action toast does nothing even when its timer fired late', async () => {
+  const h = toastHarness();
+  let ran = 0;
+  h.ui.toast('Saved', 'ok', {actions:[{label:'Undo', run:() => { ran++; }}]});
+  h.advance(61000);
+  await click(h.toasts()[0].children[1]);
+  assert.equal(ran, 0);
+  assert.equal(h.toasts().length, 0);
+});
+
+test('settings save offers a clearly labelled restore that asks first after the quick-undo window', async () => {
+  const h = toastHarness();
+  const posts = [], confirms = [];
+  h.ui.api = async (pathName, body) => { posts.push({pathName, body}); return {restored:true}; };
+  h.ui.apiMethod = async () => ({changed_count:2, backup_id:'b1'});
+  h.ui.route = async () => {};
+  h.ui.confirmDialog = async options => { confirms.push(options.title); return confirms.length > 1 ? false : true; };
+  vm.runInContext('state.writeEnabled = true; state.dirtyAddon = "plugin.video.pov"; state.dirtyChanges = {a:{value:"1"}, b:{value:"2"}};', h.ui);
+  await h.ui.saveDirty();
+  const button = h.toasts()[0].children[1];
+  assert.equal(button.textContent, 'Restore settings from before this save');
+  h.advance(30000);
+  await click(button);
+  assert.deepEqual(confirms, ['Save 2 changes?', 'Restore this backup?']);
+  assert.equal(posts.length, 0, 'declining the late confirmation restores nothing');
+});

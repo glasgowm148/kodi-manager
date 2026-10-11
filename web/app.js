@@ -125,6 +125,7 @@ function changePreview(id, original, value, secret=false){
   const display = v => secret ? (isUnset(v) ? "not set" : "••••••••") : String(v ?? "");
   return `${friendlyName(id, id)}\n  ${display(original)} -> ${display(value)}`;
 }
+const QUICK_UNDO_MS = 10000;
 async function saveDirty(){
   const changes = Object.entries(state.dirtyChanges).map(([id,item]) => ({id,value:item.value,source:item.source}));
   const addonId = state.dirtyAddon;
@@ -136,7 +137,9 @@ async function saveDirty(){
   if (!(await confirmDialog({title:`Save ${changes.length} change${changes.length === 1 ? "" : "s"}?`, message:"A backup of this add-on’s settings is created first.", detail:preview, confirmLabel:"Save"}))) return;
   const r = await apiMethod("PATCH", `/api/addons/${encodeURIComponent(addonId)}/settings`, {changes});
   clearDirty();
-  toast(`Saved ${r.changed_count} change${r.changed_count === 1 ? "" : "s"}. Backup ${r.backup_id}.`, "ok", r.backup_id ? {actions:[{label:"Undo", run:() => restoreAddonBackup(addonId, r.backup_id, {confirmFirst:false})}]} : {});
+  const savedAt = Date.now();
+  // The backup is the whole add-on folder as it was before this save; a later tap asks first.
+  toast(`Saved ${r.changed_count} change${r.changed_count === 1 ? "" : "s"}. Backup ${r.backup_id}.`, "ok", r.backup_id ? {actions:[{label:"Restore settings from before this save", run:() => restoreAddonBackup(addonId, r.backup_id, {confirmFirst:Date.now() - savedAt > QUICK_UNDO_MS})}]} : {});
   await route();
 }
 function isUnset(v){
@@ -707,9 +710,11 @@ function restoreSummary(result, undo){
 function announceRestore(result, addonId){
   if (!result) return;
   const undo = undoTargets(result, addonId);
-  toast(restoreSummary(result, undo), "ok", undo.length ? {actions:[{label:"Undo restore", run:() => undoRestore(undo)}]} : {});
+  const shownAt = Date.now();
+  toast(restoreSummary(result, undo), "ok", undo.length ? {actions:[{label:"Undo restore", run:() => undoRestore(undo, {confirmFirst:Date.now() - shownAt > QUICK_UNDO_MS})}]} : {});
 }
-async function undoRestore(targets){
+async function undoRestore(targets, {confirmFirst=false}={}){
+  if (confirmFirst && !(await confirmDialog({title:"Undo this restore?", message:"Settings go back to how they were just before the restore.", detail:targets.map(t => t.backupId).join(", "), confirmLabel:"Undo restore"}))) return;
   for (const target of targets) {
     const r = await postWithForce(`/api/addons/${encodeURIComponent(target.addonId)}/restore`, {backup_id:target.backupId}, "Undo");
     if (!r) return;
