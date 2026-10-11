@@ -45,6 +45,18 @@ def validate_item(item):
     return item
 
 
+def check_xml_value(value):
+    """A value written into addon.xml as element text: no markup, one line.
+
+    ``<``, ``>`` or ``&`` would leave addon.xml malformed (Kodi then drops the
+    add-on) or inject elements into it.
+    """
+    text = str(value)
+    if len(text) > 200 or re.search(r"[<>&\r\n]", text):
+        raise ValueError("An addon.xml value must be plain text on one line, without < > or &")
+    return text
+
+
 def _same(expected, current):
     if isinstance(expected, bool) or isinstance(current, bool):
         return str(expected).lower() == str(current).lower()
@@ -101,11 +113,12 @@ class Baseline:
             return False
         path = self._xml_file(item["addon"])
         tag = re.escape(item["tag"])
+        value = check_xml_value(item["value"])   # baseline.json may have been edited by hand
         with path_lock(path):
             with open(path, encoding="utf-8") as handle:
                 text = handle.read()
             new, count = re.subn(r"(<%s>)\s*[^<]*?\s*(</%s>)" % (tag, tag),
-                                 lambda m: m.group(1) + str(item["value"]) + m.group(2), text, count=1)
+                                 lambda m: m.group(1) + value + m.group(2), text, count=1)
             if not count:
                 raise ValueError("%s has no <%s> element" % (item["addon"], item["tag"]))
             atomic_write_text(path, new)
@@ -154,6 +167,8 @@ class Baseline:
             value = raw.get("value") if "value" in raw else self.current(item)
             if value is None:
                 raise LookupError("%s has no current value to protect" % item_key(item))
+            if item["kind"] == "addon_xml":
+                check_xml_value(value)
             item["value"] = value
             stored[item_key(item)] = {k: item[k] for k in ("kind", "addon", "id", "tag", "value", "label") if k in item}
             added.append(item_key(item))

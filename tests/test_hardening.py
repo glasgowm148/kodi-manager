@@ -66,6 +66,23 @@ def test_unsafe_items_are_refused(setup):
             base.capture([bad])
 
 
+def test_addon_xml_values_cannot_inject_markup(setup):
+    _, base, addon_dir = setup
+    original = (addon_dir / "addon.xml").read_text()
+    for bad in ("false</reuselanguageinvoker><extension point=\"x\"/><reuselanguageinvoker>", "a & b", "1\n2"):
+        with pytest.raises(ValueError):
+            base.capture([{"kind": "addon_xml", "addon": "plugin.video.pov", "tag": "reuselanguageinvoker", "value": bad}])
+    # A hand-edited baseline.json is refused at apply time too.
+    items = base.items()
+    for item in items:
+        if item["kind"] == "addon_xml":
+            item["value"] = "true</reuselanguageinvoker><broken>"
+    base.save(items)
+    result = base.apply()
+    assert [f["key"] for f in result["failed"]] == ["xml:plugin.video.pov:reuselanguageinvoker"]
+    assert (addon_dir / "addon.xml").read_text() == original
+
+
 def test_missing_items_are_not_reported_as_drift(setup):
     _, base, _ = setup
     base.capture([{"kind": "addon_xml", "addon": "plugin.video.gone", "tag": "x", "value": "1"}])
