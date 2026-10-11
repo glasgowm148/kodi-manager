@@ -9,7 +9,7 @@ except ImportError:
     xbmc = None
 
 try:
-    from . import profile_transition
+    from . import extension, profile_transition
     from .auth import generate_token
     from .kodi_api import KodiAPI, service_addon, translate
     from .netconfig import DEFAULT_PORT, effective_host, parse_int
@@ -17,6 +17,7 @@ try:
     from .shield_exit import ShieldExitGuard, supported_build
     from .widget_cache import Refresher, WidgetCache, jsonrpc_via, RELOAD_PROPERTY
 except ImportError:
+    import extension
     import profile_transition
     from auth import generate_token
     from kodi_api import KodiAPI, service_addon, translate
@@ -372,6 +373,37 @@ def apply_settings_change(kodi, server, old_config, new_config, web_root, server
     return start_server(kodi, new_config, web_root, server_class)
 
 
+def start_extension(kodi, monitor):
+    """Start the optional private extension (extension.py) inside Kodi; returns it or None.
+
+    Public builds have none, so this does nothing there. Its failures are
+    logged by type only and never stop the service.
+    """
+    if not xbmc or monitor is None:
+        return None
+    private = extension.module()
+    if extension.error:
+        kodi.log("Private extension unavailable: %s" % extension.error)
+    if private is None or monitor.abortRequested():
+        return None
+    start = getattr(private, "start", None)
+    if callable(start):
+        try:
+            start(monitor, kodi.log)
+        except Exception as error:
+            kodi.log("Private extension start failed: %s" % type(error).__name__)
+    return private
+
+
+def stop_extension(kodi, private):
+    stop = getattr(private, "stop", None) if private is not None else None
+    if callable(stop):
+        try:
+            stop()
+        except Exception as error:
+            kodi.log("Private extension stop failed: %s" % type(error).__name__)
+
+
 def main():
     # A coordinated profile switch may already be cancelling this generation.
     startup_monitor = profile_transition.Monitor() if xbmc else None
@@ -403,6 +435,7 @@ def main():
                             os.path.join(os.path.dirname(__file__), 'shield_exit_guard.sh'),
                             translate('special://temp/shield-exit-result.json'))
     kodi.log('Shield exit workaround active=%s' % supported)
+    private = start_extension(kodi, startup_monitor)
     if config.get("widget_cache_auto"):
         try:
             try:
@@ -465,6 +498,7 @@ def main():
             else:
                 time.sleep(1)
     finally:
+        stop_extension(kodi, private)
         if refresher:
             refresher.stop.set()
         if watchdog:

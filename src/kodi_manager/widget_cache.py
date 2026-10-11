@@ -22,6 +22,11 @@ import re
 import time
 from urllib.parse import parse_qs, parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
+try:
+    from . import extension
+except ImportError:
+    import extension
+
 PLUGIN_URL = "plugin://service.kodi.addonadmin/"
 RELOAD_PROPERTY = "km_widgets"
 RELOAD_INFO = "$INFO[Window(Home).Property(%s)]" % RELOAD_PROPERTY
@@ -178,10 +183,24 @@ def _route(source):
     return query.get("mode", [""])[0], query.get("action", [""])[0]
 
 
+def _extra_progress_modes():
+    """Progress ``mode`` values a private extension adds (WIDGET_PROGRESS_MODES)."""
+    modes = extension.attr("WIDGET_PROGRESS_MODES", ())
+    return {str(mode) for mode in modes} if isinstance(modes, (list, tuple, set, frozenset)) else set()
+
+
+def _extra_playable_modes(addon_id):
+    """Playable leaf ``mode`` values a private extension declares for one add-on, or None."""
+    table = extension.attr("WIDGET_PLAYABLE_MODES", {})
+    modes = table.get(addon_id) if isinstance(table, dict) else None
+    return {str(mode) for mode in modes} if isinstance(modes, (list, tuple, set, frozenset)) else None
+
+
 def is_progress(source):
     mode, action = _route(source)
     info = parse_qs(urlsplit(source).query).get("info", [""])[0]
-    return mode in _PROGRESS_MODES or action in _PROGRESS_ACTIONS or info in _PROGRESS_INFOS
+    return (mode in _PROGRESS_MODES or action in _PROGRESS_ACTIONS or info in _PROGRESS_INFOS
+            or (bool(mode) and mode in _extra_progress_modes()))
 
 
 def helper_item(item, source):
@@ -191,7 +210,14 @@ def helper_item(item, source):
     ``<name>_id``, every item URL parameter as ``item.<name>``, the source's
     ``widget`` flag, and marks ``info=play`` leaves playable (it resolves them
     with setResolvedUrl unless its "only resolve strm" option is on).
+
+    Leaves of an add-on listed in the private extension's WIDGET_PLAYABLE_MODES
+    are playable when their ``mode`` is one of its modes, and get no properties.
     """
+    item_url = urlsplit(item.get("file", ""))
+    playable_modes = _extra_playable_modes(item_url.netloc) if item_url.netloc else None
+    if playable_modes is not None:
+        return {}, parse_qs(item_url.query).get("mode", [""])[0] in playable_modes
     if urlsplit(source).netloc not in TMDB_HELPERS:
         return {}, False
     props = {"%s_id" % k: str(v) for k, v in (item.get("uniqueid") or {}).items() if k and v}

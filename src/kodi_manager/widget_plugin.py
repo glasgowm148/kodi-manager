@@ -342,6 +342,15 @@ def main(argv=None):
             from widget_cache import serve
         serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs)
         return
+    if mode != "family":
+        # A private build's extra plugin modes (extension.py); public builds have none.
+        try:
+            from . import extension
+        except ImportError:
+            import extension
+        widget_mode = extension.attr("widget_mode")
+        if callable(widget_mode) and widget_mode(mode, argv):
+            return
     try:
         from .addon_index import AddonIndex
     except ImportError:
