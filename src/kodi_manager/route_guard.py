@@ -31,6 +31,20 @@ DENY_WORDS = frozenset((
     "revoke", "export", "import", "rename", "edit", "create", "add", "open", "dialog", "exit", "quit",
     "test", "debug", "log", "logs", "clean", "flush", "script", "trailer", "trailers",
 ))
+# Words that open a dialog, picker or window, or write data, when they name the route
+# (POV/Fen options_menu_choice, extras_menu_choice, watched_unwatched_erase_bookmark,
+# show_text, choose_view, build_navigate_to_page, menu_editor.*, myservices). Matched only in
+# DIALOG_KEYS: in URLs and free text they are ordinary words ("more-like-this").
+DIALOG_PREFIXES = ("erase", "choice")
+DIALOG_WORDS = frozenset((
+    "options", "extras", "select", "input", "choose", "view", "text", "help", "navigate", "editor",
+    "slideshow", "viewer", "bookmark", "bookmarks", "like", "unlike", "hide", "unhide",
+    "services", "myservices",
+))
+DIALOG_KEYS = frozenset((
+    "mode", "action", "info", "route", "do", "command", "cmd", "func", "function", "method", "op",
+    "operation", "task", "call", "run", "exec", "menu",
+))
 # Parameters that only carry display text or identifiers, never a route.
 DISPLAY_KEYS = frozenset((
     "name", "title", "label", "list_name", "iconimage", "icon", "thumb", "thumbnail", "poster", "fanart",
@@ -62,13 +76,16 @@ def words(value):
 _EXACT = frozenset(DENY_WORDS | {p + ending for p in DENY_PREFIXES for ending in _INFLECTIONS})
 
 
-def action_word(value, route=True):
+def action_word(value, route=True, dialog=False):
     """The first word of ``value`` that marks an action, or ''.
 
     ``route``: the value selects a route, so words are matched by prefix too.
+    ``dialog``: the value names the route itself (``mode=``), so dialog words count too.
     """
     for word in words(value):
         if word in _EXACT or (route and word.startswith(DENY_PREFIXES)):
+            return word
+        if dialog and (word in DIALOG_WORDS or word.startswith(DIALOG_PREFIXES)):
             return word
     return ""
 
@@ -85,7 +102,7 @@ def blocked_reason(source):
             continue
         if key.lower() == "isfolder" and value.lower() == "false":
             return "not a folder"
-        word = action_word(value, route=key.lower() in ROUTE_KEYS)
+        word = action_word(value, route=key.lower() in ROUTE_KEYS, dialog=key.lower() in DIALOG_KEYS)
         if word:
             return "%s=%s" % (key, word)
     return ""

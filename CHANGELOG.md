@@ -46,6 +46,10 @@
 - A refused settings batch highlights the setting it names; the cached-row Pages field allows 1–5
   like the server; "Layout read only" shows when writes are off; the API docs list
   `playback_active`, `origin_mismatch` and the actual layout fields.
+- **Browse and cached rows refuse more add-on actions.** POV/Fen routes that open dialogs or write
+  data when run (`options_menu_choice`, `extras_menu_choice`, `watched_unwatched_erase_bookmark`,
+  `myservices`, the `*_choice` pickers, `show_text`, view and menu-editor modes) are no longer
+  accepted as directory listings.
 
 ## 0.7.5 — 2026-10-11 (prerelease)
 
