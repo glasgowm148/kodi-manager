@@ -810,8 +810,9 @@ def test_dashboard_address_is_not_announced_over_playback(monkeypatch):
     assert service.start_server(kodi, config, "", Started, announce=True) is not None
     kodi.notify.assert_not_called()
     playing["value"] = False
-    service.start_server(kodi, config, "", Started, announce=True)
-    kodi.notify.assert_called_once_with("Kodi Manager", "http://0.0.0.0:8765")
+    service.start_server(kodi, config, "", Started, announce=True, lan_ip=lambda: "192.168.1.50")
+    # The reachable LAN address, never the 0.0.0.0 bind address.
+    kodi.notify.assert_called_once_with("Kodi Manager", "http://192.168.1.50:8765")
 
 
 def test_settings_change_swaps_config_or_restarts_on_network_change():

@@ -15,7 +15,7 @@ try:
     from .kodi_api import KodiAPI, service_addon, translate
     from .netconfig import DEFAULT_PORT, effective_host, parse_int
     from .server import ServerThread
-    from .shield_exit import ShieldExitGuard, supported_build
+    from .shield_exit import ShieldExitGuard, process_start, supported_build
     from .widget_cache import Refresher, WidgetCache, jsonrpc_via, RELOAD_PROPERTY
 except ImportError:
     import extension
@@ -24,7 +24,7 @@ except ImportError:
     from kodi_api import KodiAPI, service_addon, translate
     from netconfig import DEFAULT_PORT, effective_host, parse_int
     from server import ServerThread
-    from shield_exit import ShieldExitGuard, supported_build
+    from shield_exit import ShieldExitGuard, process_start, supported_build
     from widget_cache import Refresher, WidgetCache, jsonrpc_via, RELOAD_PROPERTY
 
 # Settings that need a new listening socket when they change.
@@ -351,12 +351,89 @@ def start_watchdog(kodi):
     return watchdog
 
 
-def start_server(kodi, config, web_root, server_class=None, announce=False):
+# Shared by every profile (special://temp): which Kodi process and profile ran
+# the service last, so the dashboard address is announced once per Kodi session.
+SESSION_STATE = "special://temp/kodi-manager-session.json"
+# A start in another profile this soon after the service stopped is a profile switch
+# (some setups switch profiles by restarting Kodi).
+PROFILE_SWITCH_WINDOW = 120
+
+
+def process_identity():
+    """This Kodi process: PID plus its start time, so a reused PID is a new session."""
+    pid = os.getpid()
+    try:
+        return "%d:%s" % (pid, process_start(pid))
+    except Exception:
+        return str(pid)
+
+
+def read_session(path):
+    try:
+        with open(path, encoding="utf-8") as handle:
+            value = json.load(handle)
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_session(path, record):
+    try:
+        try:
+            from .fsutil import atomic_write_bytes
+        except ImportError:
+            from fsutil import atomic_write_bytes
+        atomic_write_bytes(path, json.dumps(record).encode("utf-8"), fsync=False)
+    except Exception:
+        pass
+
+
+def announce_due(previous, process, profile, now):
+    """Show the dashboard address on this start? Once per Kodi session, never on a profile switch.
+
+    Not when the service already ran in this Kodi process (profile switches and
+    add-on updates restart the service), and not when Kodi was restarted into
+    another profile moments after the service stopped (a restart-based switch).
+    """
+    if previous.get("process") == process:
+        return False
+    stopped = previous.get("stopped_at")
+    if (previous.get("profile") not in (None, profile) and isinstance(stopped, (int, float))
+            and 0 <= now - stopped < PROFILE_SWITCH_WINDOW):
+        return False
+    return True
+
+
+def dashboard_address(config, lan_ip=None):
+    """The address to open: the TV's LAN address when listening on every interface, else the bound one."""
+    host = str(config.get("host") or "127.0.0.1")
+    if host in ("0.0.0.0", "::"):
+        try:
+            host = (lan_ip() if callable(lan_ip) else lan_ip) or "127.0.0.1"
+        except Exception:
+            host = "127.0.0.1"
+    if ":" in host and not host.startswith("["):
+        host = "[%s]" % host
+    return "http://%s:%s" % (host, config.get("port"))
+
+
+def lan_address():
+    """This TV's LAN IPv4 address, or "" (a short wait while Kodi looks it up)."""
+    if not xbmc:
+        return ""
+    try:
+        from .widget_rows import local_ip
+    except ImportError:
+        from widget_rows import local_ip
+    return local_ip(xbmc, attempts=10)
+
+
+def start_server(kodi, config, web_root, server_class=None, announce=False, lan_ip=None):
     """Start the dashboard server; on failure (port in use, bad address) log, notify and return None.
 
-    ``announce`` shows the dashboard address on the TV, unless something is
-    playing: Kodi restarts this service when the add-on updates, which can
-    happen in the middle of a film.
+    ``announce`` shows the dashboard address (the TV's LAN address, not
+    0.0.0.0) on the TV, unless something is playing: Kodi restarts this
+    service when the add-on updates, which can happen in the middle of a film.
     """
     server_class = server_class or ServerThread
     try:
@@ -372,7 +449,7 @@ def start_server(kodi, config, web_root, server_class=None, announce=False):
         return None
     kodi.log("Kodi Manager URL http://%s:%s token configured=%s" % (config["host"], config["port"], bool(config.get("auth_token"))))
     if announce and not media_playing():
-        kodi.notify("Kodi Manager", "http://%s:%s" % (config["host"], config["port"]))
+        kodi.notify("Kodi Manager", dashboard_address(config, lan_ip))
     return server
 
 
@@ -445,7 +522,12 @@ def main():
         return
     root = os.path.abspath(addon.getAddonInfo("path"))
     web_root = os.path.join(root, "resources", "web")
-    running = {"server": start_server(kodi, config, web_root, announce=True), "config": config}
+    session_path = translate(SESSION_STATE)
+    session = {"process": process_identity(), "profile": translate("special://profile/")}
+    announce = announce_due(read_session(session_path), session["process"], session["profile"], time.time())
+    running = {"server": start_server(kodi, config, web_root, announce=announce, lan_ip=lan_address),
+               "config": config}
+    write_session(session_path, dict(session, started_at=time.time()))
     supported = bool(xbmc and config['shield_exit_workaround']
                      and xbmc.getCondVisibility('System.Platform.Android')
                      and supported_build(xbmc.getInfoLabel('System.BuildVersion'))
@@ -538,6 +620,7 @@ def main():
             kodi.log('Shield exit guard unavailable: %s' % type(error).__name__)
         if running["server"]:
             running["server"].stop()
+        write_session(session_path, dict(session, stopped_at=time.time()))
         kodi.log('Manager network shutdown complete')
 
 
