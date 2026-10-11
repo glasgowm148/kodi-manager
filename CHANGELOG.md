@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.7.11 — 2026-10-11 (prerelease)
+
+- **Only real listings run from the dashboard.** Browsing, row previews, family rows and cached rows
+  now check POV, Fen, Fen Light, TMDb Helper (both add-on IDs), BBC iPlayer, Bingie Widgets and Kodi
+  Manager's own rows against an explicit list of each add-on's listing routes, taken from their
+  routers (`KNOWN_ROUTES` in `route_guard.py`), instead of guessing from words in the URL. Anything
+  else they route to is refused, as are path-based routes and a repeated `mode=`; a cached or family
+  row's own source is checked too. Other add-ons keep the word check. Checked against 9,383 plugin
+  URLs seen on one TV:
+  - BBC iPlayer play items (`mode=201`–`205`), sign-out, search, red-button and "mark watched" routes
+    were accepted before and are now refused.
+  - TMDb Helper's "Now playing" lists and BBC iPlayer programmes whose address or description
+    contains "play" (*Play School*) were refused before and now work.
+  - POV routes that do not exist in POV (`mode=trakt_lists`, `mode=navigator`) are refused.
+- **A skin menu item without its `<label>` or `<action>`** now refuses a layout edit with a clear
+  message (400) instead of failing with a server error.
+
+### For developers
+
+- **Smaller modules.** `server.py` is split into `http_base.py` (request checks, envelope, bounded
+  server), `api_status.py`, `api_addons.py` and `api_widgets.py` (handlers by area) and
+  `dashboard_data.py`; `service.py` into `service_config.py` and `service_workers.py`; the
+  service-side `Refresher` moves from `widget_cache.py` to `widget_refresher.py`. Every name that was
+  importable from `server`, `service` and `widget_cache` still is, and the HTTP API is unchanged
+  (all 69 requests of a smoke run answer identically). Tests patch names where they are looked up.
+- **Type checking.** pyright 1.1.414 checks `src/` as Python 3.8 in CI, with stubs for Kodi's modules
+  in `typings/`; the errors it found were fixed in the code.
+- **Browser tests.** `e2e/` runs the dashboard in Chromium (Playwright 1.63.0) against the demo
+  server: navigation on desktop and phone, Trends, Row health, saving a setting, refusals, the theme,
+  no sideways scrolling at 390 px and screenshots of four pages. `scripts/demo_server.py --now`
+  freezes the demo clock.
+
 ## 0.7.10 — 2026-10-11 (prerelease)
 
 - **A stalled exit on the Shield really ends after a minute.** Quitting Kodi 22.0 RC1 could still
