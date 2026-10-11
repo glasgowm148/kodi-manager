@@ -30,7 +30,7 @@ try:
     from .widget_rows import RowStore
     from . import fenlight_db
     from .write_policy import WriteRefused, check_writable, read_only_reason
-    from .netconfig import is_loopback
+    from .netconfig import host_allowed, is_loopback
     from .memstat import memory_status
     from .netwatch import internet_check
     from .baseline import Baseline
@@ -55,7 +55,7 @@ except ImportError:
     from widget_rows import RowStore
     import fenlight_db
     from write_policy import WriteRefused, check_writable, read_only_reason
-    from netconfig import is_loopback
+    from netconfig import host_allowed, is_loopback
     from memstat import memory_status
     from netwatch import internet_check
     from baseline import Baseline
@@ -475,6 +475,12 @@ def make_handler(state):
             self.err(403, "forbidden", "Non-private client rejected")
             return False
 
+        def _host_allowed(self):
+            if host_allowed(self.headers.get("Host"), state.config.get("host")):
+                return True
+            self.err(403, "host_not_allowed", "Use the TV's IP address, a .local name or localhost")
+            return False
+
         def _origin_allowed(self):
             """Browsers send Origin on cross-site writes; the dashboard itself is same-origin."""
             origin = self.headers.get("Origin")
@@ -531,7 +537,7 @@ def make_handler(state):
         def _dispatch(self, method):
             self._body = None
             path = self._target()
-            if path is None or not self._client_allowed():
+            if path is None or not self._client_allowed() or not self._host_allowed():
                 return
             is_api = path == "/api" or path.startswith("/api/")
             if not is_api:

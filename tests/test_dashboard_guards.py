@@ -124,3 +124,37 @@ def test_health_log_lines_are_masked():
     assert summary["stats"]["kodi_log_errors"] == 1 and summary["stats"]["kodi_log_warnings"] == 1
     assert_masked(summary["recent_errors"] + summary["recent_warnings"] + ["token=***"])
     assert "Bearer" in summary["recent_errors"][0]
+
+
+@pytest.mark.parametrize("host", [
+    None, "localhost", "localhost:8765", "LOCALHOST.", "tv.localhost:8765", "127.0.0.1:8765", "[::1]:8765",
+    "192.168.1.147:8765", "10.0.0.5", "172.16.3.4:80", "169.254.10.2:8765", "[fe80::1]:8765", "[fd00::5]",
+    "shield.local:8765", "Living-Room-TV.local", "8.8.4.4:8765"])
+def test_allowed_hosts(host):
+    from netconfig import host_allowed
+    assert host_allowed(host, "8.8.4.4")
+
+
+@pytest.mark.parametrize("host", [
+    "attacker.example", "attacker.example:8765", "rebind.attacker.example.", "shield", "shield:8765",
+    "local", "x.local.evil.example", "8.8.8.8:8765", "[2001:4860::8888]:8765", "192.168.1.147:http",
+    "192.168.1.147:8765:1", "[::1", "under_score.local", "bad host"])
+def test_refused_hosts(host):
+    from netconfig import host_allowed
+    assert not host_allowed(host, "0.0.0.0")
+
+
+def test_bound_public_address_only_when_bound_to_it():
+    from netconfig import host_allowed
+    assert host_allowed("8.8.4.4:8765", "8.8.4.4")
+    assert not host_allowed("8.8.4.4:8765", "0.0.0.0")
+    assert not host_allowed("8.8.8.8:8765", "8.8.4.4")
+
+
+def test_server_refuses_foreign_host_names_for_pages_and_api(dashboard):
+    for target in ("/", "/api/status", "/api/bootstrap/status"):
+        status, body = dashboard.call("GET", target, host="rebind.attacker.example:8765")
+        assert status == 403 and body["code"] == "host_not_allowed", target
+    assert dashboard.call("GET", "/api/kodi/logs", host="192.168.1.147:8765")[0] == 200
+    assert dashboard.call("GET", "/api/kodi/logs", host="shield.local:8765")[0] == 200
+    assert dashboard.call("GET", "/api/kodi/logs", host=False)[0] == 200
