@@ -25,6 +25,9 @@
   settings save, nightly checkpoints and pipeline backups copied nothing and restores wrote to the
   wrong place. Paths are now translated, and backups, restores and settings always use the active
   profile's addon_data (the master-profile fallback is diagnostics only).
+- **Account checks work on Kodi's Python 3.8.** The TorBox expiry date is parsed without
+  `datetime.strptime`, which fails once another add-on has used it, and each account check runs on
+  its own so one failure no longer hides the others.
 
 ## 0.7.5 — 2026-10-11 (prerelease)
 

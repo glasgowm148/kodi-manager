@@ -3,7 +3,8 @@ import time
 import pytest
 
 from kodi_manager import maintenance
-from kodi_manager.account_health import torbox_status, trakt_status
+from kodi_manager import account_health
+from kodi_manager.account_health import run_checks, torbox_status, trakt_status
 from kodi_manager.baseline import Baseline
 from kodi_manager.maintenance import Maintenance, nightly_checkpoint
 
@@ -160,6 +161,32 @@ def test_torbox_status():
         raise OSError("timed out")
     assert "Could not reach" in torbox_status(get, now=now, fetch=boom)["detail"]
 
+
+
+def test_torbox_expiry_does_not_use_datetime_strptime(monkeypatch):
+    """On Kodi's Python 3.8, datetime.strptime raises TypeError ('NoneType' object is not
+    callable) once another add-on's sub-interpreter has used it and exited."""
+    class Broken:
+        @staticmethod
+        def strptime(*args):
+            raise TypeError("'NoneType' object is not callable")
+    monkeypatch.setattr(account_health, "datetime", Broken, raising=False)
+    get = lambda addon, sid: {"tb.token": "t", "tb.enabled": "true"}.get(sid, "")  # noqa: E731
+    ok = {"success": True, "data": {"premium_expires_at": "2027-08-05T17:55:13Z"}}
+    expires = 1817488513  # 2027-08-05T17:55:13Z
+    result = torbox_status(get, now=expires - 3 * 86400, fetch=lambda t: ok)
+    assert result["status"] == "warning" and "(3 days)" in result["detail"]
+    assert torbox_status(get, now=expires + 1, fetch=lambda t: ok)["status"] == "error"
+
+
+def test_one_crashing_account_check_does_not_hide_the_others():
+    logged = []
+
+    def crash():
+        raise TypeError("boom")
+    ok = {"id": "trakt", "status": "ok"}
+    assert run_checks([crash, lambda: ok], logged.append) == [ok]
+    assert logged == ["Account check failed: TypeError"]
 
 def test_problem_found_while_quiet_waits_if_playback_starts_before_the_notification(setup):
     kodi, base, _ = setup

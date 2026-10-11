@@ -186,13 +186,13 @@ def start_maintenance(kodi, is_busy=tv_busy):
     try:
         try:
             from .maintenance import Maintenance, nightly_checkpoint
-            from .account_health import trakt_status, torbox_status
+            from .account_health import trakt_status, torbox_status, run_checks
             from .addon_index import AddonIndex
             from .backup import create_stack_backup, list_backups, delete_stack_backup
             from .server import stack_backup_addons, make_baseline
         except ImportError:
             from maintenance import Maintenance, nightly_checkpoint
-            from account_health import trakt_status, torbox_status
+            from account_health import trakt_status, torbox_status, run_checks
             from addon_index import AddonIndex
             from backup import create_stack_backup, list_backups, delete_stack_backup
             from server import stack_backup_addons, make_baseline
@@ -210,7 +210,8 @@ def start_maintenance(kodi, is_busy=tv_busy):
             lambda: list_backups(stack=True), delete_stack_backup)
 
     def accounts():
-        return [trakt_status(kodi.get_addon_setting), torbox_status(kodi.get_addon_setting, translate)]
+        return run_checks([lambda: trakt_status(kodi.get_addon_setting),
+                           lambda: torbox_status(kodi.get_addon_setting, translate)], kodi.log)
 
     try:
         nightly = [b for b in list_backups(stack=True) if b.get("note") == "nightly"]

@@ -5,11 +5,11 @@
 * TorBox: asks TorBox for the subscription end date with the token POV holds
   (once or twice a day). The token never leaves the device except to TorBox.
 """
+import calendar
 import json
 import os
 import ssl
 import time
-from datetime import datetime
 
 try:
     from urllib.request import Request, urlopen
@@ -93,9 +93,10 @@ def torbox_status(get_setting, translate=lambda p: p, now=None, fetch=None, addo
                 "detail": "TorBox did not accept the token POV has. Sign in to TorBox again in POV's account settings."}
     stamp = str(info.get("premium_expires_at") or "")
     try:
-        expires = datetime.strptime(stamp[:19], "%Y-%m-%dT%H:%M:%S")
-        expires = (expires - datetime(1970, 1, 1)).total_seconds()
-    except ValueError:
+        # Not datetime.strptime: on Kodi's Python 3.8 it raises TypeError once another
+        # add-on's sub-interpreter has used and released it.
+        expires = calendar.timegm(time.strptime(stamp[:19], "%Y-%m-%dT%H:%M:%S"))
+    except (ValueError, TypeError, OverflowError):
         return {"id": "torbox", "label": label, "status": "ok", "detail": "Account active"}
     left = expires - now
     if left <= 0:
@@ -106,3 +107,14 @@ def torbox_status(get_setting, translate=lambda p: p, now=None, fetch=None, addo
     if status == "warning":
         detail += ". Renew soon so streams keep working."
     return {"id": "torbox", "label": label, "status": status, "detail": detail}
+
+
+def run_checks(checks, log=lambda msg: None):
+    """Run each account check on its own, so one that crashes does not hide the others."""
+    results = []
+    for check in checks:
+        try:
+            results.append(check())
+        except Exception as exc:
+            log("Account check failed: %s" % type(exc).__name__)
+    return results
