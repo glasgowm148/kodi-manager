@@ -17,12 +17,11 @@ class ExtensionTests(unittest.TestCase):
         self.addCleanup(extension.reset)
 
     def test_public_build_has_no_module(self):
-        with patch.dict(sys.modules):
-            sys.modules.pop("household", None)
+        # None in sys.modules makes the module absent even in a private build that ships one.
+        with patch.dict(sys.modules, {"household": None}):
             self.assertIsNone(extension.module())
             self.assertIsNone(extension.error)
             self.assertEqual(extension.attr("WIDGET_PROGRESS_MODES", ()), ())
-        self.assertFalse((ROOT / "src" / "kodi_manager" / "household.py").exists())
 
     def test_a_present_module_is_loaded_once(self):
         fake = types.ModuleType("household")

@@ -48,6 +48,8 @@ class TransitionCase(unittest.TestCase):
             if coordinator is not None:
                 fake.TRANSITION_COORDINATOR = coordinator
             modules["household"] = fake
+        else:
+            modules["household"] = None  # absent, even in a private build that ships one
         saved = {name: sys.modules.get(name) for name in ("xbmc", "xbmcvfs", "household")}
         original_start = threading.Thread.start
         owner = threading.current_thread().__dict__.get("_kodi_profile_worker_owner")

@@ -22,7 +22,7 @@ class ExtensionCase(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         self.addCleanup(extension.reset)
-        sys.modules.pop("household", None)
+        sys.modules["household"] = None  # absent, even in a private build that ships one
         if attrs:
             fake = types.ModuleType("household")
             for name, value in attrs.items():
