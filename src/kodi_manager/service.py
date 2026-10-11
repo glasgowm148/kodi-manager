@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import tempfile
 import time
 
 try:
@@ -128,13 +129,31 @@ def load_config(addon):
                 "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 "installer_nonce": seed.get("installer_nonce", ""),
             }
-            with open(os.path.join(data_dir, "installer_result.json"), "w", encoding="utf-8") as fh:
-                json.dump(result, fh, indent=2)
-            with open(applied_path, "w", encoding="utf-8") as fh:
-                fh.write(seed_digest)
+            # Readers (the installer, /api/bootstrap/status) see the old file or the whole new one.
+            write_private_file(os.path.join(data_dir, "installer_result.json"),
+                               json.dumps(result, indent=2).encode("utf-8"))
+            write_private_file(applied_path, seed_digest.encode("utf-8"))
         except Exception:
             pass
     return config
+
+
+def write_private_file(path, data):
+    """Replace ``path`` atomically with an owner-only file (it may hold the access token)."""
+    fd, temp = tempfile.mkstemp(prefix="." + os.path.basename(path) + ".", suffix=".tmp",
+                                dir=os.path.dirname(os.path.abspath(path)))
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, path)
+    except BaseException:
+        try:
+            os.unlink(temp)
+        except OSError:
+            pass
+        raise
 
 
 # Refresh cached rows only while the TV is quiet: no media loaded, no busy or

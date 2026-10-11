@@ -55,6 +55,23 @@ def test_changed_installer_seed_is_applied_again(tmp_path):
         assert service.load_config(addon)["port"] == 8766
 
 
+def test_installer_result_is_replaced_atomically_and_owner_only(tmp_path):
+    (tmp_path / "installer_seed.json").write_text(json.dumps({"allow_lan": True, "installer_nonce": "n2"}))
+    result = tmp_path / "installer_result.json"
+    result.write_text('{"ok": true, "auth_token": "previous"}')
+    with patch.object(service, "translate", return_value=str(tmp_path)), \
+            patch.object(service.os, "replace", side_effect=OSError("interrupted")):
+        service.load_config(FakeAddon())
+    # An interrupted write leaves the previous file whole and no temporary file behind.
+    assert json.loads(result.read_text())["auth_token"] == "previous"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["installer_result.json", "installer_seed.json"]
+    with patch.object(service, "translate", return_value=str(tmp_path)):
+        service.load_config(FakeAddon())
+    assert json.loads(result.read_text())["installer_nonce"] == "n2"
+    if os.name == "posix":
+        assert result.stat().st_mode & 0o777 == 0o600
+
+
 def test_allow_secret_replacement_setting_is_gone(tmp_path):
     with patch.object(service, "translate", return_value=str(tmp_path)):
         assert "allow_secret_replacement" not in service.load_config(FakeAddon())
