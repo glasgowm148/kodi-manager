@@ -160,6 +160,11 @@ class ExitSequenceTests(unittest.TestCase):
         self.assertEqual(trace, ['armed clock=uptime', 'started', 'saved', 'stopping_all'])
 
     def test_hang_2_without_a_clock_still_ends_on_the_poll_limit(self):
+        # The guard falls back to the shell's $SECONDS when /proc/uptime is unreadable. bash (macOS's
+        # /bin/sh) and mksh (Android's) provide it, so only a shell without it (dash) has no clock.
+        seconds = subprocess.run(['/bin/sh', '-c', 'echo "${SECONDS:-}"'], capture_output=True, text=True).stdout.strip()
+        if seconds.isdigit():
+            self.skipTest('/bin/sh provides $SECONDS, so the guard always has a clock here')
         trace = []
         done, result = self.run_sequence(self.HANG_2, ['4'], trace, step=1.0, polls=None, raw=True, clock=False)
         self.assertTrue(done); self.assertEqual(result['result'], 'saved_stopping_all_stalled')
