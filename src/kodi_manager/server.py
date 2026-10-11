@@ -16,7 +16,7 @@ try:
     from .auth import authorized
     from .adapters import adapter_for
     from .addon_index import AddonIndex
-    from .backup import set_retention, create_backup, create_stack_backup, list_backups, restore_backup, restore_stack_backup
+    from .backup import BackupAborted, set_retention, create_backup, create_stack_backup, list_backups, restore_backup, restore_stack_backup
     from .settings_schema import parse_schema, flatten_settings, parse_user_settings, setting_description
     from .stack_detector import detect_stack
     from .pipeline import build_pipeline, apply_pipeline_settings, pipeline_backup, switch_player, build_accounts, apply_account_settings, pretty_label, write_settings
@@ -41,7 +41,7 @@ except ImportError:
     from auth import authorized
     from adapters import adapter_for
     from addon_index import AddonIndex
-    from backup import set_retention, create_backup, create_stack_backup, list_backups, restore_backup, restore_stack_backup
+    from backup import BackupAborted, set_retention, create_backup, create_stack_backup, list_backups, restore_backup, restore_stack_backup
     from settings_schema import parse_schema, flatten_settings, parse_user_settings, setting_description
     from stack_detector import detect_stack
     from pipeline import build_pipeline, apply_pipeline_settings, pipeline_backup, switch_player, build_accounts, apply_account_settings, pretty_label, write_settings
@@ -622,6 +622,19 @@ def make_handler(state):
                 # actions that cannot be forced keep their historic 400.
                 raise ApiError(status, "playback_active", message)
 
+        def _playback_started(self, every=2.0):
+            """A should_stop callback: true once a player is active, asking Kodi at most every ``every`` s."""
+            last = {"at": float("-inf"), "playing": False}
+
+            def playing():
+                now = time.monotonic()
+                if now - last["at"] >= every:
+                    last["at"] = now
+                    players = state.kodi.jsonrpc("Player.GetActivePlayers")
+                    last["playing"] = not isinstance(players, dict) or "error" in players or players.get("result") != []
+                return last["playing"]
+            return playing
+
         def _require_idle_unless_forced(self, message):
             force = self.body().get("force", False)
             if not isinstance(force, bool):
@@ -866,7 +879,14 @@ def make_handler(state):
             return state.kodi.open_install_from_zip()
 
         def api_stack_backup(self):
-            return create_stack_backup(stack_backup_addons(state.kodi, state.index), state.kodi.get_kodi_version())
+            # Copying addon_data competes with playback for storage, like the nightly checkpoint:
+            # refuse while something plays and stop (discarding it) if playback starts.
+            self._require_idle("Stop playback before taking a checkpoint", status=409)
+            try:
+                return create_stack_backup(stack_backup_addons(state.kodi, state.index), state.kodi.get_kodi_version(),
+                                           should_stop=self._playback_started())
+            except BackupAborted:
+                raise ApiError(409, "playback_active", "Playback started, so the checkpoint was stopped and discarded") from None
 
         def api_baseline(self):
             rows = make_baseline(state.kodi).check()
@@ -876,6 +896,8 @@ def make_handler(state):
             keys = self.body().get("keys") or None
             if keys is not None and (not isinstance(keys, list) or not all(isinstance(k, str) for k in keys)):
                 raise ValueError("keys must be a list of strings")
+            # Re-applying can restart add-ons or reload the skin: never during playback.
+            self._require_idle("Stop playback before re-applying protected settings", status=409)
             return make_baseline(state.kodi).apply(keys, check=self._baseline_writable)
 
         def api_baseline_capture(self):
