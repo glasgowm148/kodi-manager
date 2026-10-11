@@ -6,6 +6,10 @@ and add-ons start timing out.
 """
 
 
+# With swap nearly full, less than this share of memory free counts as tight.
+TIGHT_FRACTION = 0.25
+
+
 def _kb_fields(path, wanted):
     values = {}
     try:
@@ -31,15 +35,27 @@ def memory_status(meminfo="/proc/meminfo", self_status="/proc/self/status"):
     problems = []
     if available < min(300 * 1024, total * 0.10):
         problems.append("only %s MB free" % mb(available))
-    # Android keeps cold pages in compressed swap even after RAM is available.
-    # Swap occupancy alone is not evidence of current memory pressure.
-    if problems and swap_total and swap_used_pct >= 90:
+    # Android keeps cold pages in compressed swap (zram) even after RAM is available, so
+    # swap occupancy alone is not evidence of current memory pressure. Full swap *and*
+    # little free RAM is: Android's low-memory killer then closes apps that are in the
+    # background, and Kodi is one as soon as the Android screensaver or another app starts.
+    swap_full = bool(swap_total) and swap_used_pct >= 90
+    tight = not problems and swap_full and available < total * TIGHT_FRACTION
+    if problems and swap_full:
         problems.append("swap %s%% full" % swap_used_pct)
-    status = "warning" if problems else "ok"
+    status = "warning" if problems or tight else "ok"
     detail = "Kodi uses %s MB · %s MB of %s MB free%s" % (
         mb(kodi.get("VmRSS", 0)), mb(available), mb(total),
         " · swap %s%% used" % swap_used_pct if swap_total else "")
     if problems:
         detail += ". Low memory (%s): restart Kodi or the device if add-ons start timing out." % ", ".join(problems)
+    elif tight:
+        detail += (". Memory is tight: swap is nearly full and less than a quarter of memory is free. "
+                   "Android may close Kodi when it is in the background (screensaver or another app); "
+                   "restarting Kodi frees memory.")
+    elif swap_full:
+        detail += ". Nearly full swap is normal on Android while enough memory is free."
+    pressure = "low" if problems else "tight" if tight else "ok"
     return {"status": status, "detail": detail, "kodi_mb": mb(kodi.get("VmRSS", 0)),
-            "available_mb": mb(available), "total_mb": mb(total), "swap_used_pct": swap_used_pct}
+            "available_mb": mb(available), "total_mb": mb(total), "swap_used_pct": swap_used_pct,
+            "pressure": pressure}

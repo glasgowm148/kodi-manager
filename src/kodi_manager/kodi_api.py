@@ -155,6 +155,13 @@ class KodiAPI:
         info = self.get_addon_details(skin_id) if skin_id else {}
         return {"addon_id": skin_id, "name": info.get("name", ""), "version": info.get("version", ""), "path": info.get("path", "")}
 
+    def get_localized_string(self, number):
+        """Kodi's text for a string id (core and active-skin strings); "" outside Kodi."""
+        return xbmc.getLocalizedString(int(number)) if xbmc else ""
+
+    def get_addon_string(self, addon_id, number):
+        return xbmcaddon.Addon(addon_id).getLocalizedString(int(number)) if xbmcaddon else ""
+
     def open_addon_settings(self, addon_id):
         if xbmcaddon:
             xbmcaddon.Addon(addon_id).openSettings()

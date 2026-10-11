@@ -119,7 +119,9 @@ class Watchdog:
         memory = self.memory()
         with _LOCK:
             LAST["memory"] = memory
-        if memory.get("status") == "warning":
+        # "Tight" memory (full swap, under a quarter free) is explained on the dashboard only:
+        # the TV notification is for memory that is actually running out.
+        if memory.get("status") == "warning" and memory.get("pressure") != "tight":
             self._notify_once("memory", "Kodi is low on memory",
                               "Close apps you're not using, or restart Kodi if add-ons start timing out.")
         return result

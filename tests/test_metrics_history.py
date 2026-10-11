@@ -244,7 +244,7 @@ def test_overview_works_read_only_and_reports_playback(dashboard):
     assert data["profile"] == "Kids" and data["write_enabled"] is False
     assert data["playback"] == {"active": False, "type": "", "title": ""}
     assert data["backups"]["count"] == 1 and data["backups"]["last"]["total_bytes"] == 2048
-    assert data["rows"] == {"cached": 0, "failing": 0, "persistent": 0}
+    assert data["rows"] == {"cached": 0, "failing": 0, "persistent": 0, "stale": 0, "empty": 0}
     assert data["protection"]["baseline"] is None and data["protection"]["fixes"]["healthy"] is None
     dashboard.replies["Player.GetActivePlayers"] = {"result": [{"playerid": 1, "type": "video"}]}
     dashboard.replies["Player.GetItem"] = {"result": {"item": {"type": "episode", "title": "The Pool", "showtitle": "Bluey"}}}

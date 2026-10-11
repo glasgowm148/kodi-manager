@@ -13,6 +13,7 @@ fresh history instead of failing.
 """
 import json
 import os
+import re
 import threading
 import time
 
@@ -30,7 +31,7 @@ VERSION = 1
 
 # Short keys keep the file small: about 120 bytes a sample.
 _NUMBER_KEYS = {"ma": "memory_available_mb", "mt": "memory_total_mb", "mk": "kodi_mb", "sw": "swap_used_pct",
-                "rc": "rows_cached", "rf": "rows_failing", "rp": "rows_persistent"}
+                "rc": "rows_cached", "rf": "rows_failing", "rp": "rows_persistent", "kp": "kodi_started_at"}
 _STATUSES = ("ok", "warning", "error")
 _HOST_LIMIT = 6
 _lock = threading.Lock()
@@ -72,16 +73,35 @@ def clean_sample(sample):
     return out
 
 
-def widget_row_counts(cache_root):
-    """Cached rows, rows whose last refresh failed, and rows failing three times or more.
+_FETCHED = re.compile(rb'"fetched_at":\s*([0-9.]+)')
+_SOURCE = re.compile(rb'"source":\s*("(?:[^"\\]|\\.)*")')
 
-    Reads only the small per-row health records, never the cached listings.
+
+def _entry_glance(path):
+    """(source, fetched_at, empty) from the start and end of a cached listing, without parsing it all."""
+    with open(path, "rb") as handle:
+        head = handle.read(16384)
+        handle.seek(0, os.SEEK_END)
+        size = handle.tell()
+        handle.seek(max(0, size - 64))
+        tail = handle.read()
+    source, fetched = _SOURCE.search(head), _FETCHED.search(head)
+    return (json.loads(source.group(1).decode("utf-8")) if source else None,
+            float(fetched.group(1)) if fetched else None, bool(re.search(rb'"files":\s*\[\s*\]\s*}\s*$', tail)))
+
+
+def widget_row_counts(cache_root, ttl=None, now=None):
+    """Cached rows, rows whose last refresh failed, rows failing three times or more and,
+    when ``ttl(source)`` is given, rows due a refresh (stale) and rows that are empty.
+
+    Reads the small per-row health records and only the first and last bytes of each
+    cached listing, never a whole listing.
     """
     entries, health = os.path.join(cache_root, "entries"), os.path.join(cache_root, "health")
     try:
         cached = {name for name in os.listdir(entries) if name.endswith(".json")}
     except OSError:
-        return {"cached": 0, "failing": 0, "persistent": 0}
+        return dict({"cached": 0, "failing": 0, "persistent": 0}, **({"stale": 0, "empty": 0} if ttl else {}))
     failing = persistent = 0
     try:
         names = [name for name in os.listdir(health) if name in cached]
@@ -98,10 +118,36 @@ def widget_row_counts(cache_root):
             failing += 1
         if count >= 3:
             persistent += 1
-    return {"cached": len(cached), "failing": failing, "persistent": persistent}
+    counts = {"cached": len(cached), "failing": failing, "persistent": persistent}
+    if ttl:
+        now = time.time() if now is None else now
+        stale = empty = 0
+        for name in cached:
+            try:
+                source, fetched, is_empty = _entry_glance(os.path.join(entries, name))
+                if source and fetched is not None and now - fetched > ttl(source):
+                    stale += 1
+                empty += is_empty
+            except (OSError, ValueError, UnicodeError):
+                continue
+        counts.update(stale=stale, empty=empty)
+    return counts
 
 
-def build_sample(now, memory=None, internet=None, rows=None, last_probe=None):
+def process_started_at(proc="/proc", pid="self"):
+    """When this (Kodi) process started, as a Unix time; None where /proc can't say."""
+    try:
+        with open(os.path.join(proc, str(pid), "stat"), encoding="utf-8") as handle:
+            ticks = int(handle.read().rsplit(") ", 1)[1].split()[19])
+        with open(os.path.join(proc, "stat"), encoding="utf-8") as handle:
+            boot = next(int(line.split()[1]) for line in handle if line.startswith("btime "))
+        hertz = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
+        return int(boot + ticks / float(hertz or 100))
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
+
+
+def build_sample(now, memory=None, internet=None, rows=None, last_probe=None, started=None):
     """One sample from figures the service already has. ``internet`` is netwatch's newest result."""
     sample = {"t": int(now)}
     memory = memory or {}
@@ -116,6 +162,8 @@ def build_sample(now, memory=None, internet=None, rows=None, last_probe=None):
                         for h in (internet.get("hosts") or [])[:_HOST_LIMIT] if isinstance(h, dict) and h.get("name")}
     if rows:
         sample["rc"], sample["rf"], sample["rp"] = rows.get("cached", 0), rows.get("failing", 0), rows.get("persistent", 0)
+    if started:
+        sample["kp"] = int(started)
     return clean_sample(sample)
 
 
@@ -189,16 +237,19 @@ class MetricsHistory:
             out[name] = [s.get(key) for s in samples]
         out["network_status"] = [s.get("ns") for s in samples]
         latency = {name: [s["nh"].get(name) if "nh" in s else None for s in samples] for name in hosts}
+        # Every Kodi start inside the window (restart, crash, Android closing it) is a marker.
+        starts = sorted({s["kp"] for s in samples if "kp" in s and since <= s["kp"] <= now})
         return {"resolution_seconds": self.resolution, "retention_days": int(self.retention // 86400),
                 "days": days, "now": int(now), "count": len(samples), "series": out,
-                "latency_ms": latency, "hosts": hosts}
+                "latency_ms": latency, "hosts": hosts, "kodi_starts": starts}
 
 
 class Sampler:
     """Called from the watchdog loop: one sample per ``RESOLUTION`` while the TV is quiet."""
 
-    def __init__(self, history, memory, internet, rows, clock=time.time, first_after=60):
+    def __init__(self, history, memory, internet, rows, clock=time.time, first_after=60, started=process_started_at):
         self.history, self.memory, self.internet, self.rows, self.clock = history, memory, internet, rows, clock
+        self.started = started
         self.next_at = clock() + first_after
         self.last_probe = None
         self.loaded = False
@@ -212,7 +263,8 @@ class Sampler:
             self.loaded = True
             self.last_probe = self.history.last_probe()
         internet = self.internet()
-        sample = build_sample(now, memory=self.memory(), internet=internet, rows=self.rows(), last_probe=self.last_probe)
+        sample = build_sample(now, memory=self.memory(), internet=internet, rows=self.rows(), last_probe=self.last_probe,
+                              started=self.started() if self.started else None)
         stored = self.history.record(sample, now)
         if stored and sample and "nt" in sample:
             self.last_probe = sample["nt"]

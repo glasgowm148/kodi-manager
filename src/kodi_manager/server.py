@@ -26,14 +26,15 @@ try:
     from .widget_filters import filter_items
     from .widget_preview import row_preview
     from .skin_layout import inspect_layout, preview_layout, apply_layout, request_rebuild
-    from .widget_cache import WidgetCache, cache_url
+    from .widget_cache import WidgetCache, cache_url, ttl_for
     from .widget_rows import RowStore
     from . import fenlight_db
     from .write_policy import WriteRefused, check_writable, read_only_reason
     from .netconfig import host_allowed, is_loopback
     from .memstat import memory_status
     from .netwatch import internet_check, latest_internet
-    from .metrics import HISTORY_FILE, MetricsHistory, widget_row_counts
+    from .metrics import HISTORY_FILE, MetricsHistory, process_started_at, widget_row_counts
+    from .row_titles import label_resolver, row_titles
     from .baseline import Baseline
     from . import maintenance
 except ImportError:
@@ -52,14 +53,15 @@ except ImportError:
     from widget_filters import filter_items
     from widget_preview import row_preview
     from skin_layout import inspect_layout, preview_layout, apply_layout, request_rebuild
-    from widget_cache import WidgetCache, cache_url
+    from widget_cache import WidgetCache, cache_url, ttl_for
     from widget_rows import RowStore
     import fenlight_db
     from write_policy import WriteRefused, check_writable, read_only_reason
     from netconfig import host_allowed, is_loopback
     from memstat import memory_status
     from netwatch import internet_check, latest_internet
-    from metrics import HISTORY_FILE, MetricsHistory, widget_row_counts
+    from metrics import HISTORY_FILE, MetricsHistory, process_started_at, widget_row_counts
+    from row_titles import label_resolver, row_titles
     from baseline import Baseline
     import maintenance
 
@@ -282,6 +284,28 @@ def backup_timeline():
     return {"items": items, "count": len(items)}
 
 
+SHORTCUTS_DATA = "special://profile/addon_data/script.skinshortcuts"
+
+
+def with_row_titles(kodi, index, entries):
+    """Add title, addon_name, where and title_from to cached-row entries (see row_titles.py)."""
+    sources = [e["source"] for e in entries if isinstance(e.get("source"), str)]
+    addons = getattr(index, "addons", {}) or {}
+    names = {}
+    for source in sources:
+        aid = urlsplit(source).netloc
+        if aid in addons and (addons[aid] or {}).get("name"):
+            names[aid] = addons[aid]["name"]
+    skin = kodi.get_active_skin() if hasattr(kodi, "get_active_skin") else {}
+    titles = row_titles(sources, translate(SHORTCUTS_DATA), label_resolver(kodi, (skin or {}).get("path", "")), names)
+    out = []
+    for entry in entries:
+        info = titles.get(entry.get("source"), {})
+        out.append(dict(entry, title=info.get("title", ""), addon_name=info.get("addon", ""),
+                        where=info.get("where", []), title_from=info.get("from", "path")))
+    return out
+
+
 def playback_state(kodi):
     """What the TV is doing: {active, type, title}. ``active`` is None when Kodi did not answer."""
     players = kodi.jsonrpc("Player.GetActivePlayers")
@@ -349,7 +373,8 @@ def overview_summary(kodi, config):
         "playback": playback_state(kodi),
         "memory": memory,
         "internet": internet,
-        "rows": widget_row_counts(translate(WIDGET_CACHE_DIR)),
+        "rows": widget_row_counts(translate(WIDGET_CACHE_DIR), ttl=ttl_for),
+        "kodi_started_at": process_started_at(),
         "backups": {"count": len(stack_backups),
                     "last": {k: last.get(k) for k in ("backup_id", "timestamp", "note", "total_bytes")} if last else None,
                     "times": [b.get("timestamp") or b.get("backup_id") for b in stack_backups[:60]],
@@ -765,7 +790,12 @@ def make_handler(state):
             return {"removed": True}
 
         def api_widget_cache_status(self):
-            return WidgetCache(translate(WIDGET_CACHE_DIR)).status()
+            status = WidgetCache(translate(WIDGET_CACHE_DIR)).status()
+            try:
+                status["entries"] = with_row_titles(state.kodi, state.index, status.get("entries") or [])
+            except Exception as exc:  # titles are a nicety: never fail the listing over them
+                state.log("Row titles unavailable: %s" % type(exc).__name__)
+            return status
 
         def api_widget_cache_refresh(self):
             return {"queued": WidgetCache(translate(WIDGET_CACHE_DIR)).queue_stale(everything=True)}
