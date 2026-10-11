@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, quote_plus, unquote, urlsplit
 
 WEB = Path(__file__).resolve().parents[1] / "web"
 TOKEN = "demo-token-0000"
-VERSION = "0.7.9-demo"
+VERSION = "0.7.10-demo"
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
        "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'")
 TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "application/javascript"}

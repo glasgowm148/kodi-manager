@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.10 — 2026-10-11 (prerelease)
+
+- **A stalled exit on the Shield really ends after a minute.** Quitting Kodi 22.0 RC1 could still
+  hang after "Stopping all" for minutes and need a force-stop. The watcher was running (it is
+  launched when Kodi announces the quit, `Shield exit guard armed on quit`), but it counted its
+  60 seconds as 3000 polls of 20 ms, and on a Shield each poll starts two toybox processes and takes
+  0.1–0.2 s, so the limit was five minutes or more. It now also measures the time since "Stopping
+  all" on the boot clock (`/proc/uptime`, or mksh's `SECONDS` where that is unreadable) and ends
+  the exit once more than 60 seconds have passed; the 3000-poll limit stays as a fallback. The
+  conditions are unchanged: "Stopping the application", "Saving skin settings" and "Stopping all"
+  in that order in this session's log, and the same process (parent and start tick) as when armed.
+- **The watcher stops when Kodi is not quitting.** Without "Stopping all" it gives up after
+  120 seconds on the clock as well as after 1500 polls, and playback starting after the quit
+  sequence (`VideoPlayer::OpenFile`, `Creating InputStream`) resets it, so it never acts on a
+  Kodi that is playing.
+- **Trace:** `armed clock=uptime|seconds|none` and `stalled clock|polls <n>s`, reported on the next
+  start in `Previous Shield exit guard: …` as before.
+
 ## 0.7.9 — 2026-10-11 (prerelease)
 
 Polish from the first week of 0.7.8 on a real TV.

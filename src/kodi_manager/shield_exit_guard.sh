@@ -12,8 +12,16 @@ offset=$4
 result=$5
 # Polls (each at least 20 ms) allowed between "Stopping all" and the exit.
 stall_limit=${6:-3000}
-case "$pid:$expected_start:$offset:$stall_limit" in *[!0-9:]*|'') exit 1;; esac
+# Seconds allowed between "Stopping all" and the exit, on the boot clock. On a
+# Shield a poll starts two toybox processes and takes 0.1-0.2 s, so the poll
+# limit alone stretched "60 s or more" into five minutes or more.
+stall_seconds=${7:-60}
+# Without "Stopping all", stop watching after 1500 polls or this many seconds:
+# Kodi is not quitting (or quits normally without this watcher).
+watch_seconds=120
+case "$pid:$expected_start:$offset:$stall_limit:$stall_seconds" in *[!0-9:]*|'') exit 1;; esac
 [ "$pid" -gt 1 ] || exit 1
+[ "$stall_seconds" -ge 1 ] || exit 1
 finish_exit() {
     reason=$1
     # Recheck the live parent relationship immediately before signalling.
@@ -27,17 +35,47 @@ finish_exit() {
 trace() {
     printf '%s %s\n' "$i" "$1" >&2
 }
+# Whole seconds of a clock that only moves forward: the boot clock
+# (/proc/uptime) or, where that is unreadable, mksh's SECONDS. Without either
+# only the poll limits apply. Read with shell builtins: no process per poll.
+clock=none
+now=
+if IFS=' .' read -r now _ 2>/dev/null < /proc/uptime; then
+    case "$now" in ''|*[!0-9]*) ;; *) clock=uptime;; esac
+fi
+if [ "$clock" = none ]; then
+    case "${SECONDS:-}" in ''|*[!0-9]*) ;; *) clock=seconds;; esac
+fi
+read_clock() {
+    now=
+    case "$clock" in
+        uptime) IFS=' .' read -r now _ 2>/dev/null < /proc/uptime || now=;;
+        seconds) now=${SECONDS:-};;
+    esac
+    case "$now" in ''|*[!0-9]*) now=;; esac
+}
 started=0
 saved=0
 stop_all=0
 stopped=0
 stall=0
+stall_at=
 buffer=
 i=0
-trace armed
-# Normally give up after 1500 polls; once settings are saved and Kodi is
-# stopping, keep watching until it exits or the stall limit ends it.
-while [ "$i" -lt 1500 ] || [ "$stop_all" = 1 ]; do
+read_clock
+armed_at=$now
+trace "armed clock=$clock"
+while :; do
+    if [ "$stop_all" = 0 ]; then
+        # Normally give up after 1500 polls or watch_seconds; once settings are
+        # saved and Kodi is stopping, keep watching until it exits or a stall
+        # limit ends it.
+        [ "$i" -lt 1500 ] || break
+        read_clock
+        if [ -n "$armed_at" ] && [ -n "$now" ] && [ "$((now-armed_at))" -ge "$watch_seconds" ]; then
+            break
+        fi
+    fi
     # Android hides another process's /proc entry even from this same-UID
     # child. Reading our own stat gives the live kernel parent relationship.
     # If Kodi dies, we are reparented; a reused numeric PID cannot match it.
@@ -66,20 +104,40 @@ while [ "$i" -lt 1500 ] || [ "$stop_all" = 1 ]; do
                 *' info <general>: Saving skin settings')
                     if [ "$started" = 1 ] && [ "$saved" = 0 ]; then saved=1; trace saved; fi;;
                 *' info <general>: Stopping all')
-                    if [ "$saved" = 1 ] && [ "$stop_all" = 0 ]; then stop_all=1; trace stopping_all; fi;;
+                    if [ "$saved" = 1 ] && [ "$stop_all" = 0 ]; then
+                        stop_all=1; read_clock; stall_at=$now; trace stopping_all
+                    fi;;
                 *' info <general>: Application stopped')
                     if [ "$started" = 1 ] && [ "$saved" = 1 ] && [ "$stopped" = 0 ]; then stopped=1; trace stopped; fi;;
                 *' info <general>: Unloaded skin')
                     [ "$stopped" = 1 ] && finish_exit saved_services_skin_cleanup_completed;;
                 *' info <general>: unload sections')
                     [ "$stopped" = 1 ] && finish_exit saved_window_cleanup_completed;;
+                *' info <general>: VideoPlayer::OpenFile: '*|*' info <general>: Creating InputStream')
+                    # Kodi closes the player before saving its settings, so
+                    # playback here means Kodi is not quitting: start over.
+                    if [ "$started" = 1 ]; then trace playback; fi
+                    started=0; saved=0; stop_all=0; stopped=0; stall=0; stall_at=;;
             esac
         done
     fi
     if [ "$stop_all" = 1 ]; then
         stall=$((stall+1))
+        late=
+        elapsed=
+        if [ -n "$stall_at" ]; then
+            read_clock
+            [ -n "$now" ] && elapsed=$((now-stall_at))
+        fi
         if [ "$stall" -ge "$stall_limit" ]; then
-            trace stalled
+            late=polls
+        # Whole seconds: a difference above stall_seconds is more than
+        # stall_seconds of real time.
+        elif [ -n "$elapsed" ] && [ "$elapsed" -gt "$stall_seconds" ]; then
+            late=clock
+        fi
+        if [ -n "$late" ]; then
+            trace "stalled $late ${elapsed:-?}s"
             if [ "$stopped" = 1 ]; then
                 finish_exit saved_application_stopped_stalled
             fi

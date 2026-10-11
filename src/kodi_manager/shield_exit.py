@@ -27,10 +27,13 @@ def shutdown_started(text):
 
 
 # After "Stopping all" (settings and skin settings already saved) the watcher
-# ends an exit that has not finished within this many polls of at least 20 ms,
-# so 60 s or more. A normal Shield exit gets from "Stopping all" to
-# "Application stopped" in 1-4 s.
+# ends an exit that has not finished after STALL_SECONDS on the boot clock, or
+# within STALL_POLLS polls of at least 20 ms: either way 60 s or more. A poll
+# takes 0.1-0.2 s on a Shield, so the poll limit alone meant five minutes or
+# more. A normal Shield exit gets from "Stopping all" to "Application stopped"
+# in 1-8 s.
 STALL_POLLS = 3000
+STALL_SECONDS = 60
 REPORT_LIMIT = 2048
 
 
@@ -44,6 +47,11 @@ class ShieldExitGuard:
         self.offset = os.path.getsize(log_path) if enabled and os.path.isfile(log_path) else 0
 
     def arm(self):
+        """Launch the watcher once. Called on System.OnQuit and again on abort.
+
+        A stalled exit stops before Kodi aborts Python services, so the
+        OnQuit call is the one that has to launch it.
+        """
         if not self.enabled or self.child is not None:
             return
         pid = os.getpid()
@@ -58,7 +66,8 @@ class ShieldExitGuard:
         try:
             self.child = subprocess.Popen(
                 ['/system/bin/sh', self.script_path, str(pid), start,
-                 self.log_path, str(offset), self.result_path, str(STALL_POLLS)],
+                 self.log_path, str(offset), self.result_path, str(STALL_POLLS),
+                 str(STALL_SECONDS)],
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=stderr, start_new_session=True, close_fds=True)
         finally:

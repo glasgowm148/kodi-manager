@@ -58,6 +58,8 @@ class ShieldExitTests(unittest.TestCase):
                 self.assertEqual(args[5], '8')
                 self.assertEqual(args[7], str(shield_exit.STALL_POLLS))
                 self.assertGreaterEqual(shield_exit.STALL_POLLS * 0.02, 60)
+                self.assertEqual(args[8], str(shield_exit.STALL_SECONDS))
+                self.assertGreaterEqual(shield_exit.STALL_SECONDS, 60)
                 self.assertTrue(spawn.call_args.kwargs['start_new_session'])
 
     def test_previous_watcher_outcome_is_reported_once(self):
