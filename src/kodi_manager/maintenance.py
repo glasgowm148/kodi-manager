@@ -4,7 +4,9 @@
   the TV is idle; the newest 7 nightly checkpoints are kept.
 * Protected settings: compared shortly after start and every 6 hours.
 * Accounts: Trakt and TorBox checked twice a day.
-Each problem raises at most one TV notification per day.
+Each problem raises at most one TV notification per day, and never while
+something is playing: a notification found during playback waits for a quiet
+moment. A checkpoint interrupted by playback is discarded and retried later.
 """
 import threading
 import time
@@ -25,38 +27,66 @@ class Maintenance:
     BASELINE_EVERY = 6 * 3600
     ACCOUNTS_EVERY = 12 * 3600
     NOTIFY_AGAIN_AFTER = 24 * 3600
+    RETRY_DEFERRED_AFTER = 10 * 60
 
     def __init__(self, notify, baseline=None, accounts=lambda: [], checkpoint=None, clock=time.time,
-                 localtime=time.localtime, log=lambda msg: None, last_nightly_day=None):
+                 localtime=time.localtime, log=lambda msg: None, last_nightly_day=None, is_quiet=None):
         self.notify, self.baseline, self.accounts, self.checkpoint = notify, baseline, accounts, checkpoint
         self.clock, self.localtime, self.log = clock, localtime, log
+        # Asked again just before a notification: checks can outlast the quiet spell.
+        self.is_quiet = is_quiet
         now = clock()
         self.next_baseline = now + 90
         self.next_accounts = now + 180
+        self.next_nightly = float("-inf")
         self.last_nightly_day = last_nightly_day
         self.notified = {}
+        self.pending = {}
+
+    def _quiet_now(self):
+        if self.is_quiet is None:
+            return True
+        try:
+            return bool(self.is_quiet())
+        except Exception:
+            return False
 
     def _notify_once(self, key, title, message):
         now = self.clock()
-        if now - self.notified.get(key, float("-inf")) >= self.NOTIFY_AGAIN_AFTER:
-            self.notified[key] = now
-            self.log("%s: %s" % (title, message))
-            self.notify(title, message)
+        if now - self.notified.get(key, float("-inf")) < self.NOTIFY_AGAIN_AFTER:
+            return
+        if not self._quiet_now():
+            self.pending[key] = (title, message)
+            return
+        self.pending.pop(key, None)
+        self.notified[key] = now
+        self.log("%s: %s" % (title, message))
+        self.notify(title, message)
 
     def tick(self, quiet):
         """Run whatever is due. ``quiet`` is True when the TV is idle."""
         now = self.clock()
         ran = []
-        if quiet and self.checkpoint is not None:
+        if quiet:
+            for key, (title, message) in list(self.pending.items()):
+                self._notify_once(key, title, message)
+        if quiet and self.checkpoint is not None and now >= self.next_nightly:
             local = self.localtime(now)
             day = time.strftime("%Y-%m-%d", local)
             if local.tm_hour >= NIGHTLY_HOUR and day != self.last_nightly_day:
-                self.last_nightly_day = day
+                previous_day, self.last_nightly_day = self.last_nightly_day, day
                 try:
                     result = self.checkpoint()
                     with _LOCK:
                         LAST["nightly"] = {"status": "ok", "at": int(now), "backup_id": (result or {}).get("backup_id")}
                 except Exception as exc:
+                    if getattr(exc, "deferred", False):
+                        # Playback started part way: the partial checkpoint was discarded.
+                        self.last_nightly_day = previous_day
+                        self.next_nightly = self.clock() + self.RETRY_DEFERRED_AFTER
+                        self.log("Nightly checkpoint postponed: the TV is in use")
+                        ran.append("nightly")
+                        return ran
                     with _LOCK:
                         LAST["nightly"] = {"status": "error", "at": int(now), "error": type(exc).__name__}
                     self.log("Nightly checkpoint failed: %s" % type(exc).__name__)

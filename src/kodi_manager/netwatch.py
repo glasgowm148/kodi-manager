@@ -51,13 +51,26 @@ class Watchdog:
         self.next_check = clock() + 120
         self.failures = 0
         self.notified = {}
+        self.pending = {}   # notifications held back until the TV is quiet
+
+    def _quiet(self):
+        try:
+            return bool(self.is_quiet())
+        except Exception:
+            return False
 
     def _notify_once(self, key, title, message):
         now = self.clock()
-        if now - self.notified.get(key, float("-inf")) >= self.NOTIFY_AGAIN_AFTER:
-            self.notified[key] = now
-            self.log("%s: %s" % (title, message))
-            self.notify(title, message)
+        if now - self.notified.get(key, float("-inf")) < self.NOTIFY_AGAIN_AFTER:
+            return
+        # A check can take half a minute: playback may have started meanwhile.
+        if not self._quiet():
+            self.pending[key] = (title, message)
+            return
+        self.pending.pop(key, None)
+        self.notified[key] = now
+        self.log("%s: %s" % (title, message))
+        self.notify(title, message)
 
     def check_internet(self):
         results = [(name, self.probe(host)) for name, host in self.hosts]
@@ -73,12 +86,11 @@ class Watchdog:
 
     def tick(self):
         now = self.clock()
+        for key, (title, message) in list(self.pending.items()):
+            self._notify_once(key, title, message)
         if now < self.next_check:
             return None
-        try:
-            quiet = self.is_quiet()
-        except Exception:
-            quiet = False
+        quiet = self._quiet()
         if not quiet:
             self.next_check = now + 60
             return None

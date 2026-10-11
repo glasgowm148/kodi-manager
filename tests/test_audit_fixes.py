@@ -795,6 +795,25 @@ def test_server_bind_failure_is_logged_and_notified():
     kodi.notify.assert_called_once()
 
 
+def test_dashboard_address_is_not_announced_over_playback(monkeypatch):
+    """Kodi restarts the service when the add-on updates, which can happen mid-film."""
+    class Started:
+        def __init__(self, *args):
+            pass
+
+        def start(self):
+            pass
+    playing = {"value": True}
+    monkeypatch.setattr(service, "xbmc", SimpleNamespace(getCondVisibility=lambda cond: playing["value"]))
+    kodi = SimpleNamespace(log=Mock(), notify=Mock())
+    config = {"host": "0.0.0.0", "port": 8765}
+    assert service.start_server(kodi, config, "", Started, announce=True) is not None
+    kodi.notify.assert_not_called()
+    playing["value"] = False
+    service.start_server(kodi, config, "", Started, announce=True)
+    kodi.notify.assert_called_once_with("Kodi Manager", "http://0.0.0.0:8765")
+
+
 def test_settings_change_swaps_config_or_restarts_on_network_change():
     kodi = SimpleNamespace(log=Mock(), notify=Mock())
     started = []

@@ -63,3 +63,24 @@ def test_probe_reports_failures_as_none():
         def close(self):
             pass
     assert netwatch.probe("example.invalid", connection_class=Broken) is None
+
+
+def test_notification_waits_when_playback_starts_during_the_check():
+    """The check itself can take half a minute; a film may have started meanwhile."""
+    state = {"quiet": True}
+    clock, notes = Clock(), []
+
+    def slow_probe(host):
+        state["quiet"] = False          # playback starts while probing
+        return None
+    dog = Watchdog(lambda title, msg: notes.append(title), lambda: state["quiet"], probe=slow_probe, clock=clock)
+    dog.next_check = 0
+    dog.failures = 1
+    dog.tick()
+    assert notes == []
+    dog.tick()                          # still playing
+    assert notes == []
+    state["quiet"] = True
+    dog.tick()                          # shown at the next quiet moment
+    assert notes == ["Internet connection stuck"]
+

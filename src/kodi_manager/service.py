@@ -161,7 +161,27 @@ def start_widget_refresher(kodi):
     return refresher
 
 
-def start_maintenance(kodi):
+def tv_busy():
+    """True while the TV is in use (see BUSY_CONDITION); False outside Kodi."""
+    if not xbmc:
+        return False
+    try:
+        return bool(xbmc.getCondVisibility(BUSY_CONDITION))
+    except Exception:
+        return True
+
+
+def media_playing():
+    """True while Kodi has media loaded; False outside Kodi."""
+    if not xbmc:
+        return False
+    try:
+        return bool(xbmc.getCondVisibility("Player.HasMedia"))
+    except Exception:
+        return False
+
+
+def start_maintenance(kodi, is_busy=tv_busy):
     """Nightly checkpoint, protected-settings check and account checks (see maintenance.py)."""
     try:
         try:
@@ -184,7 +204,9 @@ def start_maintenance(kodi):
     def checkpoint():
         index.refresh(force=True)
         return nightly_checkpoint(
-            lambda: create_stack_backup(stack_backup_addons(kodi, index), kodi.get_kodi_version(), note="nightly"),
+            # Copying addon_data competes with playback for storage: stop if the TV gets busy.
+            lambda: create_stack_backup(stack_backup_addons(kodi, index), kodi.get_kodi_version(), note="nightly",
+                                        should_stop=is_busy),
             lambda: list_backups(stack=True), delete_stack_backup)
 
     def accounts():
@@ -197,7 +219,8 @@ def start_maintenance(kodi):
     except Exception:
         last_day = None
     return Maintenance(lambda title, message: kodi.notify(title, message), baseline=make_baseline(kodi),
-                       accounts=accounts, checkpoint=checkpoint, log=kodi.log, last_nightly_day=last_day)
+                       accounts=accounts, checkpoint=checkpoint, log=kodi.log, last_nightly_day=last_day,
+                       is_quiet=lambda: not is_busy())
 
 
 def start_watchdog(kodi):
@@ -210,7 +233,7 @@ def start_watchdog(kodi):
         from netwatch import Watchdog
         from memstat import memory_status
     watchdog = Watchdog(lambda title, message: kodi.notify(title, message),
-                        is_quiet=lambda: not xbmc.getCondVisibility(BUSY_CONDITION),
+                        is_quiet=lambda: not tv_busy(),
                         memory=memory_status, log=kodi.log)
     watchdog.stop = threading.Event()
     housekeeping = start_maintenance(kodi)
@@ -223,7 +246,7 @@ def start_watchdog(kodi):
                 kodi.log("Connection watchdog error: %s" % type(error).__name__)
             if housekeeping is not None:
                 try:
-                    housekeeping.tick(not xbmc.getCondVisibility(BUSY_CONDITION))
+                    housekeeping.tick(not tv_busy())
                 except Exception as error:
                     kodi.log("Maintenance error: %s" % type(error).__name__)
             watchdog.stop.wait(15)
@@ -232,8 +255,13 @@ def start_watchdog(kodi):
     return watchdog
 
 
-def start_server(kodi, config, web_root, server_class=None):
-    """Start the dashboard server; on failure (port in use, bad address) log, notify and return None."""
+def start_server(kodi, config, web_root, server_class=None, announce=False):
+    """Start the dashboard server; on failure (port in use, bad address) log, notify and return None.
+
+    ``announce`` shows the dashboard address on the TV, unless something is
+    playing: Kodi restarts this service when the add-on updates, which can
+    happen in the middle of a film.
+    """
     server_class = server_class or ServerThread
     try:
         server = server_class(kodi, config, web_root)
@@ -247,6 +275,8 @@ def start_server(kodi, config, web_root, server_class=None):
             pass
         return None
     kodi.log("Kodi Manager URL http://%s:%s token configured=%s" % (config["host"], config["port"], bool(config.get("auth_token"))))
+    if announce and not media_playing():
+        kodi.notify("Kodi Manager", "http://%s:%s" % (config["host"], config["port"]))
     return server
 
 
@@ -282,9 +312,7 @@ def main():
         return
     root = os.path.abspath(addon.getAddonInfo("path"))
     web_root = os.path.join(root, "resources", "web")
-    running = {"server": start_server(kodi, config, web_root), "config": config}
-    if running["server"]:
-        kodi.notify("Kodi Manager", "http://%s:%s" % (config["host"], config["port"]))
+    running = {"server": start_server(kodi, config, web_root, announce=True), "config": config}
     supported = bool(xbmc and config['shield_exit_workaround']
                      and xbmc.getCondVisibility('System.Platform.Android')
                      and xbmc.getInfoLabel('System.BuildVersion').startswith('22.0-BETA2')

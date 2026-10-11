@@ -142,3 +142,51 @@ def test_torbox_status():
     def boom(t):
         raise OSError("timed out")
     assert "Could not reach" in torbox_status(get, now=now, fetch=boom)["detail"]
+
+
+def test_problem_found_while_quiet_waits_if_playback_starts_before_the_notification(setup):
+    kodi, base, _ = setup
+    kodi.kodi["general.addonupdates"] = 0
+    state = {"quiet": True}
+    clock, notes = Clock(10 ** 9), []
+
+    def accounts():
+        state["quiet"] = False          # playback starts while the accounts are checked
+        return [{"id": "torbox", "label": "TorBox subscription", "status": "warning", "detail": "Ends soon"}]
+    m = Maintenance(lambda title, msg: notes.append(title), clock=clock, accounts=accounts,
+                    is_quiet=lambda: state["quiet"])
+    clock.t += 200
+    m.tick(True)
+    assert notes == []
+    m.tick(False)
+    assert notes == []
+    state["quiet"] = True
+    m.tick(True)
+    assert notes == ["TorBox subscription"]
+
+
+def test_nightly_checkpoint_interrupted_by_playback_is_retried_later():
+    class Deferred(Exception):
+        deferred = True
+    clock = Clock(time.mktime((2026, 10, 8, 3, 30, 0, 0, 0, -1)))
+    outcomes = [Deferred(), {"backup_id": "x"}]
+    runs = []
+
+    def checkpoint():
+        runs.append(1)
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+    m = Maintenance(lambda *a: None, checkpoint=checkpoint, clock=clock)
+    before = maintenance.snapshot()["nightly"]
+    m.tick(True)
+    assert runs == [1] and maintenance.snapshot()["nightly"] == before   # not reported as a failure
+    clock.t += 60
+    m.tick(True)
+    assert runs == [1]                   # backs off instead of re-copying every tick
+    clock.t += Maintenance.RETRY_DEFERRED_AFTER
+    m.tick(True)
+    assert runs == [1, 1] and maintenance.snapshot()["nightly"]["status"] == "ok"
+    m.tick(True)
+    assert runs == [1, 1]
