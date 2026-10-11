@@ -302,6 +302,28 @@ def test_request_line_token_is_masked_in_logs(api_server):
     assert "supersecret" not in joined and "othersecret" not in joined and "token=***" in joined
 
 
+def test_actions_that_open_windows_on_the_tv_wait_for_playback_to_stop(api_server):
+    kodi = api_server.state.kodi
+    kodi.open_addon_settings, kodi.open_skin_settings = Mock(return_value=True), Mock(return_value=True)
+    kodi.execute_addon = Mock(return_value={"result": "OK"})
+    api_server.state.index.addons["script.trakt"] = {"addon_id": "script.trakt", "enabled": True}
+    targets = ("/api/addons/plugin.video.pov/open-settings", "/api/windows/open-skin-settings", "/api/trakt/sync")
+    api_server.players["result"] = [{"playerid": 1}]
+    try:
+        for target in targets:
+            status, body, _ = api_server.call("POST", target, {})
+            assert (status, body["code"]) == (400, "playback_active"), target
+        kodi.open_addon_settings.assert_not_called()
+        kodi.open_skin_settings.assert_not_called()
+        kodi.execute_addon.assert_not_called()
+        api_server.players["result"] = []
+        for target in targets:
+            assert api_server.call("POST", target, {})[0] == 200, target
+    finally:
+        api_server.players["result"] = []
+        del api_server.state.index.addons["script.trakt"]
+
+
 def test_restores_require_idle_unless_forced(api_server):
     api_server.players["result"] = [{"playerid": 1}]
     with patch.object(server, "restore_backup", return_value={"restored": True}) as restore, \

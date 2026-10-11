@@ -45,7 +45,7 @@ The dashboard is a static page plus this JSON API, served by the Kodi Manager se
 | `POST /api/addons/ID/backup` | yes | `{}` | Backup manifest: `{backup_id, addon_id, addon_name, addon_version, timestamp, files_copied, …}` |
 | `GET /api/addons/ID/backups` | – | – | `{backups[]}`: that add-on's manifests, newest first |
 | `POST /api/addons/ID/restore` | yes | `{"backup_id": "…", "force": false}` | `{restored: true, backup_id, undo_backup_id, restart_required}`. Restore `undo_backup_id` to undo. |
-| `POST /api/addons/ID/open-settings` | yes | `{}` | `{opened}`: opens the add-on's own settings dialog on the TV |
+| `POST /api/addons/ID/open-settings` | yes | `{}` | `{opened}`: opens the add-on's own settings dialog on the TV. Refused while playing. |
 | `POST /api/stack/backup` | yes | `{}` | Checkpoint manifest: `{backup_id, timestamp, included_folders[], skipped_folders[], …}` covering the skin, helpers and players |
 | `GET /api/stack/backups` | – | – | `{backups[]}`: checkpoint manifests |
 | `GET /api/backups/timeline` | – | – | `{items[], count}`: checkpoints and playback-setting backups, newest first, each with `kind`, `component_count`, `skipped_count` |
@@ -67,14 +67,14 @@ Backups live in the Kodi profile under `addon_data/service.kodi.addonadmin/backu
 | `POST /api/playback/test` | read | `{"target_player_addon_id", "plugin_url"}` | Dry run: `{ok, dry_run: true, target_player_addon_id, steps[{step, ok, detail}], pipeline_routing}`. Never starts playback. |
 | `GET /api/accounts` | – | – | `{groups[], summary{trakt, torbox, tmdb, debrid}, notes[]}` |
 | `PATCH /api/accounts/settings` | yes | `{"changes": [{"component", "setting_id", "source", "value"}]}` | `{backup_id, changed_count, changed_settings[], …}`; `400 account_write_blocked` |
-| `POST /api/trakt/sync` | yes | `{}` | Runs `script.trakt` sync; `404 trakt_unavailable` if it is not installed and enabled |
+| `POST /api/trakt/sync` | yes | `{}` | Runs `script.trakt` sync; `404 trakt_unavailable` if it is not installed and enabled. Refused while playing. |
 
 ## Kodi actions
 
 | Method and path | Writes | Request | Response `data` |
 |---|---|---|---|
 | `POST /api/addons/install` | yes | `{}` | `{opened, next_step}` or `{opened: false, error}`. Opens Kodi's own **Install from zip file** dialog on the TV; Kodi has no API to install a ZIP from a path. Refused while playing. |
-| `POST /api/windows/open-skin-settings` | yes | `{}` | `{opened}` |
+| `POST /api/windows/open-skin-settings` | yes | `{}` | `{opened}`. Refused while playing. |
 | `GET /api/fixes` | – | – | `{healthy, bundled, repairable, detail, groups[{label, status, installed_version, tested_version}]}` |
 | `POST /api/fixes/repair` | yes | `{}` | `{detail, …}`. Backs up, then restores tested copies of known files. Refused while playing. |
 

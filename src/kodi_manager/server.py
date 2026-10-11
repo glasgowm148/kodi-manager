@@ -920,6 +920,8 @@ def make_handler(state):
 
         def api_addon_open_settings(self, aid):
             self._addon(aid)
+            # A settings dialog opens over whatever is on screen, including a film.
+            self._require_idle("Stop playback before opening settings on the TV")
             return {"opened": state.kodi.open_addon_settings(aid)}
 
         def api_addon_backup(self, aid):
@@ -940,12 +942,15 @@ def make_handler(state):
         # --- Kodi windows --------------------------------------------------------------
 
         def api_open_skin_settings(self):
+            self._require_idle("Stop playback before opening skin settings on the TV")
             return {"opened": state.kodi.open_skin_settings()}
 
         def api_trakt_sync(self):
             addon = state.index.get("script.trakt")
             if not addon or not addon.get("enabled"):
                 raise ApiError(404, "trakt_unavailable", "script.trakt not installed/enabled")
+            # A full sync shows progress dialogs and competes with playback for the network.
+            self._require_idle("Stop playback before syncing Trakt")
             return state.kodi.execute_addon("script.trakt", {"action": "sync"})
 
     return Handler
