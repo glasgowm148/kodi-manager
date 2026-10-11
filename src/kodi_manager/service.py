@@ -144,6 +144,60 @@ BUSY_CONDITION = ("Player.HasMedia | Window.IsActive(busydialog) | Window.IsActi
                   " | Window.IsActive(progress_media.xml) | System.HasModalDialog | !System.IdleTime(60)")
 
 
+# Window(10000) properties widget add-ons bump after a library or Trakt sync;
+# a change refreshes the personal (progress) rows at the same time.
+EXTERNAL_RELOAD_PROPERTIES = ("TMDbBingieHelper.Widgets.Reload", "TMDbHelper.Widgets.Reload", "POV.Widgets.Reload")
+WIDGET_FAILURES_PROPERTY = "KM.WidgetFailures"
+
+
+def external_reload_token(home):
+    return "|".join(home.getProperty(name) for name in EXTERNAL_RELOAD_PROPERTIES)
+
+
+def persistent_widget_failures(cache):
+    """Count failed active rows without parsing their large artwork listings."""
+    try:
+        names = os.listdir(cache.health_dir)
+    except OSError:
+        return 0
+    count = 0
+    for name in names:
+        if not name.endswith(".json") or not os.path.isfile(os.path.join(cache.entries, name)):
+            continue
+        try:
+            with open(os.path.join(cache.health_dir, name), encoding="utf-8") as handle:
+                record = json.load(handle)
+            if isinstance(record, dict) and int(record.get("failures", 0)) >= 3:
+                count += 1
+        except (OSError, ValueError, TypeError):
+            pass
+    return count
+
+
+class WidgetHealth:
+    """Publish how many cached rows keep failing (KM.WidgetFailures, for skins).
+
+    Checked at most once a minute and only while the TV is quiet. One brief
+    notice per failure episode: it shows again only after the rows recovered.
+    """
+    INTERVAL = 60
+
+    def __init__(self, cache, set_property, notify, clock=time.time):
+        self.cache, self.set_property, self.notify, self.clock = cache, set_property, notify, clock
+        self.next_check = 0
+        self.warned = False
+
+    def tick(self, is_quiet):
+        if self.clock() < self.next_check or not is_quiet():
+            return
+        self.next_check = self.clock() + self.INTERVAL
+        persistent = persistent_widget_failures(self.cache)
+        self.set_property(WIDGET_FAILURES_PROPERTY, str(persistent))
+        if persistent and not self.warned:
+            self.notify()
+        self.warned = bool(persistent)
+
+
 def start_widget_refresher(kodi):
     """Refresh cached widget rows one at a time in the background."""
     if not xbmc:
@@ -155,16 +209,19 @@ def start_widget_refresher(kodi):
     player = xbmc.Player()
     refresher = Refresher(cache, jsonrpc_via(xbmc), player.isPlayingVideo,
                           lambda value: home.setProperty(RELOAD_PROPERTY, value), kodi.log,
-                          external_reload=lambda: home.getProperty("TMDbBingieHelper.Widgets.Reload")
-                          + "|" + home.getProperty("TMDbHelper.Widgets.Reload"),
+                          external_reload=lambda: external_reload_token(home),
                           is_busy=lambda: xbmc.getCondVisibility(BUSY_CONDITION))
     refresher.stop = threading.Event()
     refresher.sleep = refresher.stop.wait
+    health = WidgetHealth(cache, home.setProperty, lambda: xbmcgui.Dialog().notification(
+        "TV rows", "Some rows are unavailable. Cached results are being kept.",
+        xbmcgui.NOTIFICATION_INFO, 4000, False))
 
     def run():
         while not refresher.stop.is_set():
             try:
                 refresher.tick(refresher.stop.is_set)
+                health.tick(refresher._quiet)
             except Exception as error:
                 kodi.log("Widget cache refresh error: %s" % type(error).__name__)
             refresher.stop.wait(2)
