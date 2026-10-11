@@ -14,7 +14,35 @@ MAX_BYTES = 4_000_000
 
 
 class ManagerError(RuntimeError):
-    """Value-free connection, API or capability error."""
+    """Value-free connection, API or capability error.
+
+    ``status`` is the HTTP status (None for connection failures), ``code`` the service's
+    error code (``write_disabled``, ``playback_active``, ``addon_not_allowed``...). Only a
+    404 means the service lacks the endpoint (``unsupported``): a 400, 403, 409 or 500 from
+    a current service is a refusal or a failure to act on, not a reason to upgrade.
+    """
+
+    def __init__(self, message, status=None, code=None):
+        super(ManagerError, self).__init__(message)
+        self.status, self.code = status, code
+
+    @property
+    def unsupported(self):
+        return self.status == 404
+
+
+def _error_details(raw):
+    """(code, message) from a service error envelope, or (None, None)."""
+    try:
+        body = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return None, None
+    error = body.get("error") if isinstance(body, dict) else None
+    if not isinstance(error, dict):
+        return (body.get("code") if isinstance(body, dict) and isinstance(body.get("code"), str) else None), None
+    code = error.get("code") if isinstance(error.get("code"), str) else None
+    message = error.get("message") if isinstance(error.get("message"), str) else None
+    return code, (message[:300] if message else None)
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -66,11 +94,20 @@ class ManagerClient:
                 raise ManagerError("Response exceeds 4 MB; narrow the request")
             result = json.loads(raw)
         except HTTPError as exc:
-            raise ManagerError("Manager HTTP request failed (%s)" % exc.code) from None
+            try:
+                code, message = _error_details(exc.read(65536))
+            except (OSError, ValueError):
+                code, message = None, None
+            finally:
+                exc.close()
+            text = "Manager HTTP request failed (%s%s)" % (exc.code, " " + code if code else "")
+            raise ManagerError(text + (": " + message if message else ""), exc.code, code) from None
         except (URLError, OSError, ValueError):
             raise ManagerError("Manager connection or JSON response failed") from None
         if not isinstance(result, dict) or result.get("ok") is not True or "data" not in result:
-            raise ManagerError("Manager returned an invalid or unsuccessful response")
+            code, message = _error_details(raw)
+            raise ManagerError("Manager returned an invalid or unsuccessful response"
+                               + (": " + message if message else ""), 200, code)
         return result["data"]
 
     def status(self):

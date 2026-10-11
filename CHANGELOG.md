@@ -58,6 +58,9 @@
 - **Slow clients cannot lock out the dashboard.** A request line and headers must arrive within 5
   seconds in total (headers cut off by that deadline are never acted on), and one LAN address may
   hold at most 8 of the 16 handler slots.
+- **`ManagerClient` reports why a request was refused.** `ManagerError` carries the HTTP `status`
+  and the service's error `code` (`write_disabled`, `playback_active`...) with its message, and
+  `unsupported` is true only for a 404.
 
 ## 0.7.5 — 2026-10-11 (prerelease)
 
