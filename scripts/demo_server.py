@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, quote_plus, unquote, urlsplit
 
 WEB = Path(__file__).resolve().parents[1] / "web"
 TOKEN = "demo-token-0000"
-VERSION = "0.7.8-demo"
+VERSION = "0.7.9-demo"
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
        "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'")
 TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "application/javascript"}
@@ -111,7 +111,8 @@ class Demo:
         hosts = [h for h in HOSTS if any(self.history["latency"][h][i] is not None for i in keep)]
         return {"resolution_seconds": 900, "retention_days": 7, "days": days, "now": self.now, "count": len(keep),
                 "series": dict({"t": pick(self.history["t"])}, **{k: pick(v) for k, v in self.history["cols"].items()}),
-                "latency_ms": {h: pick(self.history["latency"][h]) for h in hosts}, "hosts": hosts}
+                "latency_ms": {h: pick(self.history["latency"][h]) for h in hosts}, "hosts": hosts,
+                "kodi_starts": [t for t in (self.now - 3 * 86400 - 7000, self.now - 5 * 3600 - 1200) if t >= since]}
 
     def _backups(self):
         items = []
@@ -162,8 +163,11 @@ class Demo:
             preview = [{"title": TITLES[(i * 3 + k) % len(TITLES)], "poster": ""} for k in range(6)] if items else []
             health = {"failures": failures, "last_failure": self.now - 1800, "reason": "unavailable" if i == 3 else "unexpected_empty",
                       "retry_at": self.now + 480} if failures else {}
+            where = [["Home"], ["Movies hub"], ["TV shows hub"], ["Home", "Movies hub"]][i % 4]
             out.append({"source": source(addon, mode, label), "items": items, "age_seconds": age, "fetched_at": self.now - age,
-                        "stale": i == 5, "progress": mode in ("progress", "next"), "health": health, "preview": preview})
+                        "stale": i in (5, 9), "progress": mode in ("progress", "next"), "health": health, "preview": preview,
+                        "title": label, "addon_name": "TMDb Helper" if "helper" in addon else "POV", "where": where,
+                        "title_from": "skin" if i % 3 else "path"})
         return out
 
     def accounts_now(self):
@@ -177,10 +181,11 @@ class Demo:
         return {"generated_at": self.now, "service_version": VERSION, "kodi_version": "22.0", "profile": self.profile,
                 "write_enabled": self.writes,
                 "playback": {"active": True, "type": "video", "title": "Paper Planets: The Comet", "media": "episode"} if self.playing else {"active": False, "type": "", "title": ""},
-                "memory": {"status": "ok", "detail": "Kodi uses 612 MB · 1180 MB of 2900 MB free · swap 41% used", "kodi_mb": 612, "available_mb": 1180, "total_mb": 2900, "swap_used_pct": 41},
+                "memory": {"status": "ok", "pressure": "ok", "detail": "Kodi uses 612 MB · 1180 MB of 2900 MB free · swap 96% used. Nearly full swap is normal on Android while enough memory is free.", "kodi_mb": 612, "available_mb": 1180, "total_mb": 2900, "swap_used_pct": 96},
+                "kodi_started_at": self.now - 5 * 3600 - 1200,
                 "internet": {"status": "ok", "detail": "TorBox 0.3s · Trakt 0.2s · TMDb 0.1s", "checked_at": self.now - 240, "age_seconds": 240, "failed": [],
                              "hosts": [{"name": "TorBox", "seconds": 0.312}, {"name": "Trakt", "seconds": 0.205}, {"name": "TMDb", "seconds": 0.141}]},
-                "rows": {"cached": 14, "failing": 2, "persistent": 1},
+                "rows": {"cached": 14, "failing": 2, "persistent": 1, "stale": 2, "empty": 1},
                 "backups": {"count": len([b for b in self.backups if b["kind"] == "stack"]), "last": {k: last.get(k) for k in ("backup_id", "timestamp", "note", "total_bytes")},
                             "times": [b["timestamp"] for b in self.backups if b["kind"] == "stack"], "nightly": {"status": "ok", "at": self.now - 9 * 3600}},
                 "protection": {"fixes": {"healthy": True, "bundled": True, "attention": 0, "groups": 3}, "baseline": {"total": 6, "drifted": 0, "labels": []}},
