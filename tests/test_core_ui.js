@@ -296,3 +296,19 @@ test('cached-row Pages field matches the server limit of five', () => {
   assert.match(web('app.js'), /id="cachePages" type="number" min="1" max="5"/);
   assert.match(fs.readFileSync(path.resolve(__dirname, '../src/kodi_manager/widget_cache.py'), 'utf8'), /^MAX_PAGES = 5$/m);
 });
+
+test('a refused settings batch highlights the setting named in details.setting_id', async () => {
+  const field = id => { const classes = new Set(), attrs = {}; return {dataset:{setting:id}, type:'text', classes, attrs, focused:false,
+    classList:{add:c => classes.add(c), remove:c => classes.delete(c)}, setAttribute:(k, v) => { attrs[k] = v; }, removeAttribute:k => { delete attrs[k]; }, focus(){ this.focused = true; }}; };
+  const fields = [field('timeout'), field('quality')];
+  const {ui} = withApp({document:{querySelector:() => null, querySelectorAll:selector => selector === '[data-setting]' ? fields : selector === '.setting-invalid' ? fields.filter(f => f.classes.has('setting-invalid')) : []}});
+  ui.confirmDialog = async () => true;
+  ui.apiMethod = async () => { throw Object.assign(new Error('quality: Value not in options'), {status:400, code:'bad_request', details:{setting_id:'quality'}}); };
+  vm.runInContext('state.writeEnabled = true; state.dirtyAddon = "plugin.video.pov"; state.dirtyChanges = {timeout:{value:"5"}, quality:{value:"8K"}};', ui);
+  await assert.rejects(ui.saveDirty(), /quality: Value not in options/);
+  assert.equal(fields[1].classes.has('setting-invalid'), true);
+  assert.equal(fields[1].attrs['aria-invalid'], 'true');
+  assert.equal(fields[1].focused, true);
+  assert.equal(fields[0].classes.has('setting-invalid'), false);
+  assert.equal(vm.runInContext('Object.keys(state.dirtyChanges).length', ui), 2, 'unsaved edits are kept');
+});

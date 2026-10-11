@@ -72,3 +72,4 @@ a.action{display:inline-block;padding:9px 11px;border-radius:6px;border:1px soli
 .dash-action-cell{text-align:left!important}.dash-table tr[hidden]{display:none}
 .cached-rows thead{display:none}.cached-rows tr,.cached-rows th,.cached-rows td{display:block}.cached-rows td[data-label]::before{content:attr(data-label) ": ";color:var(--muted)}
 }
+.setting-invalid{outline:2px solid var(--bad);outline-offset:2px}

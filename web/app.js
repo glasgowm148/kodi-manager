@@ -126,6 +126,18 @@ function changePreview(id, original, value, secret=false){
   return `${friendlyName(id, id)}\n  ${display(original)} -> ${display(value)}`;
 }
 const QUICK_UNDO_MS = 10000;
+/* A refused batch names the setting to fix in details.setting_id; point at that field. */
+function markInvalidSetting(id){
+  document.querySelectorAll(".setting-invalid").forEach(el => { el.classList.remove("setting-invalid"); el.removeAttribute("aria-invalid"); });
+  if (typeof id !== "string" || !id) return null;
+  const el = [...document.querySelectorAll("[data-setting]")].find(x => x.dataset.setting === id);
+  if (!el) return null;
+  el.classList.add("setting-invalid");
+  el.setAttribute("aria-invalid", "true");
+  el.scrollIntoView?.({block:"center"});
+  el.focus?.();
+  return el;
+}
 async function saveDirty(){
   const changes = Object.entries(state.dirtyChanges).map(([id,item]) => ({id,value:item.value,source:item.source}));
   const addonId = state.dirtyAddon;
@@ -135,7 +147,9 @@ async function saveDirty(){
     return changePreview(ch.id, el?.dataset.original ?? "", ch.value, el?.type === "password" || appSecretSetting({id:ch.id}));
   }).join("\n\n");
   if (!(await confirmDialog({title:`Save ${changes.length} change${changes.length === 1 ? "" : "s"}?`, message:"A backup of this add-on’s settings is created first.", detail:preview, confirmLabel:"Save"}))) return;
-  const r = await apiMethod("PATCH", `/api/addons/${encodeURIComponent(addonId)}/settings`, {changes});
+  let r;
+  try { r = await apiMethod("PATCH", `/api/addons/${encodeURIComponent(addonId)}/settings`, {changes}); }
+  catch (error) { markInvalidSetting(error?.details?.setting_id); throw error; }
   clearDirty();
   const savedAt = Date.now();
   // The backup is the whole add-on folder as it was before this save; a later tap asks first.
