@@ -6,8 +6,9 @@ These are alpha releases. Passing a fixture test does not establish live TV comp
 | --- | --- | --- |
 | Library/client | Python 3.9+; Linux/Windows CI on 3.9, 3.11, 3.13; macOS local tests | A computer install does not install the TV service |
 | Service code on Kodi's Python | CI runs the test suite on Python 3.8, the version Kodi 19–21 embeds on Android | The library package itself still needs 3.9+ |
-| 0.7.6 library/ZIP (current release) | 513 Python and 77 UI tests, also run on Python 3.8; deterministic ZIP and release-archive check | Not yet installed on the Shield |
-| Kodi service, live | 0.4.2–0.7.3 installed and used on an NVIDIA Shield (Kodi 22 beta 2), two profiles, Bingie 2.0.2, POV and TMDb Bingie Helper | One device; other skins and devices are tested in CI only |
+| 0.7.7 library/ZIP (current release) | 606 Python and 77 UI tests, also run on Python 3.8; deterministic ZIP and release-archive check | Not yet installed on the Shield |
+| Kodi service, live | 0.4.2–0.7.3 installed and used on an NVIDIA Shield (Kodi 22 beta 2, then 22.0 RC1), two profiles, Bingie 2.0.2, POV and TMDb Bingie Helper; a private build of 0.7.6 installed on RC1 | One device; other skins and devices are tested in CI only |
+| Shield exit workaround | Opt-in; enabled only on Android Kodi 22.0 BETA2 and RC1 with NVIDIA's driver. Ends the exit after Kodi has saved its settings: at skin unload, or after 60 s or more stalled after "Stopping all" | RC2 and later, and the final release, stay disabled until checked on a Shield |
 | Widget cache | Live on the Shield above: cached rows, View more, multi-page rows, per-row hide watched, background refresh, TMDb Helper playback from a cached row | Needs Kodi 20+ (ListItem info tags). Other skins' `widgetPath` routing and the cached-rows picker are covered by tests, not yet live |
 | Kodi service | Requires Kodi `xbmc.python` API 3.0.0 | No universal Kodi/firmware guarantee |
 | Layout writes | Reviewed Bingie 2.0.2 and Skin Shortcuts 2.0.3 versions **and source hashes** | Unknown forks/patches are view-only |

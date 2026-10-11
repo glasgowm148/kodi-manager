@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.7.7 — 2026-10-11 (prerelease)
+
+- **Shield exit workaround on Kodi 22.0 RC1.** It was enabled only on 22.0 BETA2, so installing a
+  public build on RC1 silently turned it off. It now runs on exactly BETA2 and RC1; RC2 and later stay
+  off until checked on a Shield.
+- **A stalled exit no longer needs a force-stop.** Quitting with a paused video once left Kodi stuck
+  after "Stopping all" for over 90 seconds: the watcher only acted after "Application stopped" and gave
+  up after about 30 seconds. Once Kodi has logged "Stopping the application", "Saving skin settings"
+  and "Stopping all" in that order, the watcher now ends an exit that has not finished 60 seconds or
+  more later. It still never acts before settings are saved. It records its progress, the service
+  logs when it is armed on quit, and the next start logs what it saw.
+- **Profile changes don't wait on the dashboard.** Stopping the service closes only the listening
+  socket and never joins HTTP handler threads.
+- **Coordinated profile switches** (setups whose own add-on switches profiles) cancel stale work: the
+  service checks for a cancelled generation at start and in its monitor, plugin calls stop rendering,
+  and the service acknowledges drained work on exit. Without a coordinator this is a no-op.
+- **Private extensions.** A private build can add one optional `household.py` module for its own
+  service behaviour, plugin modes and widget-cache modes without patching core files
+  ([guide](docs/extensions.md)). Public releases contain none, and the release check refuses one.
+- **Boolean settings** are read through Kodi's typed settings API on Kodi 20+, and Write Mode is read
+  and written as a bool.
+- **Cached rows:** `KM.WidgetFailures` (a Home window property) counts on-screen rows that keep
+  failing, with one notice per failure episode while the TV is idle; POV's widget reload token
+  refreshes personal rows like TMDb Helper's.
+- **Family rows** create offscreen list items, and items that only carry ResumeTime/TotalTime
+  properties get a native resume point on Kodi 20+.
+- **The dashboard address notice** shows the TV's LAN address instead of `0.0.0.0`, and appears once
+  per Kodi session: not after a profile switch or add-on update. It still waits out playback.
+- **No checkpoint or protected-setting re-apply during playback.** Both answer `409`
+  `playback_active`; a manual checkpoint also stops and is discarded if playback starts while it
+  copies.
+- **Masked log lines.** `/api/kodi/logs` and the Health page's recent errors and warnings mask tokens,
+  keys and bearer headers.
+- **DNS-rebinding defence.** Requests whose `Host` is not `localhost`, a `.local` name, a
+  loopback/private/link-local IP or the bound address answer `403` `host_not_allowed`. Open the
+  dashboard by IP address or `.local` name.
+- **installer_result.json** (it holds the access token) is written atomically and owner-only.
+- **Tests:** the server concurrency tests poll for state instead of relying on fixed sleeps and
+  response-time limits.
+
 ## 0.7.6 — 2026-10-11 (prerelease)
 
 - **Restores roll back on failure.** A restore that fails part way (disk full, permission error) puts

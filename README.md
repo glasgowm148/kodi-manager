@@ -170,6 +170,7 @@ settings = flatten_settings(schema)  # Secret values are masked.
 | [API](docs/api.md) | Endpoints, authentication, layout workflows |
 | [Compatibility](docs/compatibility.md) | What has been tested live and what only in CI |
 | [Recovery](docs/recovery.md) | Backup, restore and upgrades |
+| [Private extensions](docs/extensions.md) | Adding your own behaviour to a private build without patching core files |
 | [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md) | Development, release notes, private reports |
 
 ---

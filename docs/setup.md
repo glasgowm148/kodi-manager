@@ -88,6 +88,7 @@ can contain credentials; keep them private.
 | Browser cannot connect | Kodi and the service are running; the device's current IP and port; **Allow LAN access** is on |
 | Works on the Kodi device only | **Allow LAN access** is off |
 | Authentication error | Active-profile `auth_token`, not Kodi HTTP credentials or another profile's token |
+| `host_not_allowed` (403) | Open the dashboard by IP address (`http://192.168.x.y:8765`), a `.local` name or `localhost`; other host names are refused as a DNS-rebinding defence |
 | Connected but changes disabled | **Enable writes** in the add-on settings; Python/MCP clients have their own write opt-in too |
 | Home layout missing or view-only | It appears only for reviewed skin and Skin Shortcuts versions **and source hashes** |
 | Provider preview empty/fails | Provider enabled, accounts configured and route available; see provider logs |

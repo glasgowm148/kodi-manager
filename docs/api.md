@@ -9,6 +9,11 @@ The dashboard is a static page plus this JSON API, served by the Kodi Manager se
   `GET /api/bootstrap/status`, and only while legacy installer files exist (the portable release never
   creates them). A missing or wrong token answers `401` with code `unauthorized`. When **Allow LAN
   access** is on, requests from non-private addresses are refused with `403` `forbidden`.
+- **Host names.** Pages and API requests are served only when the `Host` header is `localhost` (or a
+  `*.localhost` name), a `*.local` name, a loopback, private or link-local IP address, or the address
+  the dashboard is bound to (a request without `Host` is also served). Any other name answers `403`
+  `host_not_allowed`, so a web page that points its own name at the TV (DNS rebinding) cannot use the
+  dashboard. Open it as `http://<tv-ip>:8765` or `http://<name>.local:8765`.
 - **Envelope.** Success: `{"ok": true, "data": …}`. Failure: `{"ok": false, "error": {"code": "…",
   "message": "…", "details": {…}}}`. Clients should branch on `code`, not on the message text.
 - **Writes.** Every `POST` or `PATCH` needs **Enable writes** turned on in the add-on settings, except
@@ -17,8 +22,10 @@ The dashboard is a static page plus this JSON API, served by the Kodi Manager se
   another host answers `403` `origin_mismatch`; the dashboard itself is same-origin.
 - **Busy Kodi.** Actions that would interrupt viewing refuse with code `playback_active` while
   something is playing. Install from zip, fix repair, menu rebuild, opening an add-on's or the skin's
-  settings on the TV and Trakt sync answer `400` and cannot be forced. Add-on and stack restores answer
-  `409`; resend the same body with `"force": true` to restore anyway.
+  settings on the TV and Trakt sync answer `400` and cannot be forced. A manual checkpoint and
+  re-applying protected settings answer `409` and cannot be forced; a checkpoint also stops, and is
+  discarded, if playback starts while it copies. Add-on and stack restores answer `409`; resend the
+  same body with `"force": true` to restore anyway.
 - Bodies are JSON objects of at most 1 MB. `ID` is a Kodi add-on id, URL-encoded.
 
 ## Status and discovery
@@ -28,13 +35,13 @@ The dashboard is a static page plus this JSON API, served by the Kodi Manager se
 | `GET /api/status` | – | – | `service_version`, `Kodi version`, `server` `{host, port}`, `write_enabled`, `allow_lan`, `active_skin`, `current_time`, `platform`, `stack` (detected skin, helpers, players, `warnings`) |
 | `GET /api/bootstrap/status` | – | – | `{installed, web_url, needs_auth, nonce_present}` (legacy installer only) |
 | `GET /api/stack` | – | – | Detected stack: `skin` (with `bingie_like`), `tmdbhelper`, `fenlight`, `fen`, `pov`, `cocoscrapers`, `trakt`, `trakt_integration`, `warnings`, … |
-| `GET /api/health` | – | – | `{status, checks[], stats{}, recent_errors[], recent_warnings[]}` |
+| `GET /api/health` | – | – | `{status, checks[], stats{}, recent_errors[], recent_warnings[]}` (log lines masked like `/api/kodi/logs`) |
 | `GET /api/integrations` | – | – | Account-integration summary per add-on |
 | `GET /api/addons` | – | – | Array of add-ons: `addon_id`, `name`, `version`, `installed`, `enabled`, `config_present`, … |
 | `GET /api/addons/ID` | – | – | That add-on plus `warnings[]` and `related` details |
 | `GET /api/search/config?q=TEXT` | – | – | `{query, count, results[]}`; each result has `addon_id`, `addon_name`, `group`, `id`, `label`, `value`, `type`, `editable`, `masked`, `warning` (at most 500) |
 | `GET /api/logs` | – | – | `{lines[]}`: the service's last 200 log lines |
-| `GET /api/kodi/logs` | – | – | `{lines[]}`: the last 500 lines of Kodi's log |
+| `GET /api/kodi/logs` | – | – | `{lines[]}`: the last 500 lines of Kodi's log, with tokens, keys and bearer headers masked |
 | `GET /api/debug/paths` | – | – | Kodi version, platform and resolved profile paths |
 | `GET /api/debug/stack-raw` | – | – | Raw add-on probes, merged records and the classified stack |
 
