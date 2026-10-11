@@ -1,5 +1,6 @@
-/* Shared browser helpers: escaping, API requests, notices, dialogs and clipboard.
-   Loaded before every other script. Nothing here touches the page until called. */
+/* Shared browser helpers: escaping, API requests, notices, dialogs, clipboard and theme.
+   Loaded first, in <head>. Apart from applying a saved light/dark choice, nothing here
+   touches the page until called. */
 const $ = s => document.querySelector(s);
 const ESCAPES = {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;","`":"&#96;"};
 const esc = s => String(s ?? "").replace(/[&<>"'`]/g, c => ESCAPES[c]);
@@ -110,9 +111,36 @@ function toast(message, tone = "info", options = {}) {
   return node;
 }
 
+/* Plain-English explanations for API error codes: what happened and what to do next. */
+const ERROR_TEXT = {
+  playback_active: ["Something is playing on the TV.", "Try again when viewing has finished. Kodi Manager never interrupts what’s on screen."],
+  write_disabled: ["Changes are switched off for this Kodi profile.", WRITE_HINT],
+  unauthorized: ["This browser isn’t signed in to Kodi Manager.", "Enter the access token shown on the TV."],
+  network: ["Couldn’t reach the TV.", "Check that Kodi is running and that this device is on the same home network."],
+  host_not_allowed: ["Open the dashboard by the TV’s IP address.", "Use http://<TV address>:8765 or a .local name rather than another host name."],
+  origin_mismatch: ["That request came from another web page and was blocked.", "Use the dashboard itself to make changes."],
+  forbidden: ["Only devices on your home network can use this dashboard.", ""],
+  addon_not_allowed: ["Kodi Manager only edits the add-ons in your playback setup.", "To edit another add-on, add it under “Also allow editing these add-ons” in Kodi Manager’s settings on the TV."],
+  trakt_unavailable: ["The Trakt add-on isn’t installed or is turned off.", "Install or enable script.trakt in Kodi, then try again."],
+  server_error: ["Kodi Manager hit a problem doing that.", "Try again. If it keeps happening, look at Advanced → Service log."],
+  bad_response: ["The TV sent a reply the dashboard didn’t understand.", "Reload this page. If Kodi Manager was just updated, restart Kodi."]
+};
+const ERROR_ACCEPTS_DETAIL = new Set(["bad_request", "invalid_pipeline_setting", "account_write_blocked", "switch_player_blocked", "not_found"]);
+function friendlyError(error) {
+  const code = String(error?.code || "");
+  const raw = String(error?.message || error || "Something went wrong.");
+  if (ERROR_TEXT[code]) return {code, title:ERROR_TEXT[code][0], hint:ERROR_TEXT[code][1], detail:raw};
+  if (ERROR_ACCEPTS_DETAIL.has(code)) return {code, title:code === "not_found" ? "Kodi Manager couldn’t find that." : "That change wasn’t accepted.", hint:raw, detail:raw};
+  return {code, title:raw, hint:"", detail:raw};
+}
+function friendlyMessage(error) {
+  const f = friendlyError(error);
+  return f.hint ? `${f.title} ${f.hint}` : f.title;
+}
+
 function reportError(error) {
   if (!error || error.name === "AbortError") return;
-  const message = error.message || String(error);
+  const message = friendlyMessage(error);
   if (!toast(message, "error") && typeof console !== "undefined") console.error(message);
 }
 
@@ -214,3 +242,25 @@ async function copyWithNotice(text, label) {
   if (how !== "manual") toast(`${label} copied.`, "ok");
   return how;
 }
+
+/* Light/dark theme: "auto" follows the device. The choice is remembered in this browser only. */
+const THEME_KEY = "km_theme";
+const THEMES = ["auto", "light", "dark"];
+function storedTheme() {
+  try { const value = localStorage.getItem(THEME_KEY); return THEMES.includes(value) ? value : "auto"; } catch (_) { return "auto"; }
+}
+function applyTheme(theme) {
+  const value = THEMES.includes(theme) ? theme : "auto";
+  if (typeof document !== "undefined" && document.documentElement && typeof document.documentElement.setAttribute === "function") {
+    if (value === "auto") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", value);
+  }
+  return value;
+}
+function nextTheme(theme) { return THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]; }
+function saveTheme(theme) {
+  const value = applyTheme(theme);
+  try { if (value === "auto") localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, value); } catch (_) {}
+  return value;
+}
+applyTheme(storedTheme());
