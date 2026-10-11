@@ -83,7 +83,7 @@ function settingsEditState(data, writeEnabled) {
 function settingsBannerMarkup(edit) {
   if (edit.banner === "readonly") return `<div class="banner settings-readonly" role="note"><b>Read-only.</b> ${esc(edit.reason)}</div>`;
   if (edit.banner === "writes") return `<p class="warn">${esc(edit.reason)}</p>`;
-  return '<p class="muted">Changes stay pending until you choose Save changes at the top. A backup is created before saving.</p>';
+  return '<p class="muted">Changes stay pending until you choose Save changes, which appears at the top once you edit something. A backup is created before saving.</p>';
 }
 
 async function renderAddonSettingsView(aid) {

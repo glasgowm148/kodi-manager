@@ -25,51 +25,133 @@ function focusHeading(){
   heading.focus({preventScroll:true});
 }
 function homeLayoutSupported(status){ return status?.stack?.skin?.bingie_like === true; }
+/* Pages grouped by household task (docs/ui.md). Items are [label, route] or [label, route, {sub:true}]
+   for per-add-on pages, which the side menu indents and the section tabs leave out. */
 function navGroups(status){
   const stack = status?.stack || {};
   const known = key => !status || !!stack[key]?.addon_id;
   const apps = [["Skin","#/skin","skin"],["TMDb Helper","#/tmdbhelper","tmdbhelper"],["Fen Light","#/fenlight","fenlight"],["Fen","#/fen","fen"],["POV","#/pov","pov"],["CocoScrapers","#/cocoscrapers","cocoscrapers"]]
-    .filter(([, , key]) => known(key)).map(([label, route]) => [label, route]);
-  if (!status || stack.trakt?.addon_id || stack.trakt_integration?.status === "configured") apps.push(["Trakt","#/trakt"]);
-  const manage = [...(homeLayoutSupported(status) ? [["Home layout","#/widgets"]] : []), ["Accounts","#/accounts"], ["All add-ons","#/addons"], ["Install add-on","#/install"], ["Backups","#/backups"], ["Cached rows","#/cached-rows"]];
+    .filter(([, , key]) => known(key)).map(([label, route]) => [label, route, {sub:true}]);
+  const trakt = !status || stack.trakt?.addon_id || stack.trakt_integration?.status === "configured";
   return [
-    {group:"Overview",items:[["Dashboard","#/dashboard"],["Health","#/health"],["Custom fixes","#/fixes"],["Playback setup","#/pipeline"],["Playback test","#/playback-test"]]},
-    ...(apps.length ? [{group:"Detected add-ons",items:apps}] : []),
-    {group:"Manage",items:manage},
-    {group:"System",items:[["Kodi log","#/kodi-logs"],["Service log","#/logs"],["Setup","#/setup"],["Diagnostics","#/diagnostics"]]}
+    {key:"status", group:"Status", short:"Status", icon:"pulse", items:[["Overview","#/dashboard"],["Trends","#/trends"],["Health checks","#/health"]]},
+    {key:"rows", group:"Home screen", short:"Rows", icon:"rows", items:[["Row health","#/rows"], ...(homeLayoutSupported(status) ? [["Home layout","#/widgets"]] : []), ["Cached rows","#/cached-rows"]]},
+    {key:"addons", group:"Add-ons & settings", short:"Add-ons", icon:"box", items:[["Your add-ons","#/components"], ...apps, ["All add-ons","#/addons"], ["Playback setup","#/pipeline"], ["Playback test","#/playback-test"], ["Install add-on","#/install"]]},
+    {key:"backups", group:"Backups & recovery", short:"Backups", icon:"history", items:[["Backups","#/backups"],["Custom fixes","#/fixes"]]},
+    {key:"accounts", group:"Accounts", short:"Accounts", icon:"key", items:[["Accounts","#/accounts"], ...(trakt ? [["Trakt","#/trakt"]] : [])]},
+    {key:"advanced", group:"Advanced", short:"Advanced", icon:"tools", items:[["Kodi log","#/kodi-logs"],["Service log","#/logs"],["Diagnostics","#/diagnostics"],["Connection","#/setup"]]}
   ];
 }
-function navButton(label, route){ return `<button type="button" data-route="${esc(route)}">${esc(label)}</button>`; }
-function setNav(items){
-  const key = JSON.stringify(items);
+const TABBAR = ["status", "rows", "addons", "backups"];
+const ROUTE_ALIASES = {"#/widget-studio":"#/widgets", "#/overview":"#/dashboard", "#/":"#/dashboard", "":"#/dashboard"};
+function currentRoute(){ const r = (location.hash || "#/dashboard").split("?")[0]; return ROUTE_ALIASES[r] || r; }
+function routeGroup(route, groups){
+  if (route.startsWith("#/addon/")) return groups.find(g => g.key === "addons") || null;
+  return groups.find(g => g.items.some(item => item[1] === route)) || null;
+}
+function navLink(label, route, sub){ return `<a href="${esc(route)}" data-route="${esc(route)}"${sub ? ' class="nav-sub"' : ""}>${esc(label)}</a>`; }
+function setNav(groups){
+  state.navGroups = groups;
+  const key = JSON.stringify(groups);
   if (key === state.navKey) return highlightNav();
   state.navKey = key;
-  $("#nav").innerHTML = items.map(item => {
-    if (Array.isArray(item)) return navButton(item[0], item[1]);
-    return `<div class="nav-section"><div class="nav-title">${esc(item.group)}</div>${item.items.map(([label, route]) => navButton(label, route)).join("")}</div>`;
-  }).join("");
+  $("#nav").innerHTML = `<div class="nav-sheet-head"><span>All pages</span><button type="button" class="action" data-close-nav>Close</button></div>` + groups.map(group => `<div class="nav-section" data-group="${esc(group.key || "")}"><div class="nav-title">${dashboardIcon(group.icon || "help")}<span>${esc(group.group)}</span></div>${group.items.map(([label, route, opts]) => navLink(label, route, opts?.sub)).join("")}</div>`).join("");
+  const tabbar = $("#tabbar");
+  if (tabbar) tabbar.innerHTML = groups.filter(g => TABBAR.includes(g.key)).map(g => `<a href="${esc(g.items[0][1])}" data-tab-group="${esc(g.key)}">${dashboardIcon(g.icon)}<span>${esc(g.short || g.group)}</span></a>`).join("") + `<button type="button" id="tabMore" data-tab-group="more" aria-controls="nav" aria-expanded="false">${dashboardIcon("more")}<span>More</span></button>`;
   highlightNav();
 }
+function renderSubnav(group, route){
+  const host = $("#subnav");
+  if (!host) return;
+  const items = group ? group.items.filter(item => !item[2]?.sub) : [];
+  host.hidden = items.length < 2;
+  host.innerHTML = items.length < 2 ? "" : `<ul>${items.map(([label, target]) => `<li><a href="${esc(target)}"${target === route || (route.startsWith("#/addon/") && target === "#/components") ? ' aria-current="page"' : ""}>${esc(label)}</a></li>`).join("")}</ul>`;
+}
 function highlightNav(){
-  const current = (location.hash || "#/dashboard").split("?")[0];
-  document.querySelectorAll("#nav button").forEach(b => {
+  const current = currentRoute();
+  document.querySelectorAll("#nav [data-route]").forEach(b => {
     const active = b.dataset.route === current;
     b.classList.toggle("active", active);
     if (active) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   });
+  const group = routeGroup(current, state.navGroups || navGroups(state.status));
+  const tabKey = group ? (TABBAR.includes(group.key) ? group.key : "more") : "";
+  document.querySelectorAll("#tabbar [data-tab-group]").forEach(tab => {
+    const on = tab.dataset.tabGroup === tabKey;
+    tab.classList.toggle("active", on);
+    if (on && tab.tagName === "A") tab.setAttribute("aria-current", "page"); else tab.removeAttribute("aria-current");
+  });
+  renderSubnav(group, current);
 }
 function toggleNav(open){
   const body = document.body;
   const next = typeof open === "boolean" ? open : !body.classList.contains("nav-open");
   body.classList.toggle("nav-open", next);
   $("#navToggle")?.setAttribute("aria-expanded", String(next));
+  $("#tabMore")?.setAttribute("aria-expanded", String(next));
+  if (next) document.querySelector("#nav a")?.focus?.();
+}
+/* The calm notice shown on every page when this Kodi profile is view-only (writes off). */
+function viewOnlyBanner(status){
+  if (status?.write_enabled !== false) return "";
+  return `<div class="notice notice--view" role="note">${dashboardIcon("eye")}<div><p><b>View only.</b> Changes are off${state.profile ? ` for the ${esc(state.profile)} profile` : " for this Kodi profile"}, so anything that would change the TV is greyed out.</p><details><summary>How to allow changes</summary><p>On the TV, open <b>Add-ons → My add-ons → Services → Kodi Manager → Configure</b> and turn on <b>Enable writes</b>. It applies straight away.</p></details></div></div>`;
 }
 function applyStatus(status){
   state.status = status;
   state.writeEnabled = appCanWrite(status);
   setNav(navGroups(status));
   updateDirtyBar();
-  $("#top").innerHTML = `Kodi ${esc(status["Kodi version"] || "")} ${dashboardFlag(status.write_enabled, "Writes on", "Read only")}`;
+  $("#top").innerHTML = `<span class="conn-chip" title="Connected to Kodi Manager ${esc(status.service_version || "")}"><span class="conn-dot" aria-hidden="true"></span><span>Kodi ${esc(status["Kodi version"] || "")}</span></span>${status.write_enabled === false ? dashboardPill("muted", "View only", "eye") : ""}`;
+  const banner = $("#banner");
+  if (banner) banner.innerHTML = viewOnlyBanner(status);
+}
+function pageHead(title, lead, actions=""){
+  return `<header class="page-head"><div><h2>${esc(title)}</h2>${lead ? `<p class="lead">${esc(lead)}</p>` : ""}</div>${actions ? `<div class="page-actions">${actions}</div>` : ""}</header>`;
+}
+function pageSkeleton(){
+  return `<div class="page-skeleton" role="status" aria-label="Loading"><span class="skeleton-line title"></span><span class="skeleton-line"></span><div class="skeleton-block"></div><div class="skeleton-block"></div></div>`;
+}
+/* Arrow-key focus movement for TV remotes: pick the nearest control in that direction. */
+function spatialPick(from, candidates, dir){
+  const cx = r => (r.left + r.right) / 2, cy = r => (r.top + r.bottom) / 2;
+  let best = null, bestScore = Infinity;
+  for (const candidate of candidates) {
+    const r = candidate.rect, dx = cx(r) - cx(from), dy = cy(r) - cy(from);
+    let along, across;
+    if (dir === "right") { if (r.left < from.right - 4 && dx <= 4) continue; along = dx; across = dy; }
+    else if (dir === "left") { if (r.right > from.left + 4 && dx >= -4) continue; along = -dx; across = dy; }
+    else if (dir === "down") { if (r.top < from.bottom - 4 && dy <= 4) continue; along = dy; across = dx; }
+    else { if (r.bottom > from.top + 4 && dy >= -4) continue; along = -dy; across = dx; }
+    if (along <= 0) continue;
+    const score = along + 2.5 * Math.abs(across);
+    if (score < bestScore) { bestScore = score; best = candidate; }
+  }
+  return best;
+}
+const SPATIAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
+function spatialKey(event){
+  const dir = {ArrowRight:"right", ArrowLeft:"left", ArrowDown:"down", ArrowUp:"up"}[event.key];
+  if (!dir || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  const active = document.activeElement;
+  if (!active || active === document.body || active.closest?.("[data-chart-plot]")) return;
+  const tag = active.tagName;
+  if (tag === "SELECT" || tag === "TEXTAREA" || active.isContentEditable) return;
+  if (tag === "INPUT" && (dir === "left" || dir === "right" || ["number", "range"].includes(active.type))) return;
+  const scope = document.querySelector("dialog[open]") || document;
+  const candidates = [...scope.querySelectorAll(SPATIAL_FOCUSABLE)].filter(el => el !== active && el.getClientRects().length && !el.closest("[hidden], .hidden")).map(el => ({el, rect:el.getBoundingClientRect()})).filter(c => c.rect.width && c.rect.height);
+  const target = spatialPick(active.getBoundingClientRect(), candidates, dir);
+  if (!target) return;
+  event.preventDefault();
+  target.el.focus({preventScroll:true});
+  target.el.scrollIntoView?.({block:"nearest", inline:"nearest"});
+}
+function themeLabel(theme){ return {auto:"Theme: automatic", light:"Theme: light", dark:"Theme: dark"}[theme] || "Theme"; }
+function renderThemeToggle(){
+  const button = $("#themeToggle");
+  if (!button) return;
+  const theme = storedTheme();
+  button.innerHTML = `${dashboardIcon(theme === "light" ? "sun" : theme === "dark" ? "moon" : "auto")}<span class="sr-only">${esc(themeLabel(theme))}</span>`;
+  button.title = `${themeLabel(theme)}. Choose to switch.`;
 }
 async function loadStatus(){
   const status = await api("/api/status");
@@ -98,6 +180,7 @@ function updateDirtyBar(){
   label.textContent = count ? `${count} unsaved change${count === 1 ? "" : "s"}` : "No unsaved changes";
   btn.disabled = !count || !state.writeEnabled;
   btn.title = state.writeEnabled ? "" : WRITE_HINT;
+  if (typeof document !== "undefined") document.body?.classList?.toggle("has-unsaved", count > 0);
 }
 /* Called before leaving a route. The hash has already changed, so restore it while asking. */
 async function confirmLeave(target){
@@ -284,11 +367,19 @@ async function boot(){
   $("#globalSearch").addEventListener("keydown", e => { if (e.key === "Enter") runGlobalSearch(); });
   $("#navToggle")?.addEventListener("click", () => toggleNav());
   $("#nav").addEventListener("click", event => {
-    const button = event.target.closest("button[data-route]");
-    if (!button) return;
-    toggleNav(false);
-    location.hash = button.dataset.route;
+    if (event.target.closest("[data-close-nav]")) return toggleNav(false);
+    if (event.target.closest("a[data-route]")) toggleNav(false);
   });
+  $("#tabbar")?.addEventListener("click", event => {
+    if (event.target.closest("#tabMore")) return toggleNav();
+    if (event.target.closest("a")) toggleNav(false);
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && document.body.classList.contains("nav-open")) { toggleNav(false); $("#tabMore")?.focus(); return; }
+    spatialKey(event);
+  });
+  renderThemeToggle();
+  $("#themeToggle")?.addEventListener("click", () => { saveTheme(nextTheme(storedTheme())); renderThemeToggle(); });
   window.addEventListener("hashchange", () => onHashChange().catch(reportError));
   window.addEventListener("beforeunload", event => { if (hasUnsavedChanges()) { event.preventDefault(); event.returnValue = ""; } });
   setNav(navGroups(null));
@@ -306,7 +397,11 @@ function redactObj(obj, inheritedSecret=false){
     ((secret && /^(value|default|original)$/.test(key)) || /token|password|secret|authorization|api_key/i.test(key)) && value ? "••••••••" : redactObj(value, secret)]));
 }
 const ROUTES = {
-  dashboard: () => dashboard(),
+  dashboard: () => overviewView(),
+  overview: () => overviewView(),
+  trends: () => trendsView(),
+  rows: () => rowHealthView(),
+  components: () => componentsView(),
   health: () => healthView(),
   fixes: () => fixesView(),
   pipeline: () => pipelineView(),
@@ -332,12 +427,16 @@ const ROUTES = {
 };
 async function route(){
   clearInterval(state.dashboardTimer);
+  clearInterval(state.overviewTimer);
+  state.overviewRequest = (state.overviewRequest || 0) + 1;
   state.dashboardController?.abort();
   state.dashboardRequest = (state.dashboardRequest || 0) + 1;
   state.dashboardLoading = false;
   state.currentHash = location.hash;
+  if (typeof resetCharts === "function") resetCharts();
   try {
     highlightNav();
+    out(pageSkeleton());
     const r = location.hash.replace(/^#\/?/, "") || "dashboard";
     if (r.startsWith("search")) await searchView(new URLSearchParams(r.split("?")[1] || "").get("q") || "");
     else if (r.startsWith("addon/")) await addonSettings(decodeURIComponent(r.slice(6)));
@@ -345,7 +444,10 @@ async function route(){
     focusHeading();
   } catch(e) {
     if (e?.code === "unauthorized") return;
-    out(`<div class="panel bad" role="alert"><h2>Couldn’t load this page</h2><p>${esc(e.message)}</p></div>`);
+    const f = friendlyError(e);
+    out(`<div class="panel error-panel" role="alert"><h2>Couldn’t load this page</h2><p>${esc(f.title)}</p>${f.hint ? `<p class="muted">${esc(f.hint)}</p>` : ""}${f.detail && f.detail !== f.title && f.detail !== f.hint ? `<details><summary>Details</summary><p>${esc(f.detail)}</p></details>` : ""}<button type="button" class="action" id="routeRetry">${dashboardIcon("refresh")}<span>Try again</span></button></div>`);
+    const retry = $("#routeRetry");
+    if (retry) retry.onclick = () => route();
     focusHeading();
   }
 }
@@ -364,7 +466,21 @@ function dashboardIcon(name){
     refresh: '<path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 3M18 18A8 8 0 0 1 5 15"/>',
     arrow: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
     search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
-    settings: '<path d="M4 7h16M4 17h16M8 4v6m8 4v6"/>'
+    settings: '<path d="M4 7h16M4 17h16M8 4v6m8 4v6"/>',
+    pulse: '<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>',
+    rows: '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/>',
+    box: '<path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5v-7Z M4 8.5l8 4.5 8-4.5M12 13v7"/>',
+    key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 8-8m-3 3 2 2m-4 0 1.5 1.5"/>',
+    tools: '<path d="M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.5-.5-.5-2.5 2.5-2.5Z"/>',
+    more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+    eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2m0 15v2M2.5 12h2m15 0h2M5.3 5.3l1.4 1.4m10.6 10.6 1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+    moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/>',
+    auto: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17Z" fill="currentColor"/>',
+    tv: '<rect x="2.5" y="4.5" width="19" height="13" rx="2.5"/><path d="M8 21h8M12 17.5V21"/>',
+    memory: '<rect x="4" y="6" width="16" height="12" rx="1.5"/><path d="M8 10v4m4-4v4m4-4v4M7 6V3.5M12 6V3.5M17 6V3.5M7 18v2.5m5-2.5v2.5m5-2.5v2.5"/>',
+    wifi: '<path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0"/><circle cx="12" cy="19.3" r="1" fill="currentColor"/>',
+    shield: '<path d="M12 3 4.5 6v5.5c0 4.5 3.2 8 7.5 9.5 4.3-1.5 7.5-5 7.5-9.5V6L12 3Z"/><path d="m9 12 2.2 2.2L15.5 10"/>'
   };
   return `<svg class="dash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.help}</svg>`;
 }
@@ -446,13 +562,13 @@ function filterDashboard(){
   $("#dashboardEmpty").hidden = visible > 0;
   $("#dashboardMatches").textContent = `${visible} of ${rows.length} components`;
 }
-function dashboardVisible(){ return !location.hash || location.hash === "#/dashboard" || location.hash === "#dashboard"; }
+function dashboardVisible(){ return location.hash === "#/components"; }
 function dashboardFixNotice(fixes){
   if (!fixes || typeof fixes.healthy !== 'boolean') return '';
   const label = fixes.healthy ? 'Custom fixes intact' : 'Custom fixes need attention';
   return `<div class="dash-table-panel dash-fix-notice">${dashboardPill(fixes.healthy?'ok':'warn',label,fixes.healthy?'check':'alert')} <a class="dash-settings" href="#/fixes">Check custom fixes</a></div>`;
 }
-async function dashboard(refresh=false){
+async function componentsView(refresh=false){
   if (refresh && (state.dashboardLoading || !dashboardVisible())) return;
   const request = state.dashboardRequest = (state.dashboardRequest || 0) + 1;
   state.dashboardLoading = true;
@@ -463,7 +579,7 @@ async function dashboard(refresh=false){
   if (refresh) {
     $("#dashboardRefresh").disabled = true;
     $("#dashboardRefreshNote").textContent = "Checking Kodi…";
-  } else out('<div class="dashboard dash-loading" role="status"><h2>Your Kodi setup</h2><p>Checking your Kodi setup…</p></div>');
+  } else out(`<div class="dashboard">${pageHead("Your add-ons", "The skin, players and helpers Kodi Manager found, and whether each one is installed and turned on.")}${pageSkeleton()}</div>`);
   try {
     const s = await api("/api/status", undefined, controller.signal);
     const [addons, backups, fixes] = await Promise.all([
@@ -485,25 +601,25 @@ async function dashboard(refresh=false){
     const checkedAt = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
     const writeLabel = s.write_enabled === true ? "Writes on" : s.write_enabled === false ? "Read only" : "Unknown";
     out(`<div class="dashboard">
-      <div class="dash-heading"><div><p class="dash-eyebrow">Overview</p><h2>Your Kodi setup</h2><p class="dash-subtitle">A clear view of your add-ons and their current state.</p></div><button class="dash-refresh" id="dashboardRefresh">${dashboardIcon("refresh")}<span>Refresh status</span></button></div>
+      ${pageHead("Your add-ons", "The skin, players and helpers Kodi Manager found, and whether each one is installed and turned on.", `<button class="action" id="dashboardRefresh">${dashboardIcon("refresh")}<span>Check again</span></button>`)}
       <div class="dash-metrics" aria-label="Setup summary">
         <div><span class="dash-metric-label">Installed add-ons</span><strong>${installed.length}</strong><span class="dash-metric-detail">${installed.filter(a=>a.enabled === true).length} confirmed enabled</span></div>
         <div><span class="dash-metric-label">Core components</span><strong>${detected}<small> detected</small></strong><span class="dash-metric-detail">Skin, players & integrations</span></div>
         <div><span class="dash-metric-label">Checkpoints</span><strong>${backups ? (backups.backups || []).length : "—"}</strong><span class="dash-metric-detail">${backups ? "Saved config backups" : "Backup status unavailable"}</span></div>
-        <div><span class="dash-metric-label">Changes</span><strong class="dash-metric-mode">${dashboardIcon(s.write_enabled === true ? "settings" : s.write_enabled === false ? "pause" : "help")}${writeLabel}</strong><span class="dash-metric-detail">${s.write_enabled === true ? "Backup before every write" : s.write_enabled === false ? "Turn on “Enable writes” to edit" : "Write permission unconfirmed"}</span></div>
+        <div><span class="dash-metric-label">Changes</span><strong class="dash-metric-mode">${dashboardIcon(s.write_enabled === true ? "settings" : s.write_enabled === false ? "eye" : "help")}${writeLabel}</strong><span class="dash-metric-detail">${s.write_enabled === true ? "A backup is made before every change" : s.write_enabled === false ? "Turn on “Enable writes” to edit" : "Write permission unconfirmed"}</span></div>
       </div>
       ${warnings.length ? `<details class="dash-notices" ${noticesOpen ? "open" : ""}><summary>${dashboardIcon("alert")}<span>${warnings.length} setup notice${warnings.length === 1 ? "" : "s"}</span><span class="dash-notice-hint">View details</span></summary><ul>${warnings.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></details>` : ""}
       ${dashboardFixNotice(fixes)}
       <div class="dash-table-panel"><div class="dash-table-heading"><div><h3>Core components</h3><span id="dashboardMatches" class="dash-detail" aria-live="polite"></span></div><div class="dash-filters"><label class="dash-search">${dashboardIcon("search")}<span class="sr-only">Filter components</span><input id="dashboardFilter" type="search" placeholder="Filter components…" value="${esc(state.dashboardFilter || "")}"></label><label><span class="sr-only">Filter by state</span><select id="dashboardState"><option value="all">All states</option><option value="installed">Installed</option><option value="config">Config only</option><option value="missing">Not found</option><option value="unknown">Unknown</option></select></label></div></div>
       <div class="dash-table-scroll" tabindex="0" role="region" aria-label="Core component statuses"><table class="dash-table"><caption class="sr-only">Installation, enabled and saved configuration states from the most recent Kodi check.</caption><thead><tr><th scope="col">Component</th><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Installation</th><th scope="col">Enabled</th><th scope="col">Saved config</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody id="dashboardRows">${rows.map(dashboardRow).join("")}<tr id="dashboardEmpty" hidden><td colspan="7" class="dash-empty">No components match your filters.</td></tr></tbody></table></div>
-      <div class="dash-table-footer"><span id="dashboardRefreshNote" role="status">Checked ${esc(checkedAt)} · Refreshes every 30 seconds</span><a href="#/addons">View all add-ons ${dashboardIcon("arrow")}</a></div></div>
+      <div class="dash-table-footer"><span id="dashboardRefreshNote" role="status">Checked ${esc(checkedAt)}. Refreshes every 30 seconds.</span><a href="#/addons">View all add-ons ${dashboardIcon("arrow")}</a></div></div>
       <p class="dash-legend">${dashboardIcon("help")}<span><b>Unknown</b> means Kodi hasn’t confirmed that state. <b>Config only</b> means saved settings were found, but installation isn’t confirmed. Player rows show whether the add-on is enabled.</span></p>
     </div>`);
     $("#dashboardState").value = state.dashboardState || "all";
     filterDashboard();
     $("#dashboardFilter").oninput = filterDashboard;
     $("#dashboardState").onchange = filterDashboard;
-    $("#dashboardRefresh").onclick = () => dashboard(true);
+    $("#dashboardRefresh").onclick = () => componentsView(true);
     document.querySelector(".dash-table-scroll").scrollLeft = scrollLeft;
     if (refresh && focusId) {
       const target = document.getElementById(focusId);
@@ -516,29 +632,40 @@ async function dashboard(refresh=false){
     if (refresh && $("#dashboardRefreshNote")) {
       $("#dashboardRefreshNote").textContent = `Refresh failed: ${message}. Showing previous check.`;
       $("#dashboardRefreshNote").classList.add("warn");
-    } else out(`<div class="dashboard dash-error" role="alert"><h2>Couldn’t check Kodi</h2><p>${esc(message)}</p><button class="dash-refresh" id="dashboardRetry">${dashboardIcon("refresh")}Retry</button></div>`);
-    if ($("#dashboardRetry")) $("#dashboardRetry").onclick = () => dashboard();
+    } else out(`<div class="panel error-panel" role="alert"><h2>Couldn’t check Kodi</h2><p>${esc(e.name === "AbortError" ? message : friendlyMessage(e))}</p><button class="action" id="dashboardRetry">${dashboardIcon("refresh")}<span>Try again</span></button></div>`);
+    if ($("#dashboardRetry")) $("#dashboardRetry").onclick = () => componentsView();
   } finally {
     clearTimeout(timeout);
     if (request === state.dashboardRequest) {
       state.dashboardLoading = false;
       if ($("#dashboardRefresh")) $("#dashboardRefresh").disabled = false;
-      if (dashboardVisible()) state.dashboardTimer = setInterval(() => { if (!document.hidden) dashboard(!!$("#dashboardRefresh")); }, 30000);
+      if (dashboardVisible()) state.dashboardTimer = setInterval(() => { if (!document.hidden) componentsView(!!$("#dashboardRefresh")); }, 30000);
     }
   }
 }
+const HEALTH_WORDS = {ok:"OK", warning:"Needs a look", error:"Problem"};
+/* Where to look next for each health check. */
+const HEALTH_LINKS = {logs:["#/kodi-logs","Open Kodi’s log"], memory:["#/trends","See memory over time"], internet:["#/trends","See answer times"], nightly:["#/backups","Open backups"], trakt:["#/accounts","Open accounts"], torbox:["#/accounts","Open accounts"], stack:["#/components","See your add-ons"], write_mode:["#/setup","How changes are allowed"]};
+const HEALTH_STATS = {addons:"Add-ons installed", enabled_addons:"Turned on", config_folders:"With saved settings", stack_detected:"Core add-ons found", kodi_log_errors:"Errors in Kodi’s log", kodi_log_warnings:"Warnings in Kodi’s log", kodi_memory_mb:"Memory used by Kodi"};
+function healthTone(status){ return status === "ok" ? "ok" : status === "error" ? "bad" : "warn"; }
 async function healthView(){
   const h = await api("/api/health");
-  const tone = h.status === "ok" ? "ok" : h.status === "error" ? "bad" : "warn";
-  out(`<div class="panel"><h2>Health</h2><p class="${tone}">Overall: ${esc(h.status)}</p><div class="stats">${Object.entries(h.stats || {}).map(([k,v])=>card(k.replace(/_/g," "), `<p class="big">${esc(v)}</p>`)).join("")}</div></div>
-  <div class="panel"><h3>Checks</h3><div class="table">${(h.checks||[]).map(c=>`<div class="row"><span><b>${esc(c.label)}</b><br><span class="muted">${esc(c.detail)}</span>${healthAction(c)}</span><span class="${c.status === "ok" ? "ok" : c.status === "error" ? "bad" : "warn"}">${esc(c.status)}</span></div>`).join("")}</div></div>
-  <div class="panel"><h3>Recent log problems</h3><h4>Errors</h4><pre>${esc(logBlock(h.recent_errors))}</pre><h4>Warnings</h4><pre>${esc(logBlock(h.recent_warnings))}</pre></div>`);
+  const checks = h.checks || [];
+  const attention = checks.filter(c => c.status !== "ok");
+  const tone = healthTone(h.status);
+  const verdict = !attention.length ? "Every check passed" : `${attention.length} check${attention.length === 1 ? " needs" : "s need"} a look`;
+  const statValue = (k, v) => k === "kodi_memory_mb" && v !== null && v !== undefined ? formatMB(Number(v)) : v ?? "—";
+  out(`${pageHead("Health checks", "Everything Kodi Manager checks on the TV, in plain words, with a fix where there is one.")}
+  <section class="verdict verdict--${tone}" aria-label="Summary">${dashboardIcon(tone === "ok" ? "check" : "alert")}<div><h3>${esc(verdict)}</h3><p>${esc(attention.length ? "The checks that need a look are listed first." : "Nothing needs doing right now.")}</p></div></section>
+  <ul class="checklist">${[...attention, ...checks.filter(c => c.status === "ok")].map(c => `<li class="check check--${healthTone(c.status)}"><span class="check-icon">${dashboardIcon(c.status === "ok" ? "check" : "alert")}</span><div class="check-body"><div class="check-head"><b>${esc(c.label)}</b>${dashboardPill(healthTone(c.status), HEALTH_WORDS[c.status] || c.status, c.status === "ok" ? "check" : "alert")}</div><p class="muted">${esc(c.detail)}</p>${healthAction(c)}${HEALTH_LINKS[c.id] && c.status !== "ok" ? `<a class="check-link" href="${HEALTH_LINKS[c.id][0]}">${esc(HEALTH_LINKS[c.id][1])}</a>` : ""}</div></li>`).join("")}</ul>
+  <section class="panel"><h3>At a glance</h3><dl class="facts-grid">${Object.entries(h.stats || {}).map(([k,v]) => `<div><dt>${esc(HEALTH_STATS[k] || k.replace(/_/g," "))}</dt><dd>${esc(statValue(k, v))}</dd></div>`).join("")}</dl></section>
+  <details class="panel log-problems"><summary>Recent problems in Kodi’s log</summary><h4>Errors</h4><pre>${esc(logBlock(h.recent_errors))}</pre><h4>Warnings</h4><pre>${esc(logBlock(h.recent_warnings))}</pre></details>`);
   bindHealthActions();
 }
 function healthAction(check){
   const action = check && check.action;
   if (!action || typeof action.path !== "string" || !action.path.startsWith("/api/")) return "";
-  return `<br><button type="button" class="action" data-health-action="${esc(action.path)}" data-health-label="${esc(check.label || "")}" data-health-detail="${esc(check.detail || "")}" ${writeAttrs()}>${esc(action.label || "Fix")}</button>`;
+  return `<button type="button" class="action check-action" data-health-action="${esc(action.path)}" data-health-label="${esc(check.label || "")}" data-health-detail="${esc(check.detail || "")}" ${writeAttrs()}>${esc(action.label || "Fix")}</button>`;
 }
 function bindHealthActions(){
   document.querySelectorAll("[data-health-action]").forEach(button => button.onclick = withErrors(async () => {
@@ -558,9 +685,9 @@ function runGlobalSearch(){
 }
 async function searchView(query){
   $("#globalSearch").value = query;
-  if (!query) return out(`<div class="panel"><h2>Search settings</h2><p>Type in the search box at the top of the page.</p></div>`);
+  if (!query) return out(`${pageHead("Search settings", "Find a setting in any add-on by name, description or ID.")}<div class="empty-state"><p>Type in the search box at the top of the page, for example <b>torbox</b> or <b>autoplay</b>.</p></div>`);
   const data = await api(`/api/search/config?q=${encodeURIComponent(query)}`);
-  out(`<div class="panel"><h2>Settings matching “${esc(query)}”</h2><p>${esc(data.count ?? 0)} result(s)</p>${(data.results || []).map(r => `<div class="card"><h3>${esc(r.addon_name || r.addon_id)} <span class="muted">${esc(r.version || "")}</span></h3><p><b title="${esc(r.id)}">${esc(friendlyName(r.id, r.label))}</b><br><span class="muted">${esc(r.description || describeSetting(r.id, r.label))}</span></p><p>${esc(r.masked ? "••••••••" : r.value)}</p><p>${r.editable ? "<span class='ok'>editable</span>" : "<span class='muted'>read-only</span>"} ${r.warning ? `<span class="warn">${esc(r.warning)}</span>` : ""}</p><a class="action" href="#/addon/${esc(encodeURIComponent(r.addon_id))}">Open add-on</a></div>`).join("")}</div>`);
+  out(`${pageHead(`Settings matching “${query}”`, `${data.count ?? 0} setting${data.count === 1 ? "" : "s"} found across your add-ons.`)}<div class="panel">${(data.results || []).map(r => `<div class="card"><h3>${esc(r.addon_name || r.addon_id)} <span class="muted">${esc(r.version || "")}</span></h3><p><b title="${esc(r.id)}">${esc(friendlyName(r.id, r.label))}</b><br><span class="muted">${esc(r.description || describeSetting(r.id, r.label))}</span></p><p>${esc(r.masked ? "••••••••" : r.value)}</p><p>${r.editable ? "<span class='ok'>editable</span>" : "<span class='muted'>read-only</span>"} ${r.warning ? `<span class="warn">${esc(r.warning)}</span>` : ""}</p><a class="action" href="#/addon/${esc(encodeURIComponent(r.addon_id))}">Open add-on</a></div>`).join("")}</div>`);
 }
 function nodeCard(n){ return `<div class="pipe-node"><h3>${esc(n.label)}</h3><p>${esc(n.name || n.addon_id || (n.id === "kodi" || n.id === "kodi_player" ? "Kodi" : "Unknown"))}</p><p class="muted">${esc(n.status || "unknown")}${n.relationship ? ` · ${esc(n.relationship)}` : ""}</p><p class="muted">${esc((n.detected_from || []).join(", "))}</p></div>`; }
 function pipelineEvidence(evidence){
@@ -606,14 +733,14 @@ async function pipelineView(){
   const warnings = p.summary.health.warnings?.length ? `<div class="banner">${p.summary.health.warnings.map(esc).join("<br>")}</div>` : "";
   const primary = p.summary.primary_player || {};
   const scraper = p.summary.scraper_module || {};
-  out(`${warnings}<div class="panel"><h2>Playback setup</h2><p>Primary player: <b>${esc(primary.name || primary.addon_id || "Unknown")}</b> · ${esc(primary.selection || "unknown")} · ${esc(primary.confidence || "unknown")} confidence</p><div class="grid">${p.nodes.map(nodeCard).join("")}</div><button class="action" id="rescanPipe">Rescan</button><button class="action" id="backupPipe" ${writeAttrs()}>Back up playback settings</button><button class="action" id="copyPipe">Copy debug report</button></div>
+  out(`${pageHead("Playback setup", "Which add-on plays what you pick, which scraper it uses, and the routing settings you can change here.")}${warnings}<div class="panel"><p>Primary player: <b>${esc(primary.name || primary.addon_id || "Unknown")}</b> · ${esc(primary.selection || "unknown")} · ${esc(primary.confidence || "unknown")} confidence</p><div class="grid">${p.nodes.map(nodeCard).join("")}</div><button class="action" id="rescanPipe">Rescan</button><button class="action" id="backupPipe" ${writeAttrs()}>Back up playback settings</button><button class="action" id="copyPipe">Copy debug report</button></div>
   <div class="panel"><h3>Current routing</h3><table class="addon-table"><thead><tr><th>Stage</th><th>Detected component</th><th>Config source</th><th>Status</th><th>Editable</th></tr></thead><tbody>
     ${Object.entries(p.routing).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v.value)}<br><span class="muted">${esc(v.addon_id)}</span></td><td>${esc(v.source)} ${esc(v.setting_id || "")}</td><td>${esc(v.confidence)}</td><td>${badge(v.editable)}</td></tr>`).join("")}
   </tbody></table></div>
   <div class="panel"><h3>Connections and evidence</h3><div class="grid">${p.edges.map(e=>card(`${p.nodes.find(n=>n.id===e.from)?.label || e.from}${(e.evidence || []).length ? " → " : " / "}${p.nodes.find(n=>n.id===e.to)?.label || e.to}`, `<p>${esc(e.label)} · ${esc(e.relationship || ((e.evidence || []).length ? "evidence found" : "unconfirmed"))}</p><p class="muted">${pipelineEvidence(e.evidence)}</p>`)).join("")}</div></div>
   <div class="panel"><h3>Scraper relationship</h3><p>${esc(scraper.name || "Unknown")} · ${esc(scraper.relationship || "unknown")} · ${scraper.used === true ? "linked to selected player" : "usage unconfirmed"}</p><p class="muted">${pipelineEvidence(scraper.evidence)}</p><h4>Available modules</h4>${(p.summary.available_scraper_modules || []).map(a=>`<p>${esc(a.name || a.addon_id)} · installed: ${badge(a.installed)} · enabled: ${badge(a.enabled)}</p>`).join("") || "<p class='muted'>No external scraper modules detected.</p>"}<p class="muted">Module installation and enablement do not establish which player uses it.</p></div>
-  <div class="panel"><h3>Account integrations</h3><div class="grid">${["trakt","torbox","tmdb"].map(k=>card(k, integrationSummary((p.summary.integrations || p.summary.accounts || {})[k]))).join("")}</div><a href="#/accounts">Edit account settings</a></div>
-  <div class="panel"><h3>Playback controls</h3><p class="muted">Only routing and provider-link settings are shown here. Account keys are on the Accounts page.</p>${state.writeEnabled ? "" : `<p class='warn'>${esc(WRITE_HINT)}</p>`}${p.settings_groups.map((g,i)=>`<div class="group"><h4>${esc(g.label)}</h4>${settingRows(g.settings, `pipe-${i}`)}</div>`).join("") || "<p class='muted'>No safe playback controls detected. Use the add-on’s own settings for player-file routing.</p>"}</div>
+  <div class="panel"><h3>Account integrations</h3><div class="grid">${["trakt","torbox","tmdb"].map(k=>card(ACCOUNT_NAMES[k], integrationSummary((p.summary.integrations || p.summary.accounts || {})[k]))).join("")}</div><a href="#/accounts">Edit account settings</a></div>
+  <div class="panel"><h3>Playback controls</h3><p class="muted">Only routing and provider-link settings are shown here. Account keys are on the Accounts page.</p>${p.settings_groups.map((g,i)=>`<div class="group"><h4>${esc(g.label)}</h4>${settingRows(g.settings, `pipe-${i}`)}</div>`).join("") || "<p class='muted'>No safe playback controls detected. Use the add-on’s own settings for player-file routing.</p>"}</div>
   <div class="panel"><h3>Playback target</h3><p>Player-file routes are configured in helper settings.</p>${p.summary.helper?.addon_id ? `<a href="#/addon/${esc(encodeURIComponent(p.summary.helper.addon_id))}">Open helper settings</a>` : "<p class='muted'>No helper add-on detected.</p>"}</div>
   <div class="panel"><h3>Discovery evidence</h3><pre>${esc(JSON.stringify(redactObj(p.discovery), null, 2))}</pre></div>`);
   $("#rescanPipe").onclick = withErrors(() => pipelineView());
@@ -645,11 +772,17 @@ function accountField(s){
     : `<input type="${appSecretSetting(s) ? "password" : "text"}" autocomplete="off" data-account-component="${esc(s.component)}" data-account-setting="${esc(s.id)}" data-account-source="${esc(s.source)}" data-original="${esc(s.value ?? "")}" value="${esc(s.value || "")}" placeholder="${esc(ph)}" ${canEdit ? "" : "disabled"}>`;
   return `<div class="setting-card"><label><span><b title="${esc(s.id)}">${esc(friendlyName(s.id, s.label))}</b> ${isSet ? "<span class='badge'>set</span>" : "<span class='badge'>unset</span>"}<br><span class="muted">${esc(s.description || describeSetting(s.id, s.label))}${canEdit ? "" : " · read-only"}</span></span>${input}</label></div>`;
 }
+const ACCOUNT_NAMES = {trakt:"Trakt", torbox:"TorBox", tmdb:"TMDb", debrid:"Debrid services"};
+/* Expiry and sign-in checks the service ran (twice a day while idle), above the editable fields. */
+function accountHealthMarkup(accounts){
+  if (!Array.isArray(accounts) || !accounts.length) return "";
+  return `<ul class="checklist account-health" aria-label="Account checks">${accounts.map(a => { const tone = healthTone(a.status); return `<li class="check check--${tone}"><span class="check-icon">${dashboardIcon(tone === "ok" ? "check" : "alert")}</span><div class="check-body"><div class="check-head"><b>${esc(a.label)}</b>${dashboardPill(tone, finite(a.days_left) && !a.renews && a.days_left >= 0 ? `${a.days_left} day${a.days_left === 1 ? "" : "s"} left` : HEALTH_WORDS[a.status] || a.status, tone === "ok" ? "check" : "alert")}</div><p class="muted">${esc(a.detail || "")}</p></div></li>`; }).join("")}</ul>`;
+}
 async function accountsView(){
   const status = await api("/api/status");
   state.writeEnabled = appCanWrite(status);
-  const d = await api("/api/accounts");
-  out(`<div class="panel"><h2>Accounts</h2><p>Account credentials use password fields. Saving creates a backup first.</p>${state.writeEnabled ? "" : `<p class='warn'>${esc(WRITE_HINT)}</p>`}<div class="grid">${Object.entries(d.summary || {}).map(([k,v])=>card(k, integrationSummary(v))).join("")}</div><button class="primary" id="saveAccounts" ${writeAttrs()}>Save account changes</button></div>${(d.groups||[]).map((g,i)=>`<div class="group"><h3>${esc(g.label)}</h3>${filterTabs(`acct-${i}`, g.settings)}<div class="settings-grid">${g.settings.map(s=>`<div data-filter-scope="acct-${i}" data-set="${settingIsSet(s) ? "true" : "false"}" data-readonly="${isReadOnlySetting(s) ? "true" : "false"}">${accountField(s)}</div>`).join("")}</div></div>`).join("")}`);
+  const [d, overview] = await Promise.all([api("/api/accounts"), api("/api/overview").catch(() => null)]);
+  out(`${pageHead("Accounts", "The sign-ins and keys your add-ons use. Values are hidden until you reveal them; saving makes a backup first.")}${accountHealthMarkup(overview?.accounts)}<div class="panel"><div class="grid">${Object.entries(d.summary || {}).map(([k,v])=>card(ACCOUNT_NAMES[k] || k, integrationSummary(v))).join("")}</div><button class="primary" id="saveAccounts" ${writeAttrs()}>Save account changes</button></div>${(d.groups||[]).map((g,i)=>`<div class="group"><h3>${esc(g.label)}</h3>${filterTabs(`acct-${i}`, g.settings)}<div class="settings-grid">${g.settings.map(s=>`<div data-filter-scope="acct-${i}" data-set="${settingIsSet(s) ? "true" : "false"}" data-readonly="${isReadOnlySetting(s) ? "true" : "false"}">${accountField(s)}</div>`).join("")}</div></div>`).join("")}`);
   setWriteState($("#saveAccounts"));
   $("#saveAccounts").onclick = withErrors(async () => {
     if (!state.writeEnabled) return;
@@ -694,9 +827,9 @@ async function integrations(){
   const [accounts, stack] = await Promise.all([api("/api/accounts"), api("/api/stack")]);
   const standalone = stack.trakt || {};
   const trakt = accounts.summary?.trakt || stack.trakt_integration || {};
-  out(`<div class="panel"><h2>Trakt integration</h2><p>Player and metadata add-ons can store their own Trakt authorization.</p>${integrationSummary(trakt)}<a href="#/accounts">Edit account settings</a></div><div class="panel"><h3>Optional standalone scrobbler</h3><p>${standalone.installed === true ? `script.trakt is installed · enabled: ${badge(standalone.enabled)}` : "script.trakt is absent. Add-on account integration can operate independently."}</p>${standalone.installed === true || standalone.config_present === true ? '<a href="#/addon/script.trakt">Open standalone scrobbler settings</a>' : ""}</div><div class="panel"><h3>TorBox integration</h3>${integrationSummary(accounts.summary?.torbox)}<a href="#/accounts">Edit TorBox settings</a></div>`);
+  out(`${pageHead("Trakt", "Player and metadata add-ons can each keep their own Trakt sign-in.")}<div class="panel">${integrationSummary(trakt)}<a href="#/accounts">Edit account settings</a></div><div class="panel"><h3>Optional standalone scrobbler</h3><p>${standalone.installed === true ? `script.trakt is installed · enabled: ${badge(standalone.enabled)}` : "script.trakt is absent. Add-on account integration can operate independently."}</p>${standalone.installed === true || standalone.config_present === true ? '<a href="#/addon/script.trakt">Open standalone scrobbler settings</a>' : ""}</div><div class="panel"><h3>TorBox integration</h3>${integrationSummary(accounts.summary?.torbox)}<a href="#/accounts">Edit TorBox settings</a></div>`);
 }
-async function pickAddon(keys){ const s=await api("/api/stack"); for (const k of keys){ const aid=s[k]?.addon_id; if(aid) return addonSettings(aid); } out("<div class='panel warn'><h2>Not found</h2><p>No matching add-on was found on this Kodi.</p></div>"); }
+async function pickAddon(keys){ const s=await api("/api/stack"); for (const k of keys){ const aid=s[k]?.addon_id; if(aid) return addonSettings(aid); } out(`${pageHead("Not installed", "No matching add-on was found on this Kodi.")}<div class="empty-state"><a class="action" href="#/components">See your add-ons</a></div>`); }
 async function addonSettings(aid){
   return renderAddonSettingsView(aid);
 }
@@ -763,12 +896,46 @@ async function renderAddonBackups(addonId, container){
     await renderAddonBackups(addonId, container);
   });
 }
+function backupKind(item){
+  if (item.kind === "pipeline") return {key:"pipeline", label:"Playback settings", cls:"s3"};
+  if (item.note === "nightly") return {key:"nightly", label:"Nightly", cls:"s1"};
+  return {key:"manual", label:"Manual", cls:"s2"};
+}
+/* Checkpoints per day for the last `days` days, split by kind (stacked columns). */
+function backupChartSpec(items, now, days = 30){
+  const kinds = [["nightly","Nightly","s1"],["manual","Manual","s2"],["pipeline","Playback settings","s3"]];
+  const perDay = checkpointsPerDay([], now, days);
+  const values = Object.fromEntries(kinds.map(([k]) => [k, perDay.t.map(() => 0)]));
+  for (const item of items || []) {
+    const time = parseStamp(item.timestamp || item.backup_id);
+    if (!finite(time)) continue;
+    const d = new Date(time * 1000); d.setHours(12, 0, 0, 0);
+    const i = perDay.t.indexOf(Math.floor(d.getTime() / 1000));
+    if (i >= 0) values[backupKind(item).key][i]++;
+  }
+  const total = Object.values(values).reduce((sum, list) => sum + list.reduce((a, b) => a + b, 0), 0);
+  const missed = values.nightly.slice(-7).filter(v => !v).length;
+  return {title:`Checkpoints, last ${days} days`, kind:"columns", slot:86400, t:perDay.t, yMin:0, height:170, xName:"Day", xLabel:formatDay,
+    format:v => String(Math.round(v)), tickFormat:v => Number.isInteger(v) ? String(v) : "",
+    columnLabels:(t, w) => t.filter((_, i) => i % (w < 420 ? 10 : 5) === (t.length - 1) % (w < 420 ? 10 : 5)).map(time => ({t:time, label:formatDay(time)})),
+    summary:total ? `${total} checkpoint${total === 1 ? "" : "s"} in ${days} days.${missed ? ` No nightly checkpoint on ${missed} of the last 7 nights (the TV was busy or off).` : " One every night this week."}` : "",
+    series:kinds.map(([k, name, cls]) => ({name, values:values[k], cls})), empty:"No checkpoints in this period."};
+}
+function backupRow(x){
+  const kind = backupKind(x), id = x.backup_id || x.name || "", time = parseStamp(x.timestamp || id);
+  const size = finite(x.total_bytes) ? formatBytes(x.total_bytes) : "";
+  return `<li class="backup-row"><span class="key key-${kind.cls} key-box" aria-hidden="true"></span><div class="backup-main"><b>${esc(time ? formatWhen(time) : formatBackupTime(id))}</b><span class="muted">${esc(kind.label)}. ${esc(x.component_count || 0)} add-on${x.component_count === 1 ? "" : "s"} saved${x.skipped_count ? `, ${esc(x.skipped_count)} skipped` : ""}${size ? `, ${esc(size)}` : ""}.</span><code class="backup-id">${esc(id)}</code></div>${x.kind === "pipeline" ? `<button class="action" disabled title="Playback-setting backups are restored by hand: see docs/recovery.md">Restore</button>` : `<button class="action" data-restore="${esc(id)}" ${writeAttrs()}>Restore</button>`}</li>`;
+}
 async function backups(){
   const [t, addons] = await Promise.all([api("/api/backups/timeline"), api("/api/addons").catch(() => [])]);
   const items = t.items || [];
   const withConfig = (addons || []).filter(a => a.config_present === true).sort((a,b) => String(a.name || a.addon_id).localeCompare(String(b.name || b.addon_id)));
-  out(`<div class="panel"><h2>Backups</h2><p>A checkpoint saves the settings folders of your skin, players and helpers together. Restoring backs up the current settings first, so every restore can be undone.</p><button class="primary" id="stackBackup" ${writeAttrs()}>Create checkpoint</button><div class="timeline">${items.map(x=>`<div class="card"><h3>${esc(x.backup_id || x.name || "")}</h3><p><span class="badge">${esc(x.kind || "stack")}</span> <span class="badge">${esc(x.component_count || 0)} included</span> <span class="badge">${esc(x.skipped_count || 0)} skipped</span></p><p class="muted">Kodi ${esc(x["Kodi version"] || "")}</p>${x.kind === "pipeline" ? `<button class="action" disabled title="Playback-setting backups are restored by hand: see docs/recovery.md">Restore</button>` : `<button class="action" data-restore="${esc(x.backup_id || x.name || "")}" ${writeAttrs()}>Restore</button>`}</div>`).join("") || "<p>No checkpoints yet.</p>"}</div></div>
-  <div class="panel"><h3>Add-on backups</h3><p>Kodi Manager backs up an add-on’s settings before every change it makes.</p><label for="backupAddon">Add-on<select id="backupAddon"><option value="">Choose an add-on…</option>${withConfig.map(a => `<option value="${esc(a.addon_id)}">${esc(a.name || a.addon_id)}</option>`).join("")}</select></label><div id="addonBackups"></div></div>`);
+  resetCharts();
+  out(`${pageHead("Backups", "A checkpoint saves the settings of your skin, players and helpers together. Restoring backs up the current settings first, so every restore can be undone.", `<button class="primary" id="stackBackup" ${writeAttrs()}>Create checkpoint</button>`)}
+  ${items.length ? `<div class="chart-grid chart-grid--one">${chartFigure(backupChartSpec(items, Math.floor(Date.now() / 1000)))}</div>` : ""}
+  <section class="panel"><h3>Checkpoints</h3>${items.length ? `<ul class="backup-list">${items.slice(0, 8).map(backupRow).join("")}</ul>${items.length > 8 ? `<details class="more-list"><summary>Show ${items.length - 8} older checkpoint${items.length === 9 ? "" : "s"}</summary><ul class="backup-list">${items.slice(8).map(backupRow).join("")}</ul></details>` : ""}` : `<div class="empty-state"><p>No checkpoints yet. Create one before changing anything, so you can always go back. Kodi Manager also takes one each night while the TV is idle.</p></div>`}</section>
+  <section class="panel"><h3>Single add-on backups</h3><p class="muted">Kodi Manager backs up an add-on’s settings before every change it makes.</p><label for="backupAddon">Add-on<select id="backupAddon"><option value="">Choose an add-on…</option>${withConfig.map(a => `<option value="${esc(a.addon_id)}">${esc(a.name || a.addon_id)}</option>`).join("")}</select></label><div id="addonBackups"></div></section>`);
+  mountCharts(document);
   $("#stackBackup").onclick = withErrors(async () => {
     const r = await api("/api/stack/backup", {});
     toast(`Checkpoint ${r.backup_id} created.`, "ok");
@@ -825,9 +992,9 @@ async function cachedRowsView(){
   const listed = new Set(rows.map(row => row.source));
   const others = (cache?.entries || []).filter(entry => !listed.has(entry.source));
   const othersPanel = others.length ? `<div class="panel"><h3>Cached for your skin's widgets</h3><p>Widgets already pointed at Kodi Manager's cached URL (by you, by automatic row caching, or by a skin setting). Kodi Manager refreshes these in the background.</p><table class="addon-table cached-rows"><thead><tr><th scope="col">Row</th><th scope="col">Status</th><th scope="col">Items</th><th scope="col">Updated</th></tr></thead><tbody>${others.map(cachedEntryMarkup).join("")}</tbody></table></div>` : "";
-  out(`<div class="panel"><h2>Cached rows</h2><p>Optional. Kodi Manager can keep a local copy of an add-on folder so a home-screen widget shows it straight away instead of waiting for the add-on. Point a widget at a row’s cached URL, or choose it in your skin’s widget picker under <b>Video add-ons → Kodi Manager → Cached rows</b>.</p><div class="toolbar"><button type="button" class="action" id="cacheRefresh">Refresh all now</button><span class="muted">${cache ? `${esc(cache.queued ?? 0)} queued for refresh` : "Cache status unavailable"}</span></div>
+  out(`${pageHead("Cached rows", "Kodi Manager can keep a copy of an add-on folder so a home-screen row shows straight away instead of waiting for the add-on.")}<div class="panel"><p>Point a widget at a row’s cached URL, or choose it in your skin’s widget picker under <b>Video add-ons → Kodi Manager → Cached rows</b>. <a href="#/rows">See how each row is doing</a>.</p><div class="toolbar"><button type="button" class="action" id="cacheRefresh">Refresh all now</button><span class="muted">${cache ? `${esc(cache.queued ?? 0)} queued for refresh` : "Cache status unavailable"}</span></div>
   <table class="addon-table cached-rows"><thead><tr><th scope="col">Row</th><th scope="col">Status</th><th scope="col">Items</th><th scope="col">Updated</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>${rows.map((row, i) => cachedRowMarkup(row, entries.get(row.source), i)).join("") || `<tr><td colspan="5" class="muted">${others.length ? "No rows added here yet. Your skin's cached widgets are listed below." : "No cached rows yet."}</td></tr>`}</tbody></table></div>${othersPanel}
-  <div class="panel"><h3>Add a row</h3><p>Paste an add-on folder path (it starts with <code>plugin://</code>). In Kodi you can also open any video add-on folder and choose <b>Add to Kodi Manager cached rows</b> from its context menu.</p>${state.writeEnabled ? "" : `<p class="warn">${esc(WRITE_HINT)}</p>`}<form id="cacheAdd" class="grid"><label>Name<input id="cacheLabel" required maxlength="80"></label><label>Add-on folder path<input id="cacheSource" required placeholder="plugin://plugin.video.example/?mode=…" spellcheck="false"></label><label>Pages to cache<input id="cachePages" type="number" min="1" max="5" placeholder="Automatic"></label><label class="check-label"><span><input id="cacheHideWatched" type="checkbox"> Hide watched items</span></label><div><button class="primary" type="submit" ${writeAttrs()}>Add row</button></div></form></div>`);
+  <div class="panel"><h3>Add a row</h3><p>Paste an add-on folder path (it starts with <code>plugin://</code>). In Kodi you can also open any video add-on folder and choose <b>Add to Kodi Manager cached rows</b> from its context menu.</p><form id="cacheAdd" class="grid"><label>Name<input id="cacheLabel" required maxlength="80"></label><label>Add-on folder path<input id="cacheSource" required placeholder="plugin://plugin.video.example/?mode=…" spellcheck="false"></label><label>Pages to cache<input id="cachePages" type="number" min="1" max="5" placeholder="Automatic"></label><label class="check-label"><span><input id="cacheHideWatched" type="checkbox"> Hide watched items</span></label><div><button class="primary" type="submit" ${writeAttrs()}>Add row</button></div></form></div>`);
   $("#cacheRefresh").onclick = withErrors(async () => {
     const r = await api("/api/widget-cache/refresh", {});
     toast(`${r.queued ?? 0} row${r.queued === 1 ? "" : "s"} queued for refresh.`, "ok");
@@ -858,7 +1025,7 @@ async function cachedRowsView(){
 async function playbackTestView(){
   const pipe = await api("/api/pipeline");
   const players = [pipe.summary.primary_player, ...(pipe.summary.secondary_players || [])].filter(x=>x && x.addon_id);
-  out(`<div class="panel"><h2>Playback test</h2><p>A safe dry run. Checks routing, the detected player, the scraper module and Kodi’s current player state. It never starts playback.</p><div class="grid"><label>Target player<select id="testPlayer">${players.map(p=>`<option value="${esc(p.addon_id)}">${esc(p.name || p.addon_id)}</option>`).join("")}</select></label><label>Optional plugin URL<input id="testUrl" placeholder="plugin://..."></label></div><button class="primary" id="runPlaybackTest">Run test</button><div id="playbackSteps"></div><pre id="playbackOut" hidden></pre></div>`);
+  out(`${pageHead("Playback test", "A safe dry run: checks routing, the player, the scraper module and whether something is playing. It never starts playback.")}<div class="panel"><div class="grid"><label>Target player<select id="testPlayer">${players.map(p=>`<option value="${esc(p.addon_id)}">${esc(p.name || p.addon_id)}</option>`).join("")}</select></label><label>Optional plugin URL<input id="testUrl" placeholder="plugin://..."></label></div><button class="primary" id="runPlaybackTest">Run test</button><div id="playbackSteps"></div><pre id="playbackOut" hidden></pre></div>`);
   $("#runPlaybackTest").onclick = withErrors(async () => {
     const r = await api("/api/playback/test", {target_player_addon_id:$("#testPlayer").value, plugin_url:$("#testUrl").value});
     $("#playbackSteps").innerHTML = `<ul class="steps">${(r.steps || []).map(step => `<li class="${step.ok ? "ok" : "bad"}">${step.ok ? "✓" : "✗"} ${esc(step.step)} <span class="muted">${esc(step.detail ?? "")}</span></li>`).join("")}</ul>`;
@@ -868,7 +1035,7 @@ async function playbackTestView(){
 }
 function logLevel(line){ const s=String(line).toLowerCase(); if (s.includes(" error") || s.includes("error:") || s.includes(" exception") || s.includes("traceback")) return "error"; if (s.includes(" warning") || s.includes("warn:") || s.includes("deprecated")) return "warn"; return "info"; }
 function renderLogs(title, lines){
-  out(`<div class="panel"><h2>${esc(title)}</h2><div class="tabs" role="group" aria-label="Filter log lines">${[["all","All"],["info","Info"],["warn","Warnings"],["error","Errors"]].map(([level,label]) => `<button type="button" data-level="${level}" aria-pressed="false">${label}</button>`).join("")}</div><div id="logBox" class="log-view"></div></div>`);
+  out(`${pageHead(title, title === "Kodi log" ? "The newest lines of Kodi’s own log, newest first. Tokens and keys are masked." : "What Kodi Manager itself has been doing, newest first.")}<div class="panel"><div class="tabs" role="group" aria-label="Filter log lines">${[["all","All"],["info","Info"],["warn","Warnings"],["error","Errors"]].map(([level,label]) => `<button type="button" data-level="${level}" aria-pressed="false">${label}</button>`).join("")}</div><div id="logBox" class="log-view"></div></div>`);
   const newest = [...(lines || [])].reverse();
   const draw = level => {
     document.querySelectorAll("[data-level]").forEach(b => { const on = b.dataset.level === level; b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); });
@@ -881,7 +1048,7 @@ async function logs(){ const l=await api("/api/logs"); renderLogs("Service log",
 async function kodiLogs(){ const l=await api("/api/kodi/logs"); renderLogs("Kodi log", l.lines || []); }
 async function allAddons(){
   const addons = await api("/api/addons");
-  out(`<div class="panel"><h2>All add-ons</h2><label for="filter" class="sr-only">Filter add-ons</label><input id="filter" type="search" placeholder="Filter add-ons"><div id="addonList"></div></div>`);
+  out(`${pageHead("All add-ons", `Every add-on Kodi reports: ${addons.length} in total.`)}<div class="panel"><label for="filter" class="sr-only">Filter add-ons</label><input id="filter" type="search" placeholder="Filter add-ons"><div id="addonList" class="table-scroll"></div></div>`);
   const render = () => {
     const q = ($("#filter").value || "").toLowerCase();
     $("#addonList").innerHTML = `<table class="addon-table"><thead><tr><th>Name</th><th>ID</th><th>Version</th><th>Enabled</th><th>Config</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${addons.filter(a => `${a.addon_id} ${a.name}`.toLowerCase().includes(q)).map(a => `<tr><td>${esc(a.name || a.addon_id)}</td><td>${esc(a.addon_id)}</td><td>${esc(a.version || "")}</td><td>${badge(a.enabled)}</td><td>${badge(a.config_present)}</td><td><a class="action" href="#/addon/${esc(encodeURIComponent(a.addon_id))}">Open</a></td></tr>`).join("")}</tbody></table>`;
@@ -889,7 +1056,7 @@ async function allAddons(){
   $("#filter").oninput = render; render();
 }
 async function installAddonView(){
-  out(`<div class="panel"><h2>Install add-on or repository</h2><p>Kodi has no API to install a ZIP from a path, so this opens Kodi’s own <b>Install from zip file</b> dialog on the TV. Choose the ZIP there with the remote; Kodi applies its normal unknown-sources check. Nothing opens while something is playing.</p>${state.writeEnabled ? "" : `<p class="warn">${esc(WRITE_HINT)}</p>`}<button class="primary" id="installZip" ${writeAttrs()}>Open “Install from zip file” on the TV</button><p id="installOut" role="status"></p></div>`);
+  out(`${pageHead("Install an add-on", "Opens Kodi’s own Install from zip file dialog on the TV. Choose the ZIP there with the remote.")}<div class="panel"><p>Kodi has no way to install a ZIP from a path, so this opens the dialog on the TV, and Kodi applies its normal unknown-sources check. Nothing opens while something is playing.</p><button class="primary" id="installZip" ${writeAttrs()}>Open “Install from zip file” on the TV</button><p id="installOut" role="status"></p></div>`);
   $("#installZip").onclick = withErrors(async () => {
     const r = await api("/api/addons/install", {});
     $("#installOut").textContent = r.opened ? r.next_step : (r.error || "Kodi did not open the dialog.");
@@ -906,7 +1073,7 @@ async function serviceSetup(){
     : loopback
       ? `<p>This browser reaches Kodi Manager through ${esc(location.hostname)}, which other devices can’t use. On the TV, open <b>Add-ons → Video add-ons → Kodi Manager → Open the dashboard on another device</b> to see the network address.</p>`
       : `<p>This link opens the dashboard and signs in straight away. It contains your access token, so only open it on your own devices.</p><p><code class="token-link">${esc(masked)}</code></p><button type="button" class="action" id="copyLink">Copy sign-in link</button>`;
-  out(`<div class="panel"><h2>Setup</h2><p>Kodi Manager runs inside Kodi. Change its settings on the TV under <b>Add-ons → My add-ons → Services → Kodi Manager → Configure</b>. Changes apply straight away.</p><dl class="facts"><dt>Allow LAN access</dt><dd>${onOff(status.allow_lan)}</dd><dt>Enable writes</dt><dd>${onOff(status.write_enabled)}</dd><dt>Dashboard address</dt><dd>${esc(location.origin)}</dd><dt>Service version</dt><dd>${esc(status.service_version || "unknown")}</dd></dl></div>
+  out(`${pageHead("Connection", "How this browser reaches Kodi Manager, and the access token it uses.")}<div class="panel"><p>Kodi Manager runs inside Kodi. Change its settings on the TV under <b>Add-ons → My add-ons → Services → Kodi Manager → Configure</b>. Changes apply straight away.</p><dl class="facts"><dt>Allow LAN access</dt><dd>${onOff(status.allow_lan)}</dd><dt>Enable writes</dt><dd>${onOff(status.write_enabled)}</dd><dt>Dashboard address</dt><dd>${esc(location.origin)}</dd><dt>Service version</dt><dd>${esc(status.service_version || "unknown")}</dd></dl></div>
   <div class="panel"><h3>Open the dashboard on another device</h3>${share}</div>
   <div class="panel"><h3>Access token</h3><p>Token saved in this browser: ${badge(!!session.token)}. The token is stored on the TV in the active Kodi profile’s <code>addon_data/service.kodi.addonadmin/settings.xml</code>. Keep it private.</p><button type="button" class="action" id="replaceToken">Use a different token</button><button type="button" class="action" id="forgetToken">Forget token in this browser</button></div>`);
   if ($("#copyLink")) $("#copyLink").onclick = withErrors(() => copyWithNotice(dashboardLink(location.origin, session.token), "Sign-in link"));
@@ -918,7 +1085,7 @@ async function serviceSetup(){
   });
 }
 async function diagnostics(){
-  out(`<div class="panel"><h2>Diagnostics</h2><p>Reports are redacted, but can still describe your setup. Share them only where you trust the reader.</p><button class="action" id="diagPaths">Path diagnostics</button><button class="action" id="diagRaw">Raw add-on detection</button><button class="action" id="diagPipe">Playback setup debug</button><button class="action" id="diagCopy">Copy full report</button><pre id="diag"></pre></div>`);
+  out(`${pageHead("Diagnostics", "Detailed reports for troubleshooting. They are redacted, but still describe your setup: share them only where you trust the reader.")}<div class="panel"><button class="action" id="diagPaths">Path diagnostics</button><button class="action" id="diagRaw">Raw add-on detection</button><button class="action" id="diagPipe">Playback setup debug</button><button class="action" id="diagCopy">Copy full report</button><pre id="diag"></pre></div>`);
   const report = {};
   const show = value => { $("#diag").textContent = JSON.stringify(redactObj(value), null, 2); };
   $("#diagPaths").onclick = withErrors(async () => { report.paths = await api("/api/debug/paths"); show(report.paths); });
@@ -938,11 +1105,11 @@ async function fixesView(){
   const [status, fixes] = await Promise.all([api('/api/status'), api('/api/fixes')]);
   state.writeEnabled = appCanWrite(status);
   if (fixes.bundled === false) {
-    out(`<div class="panel"><h2>Custom fixes</h2><p>${esc(fixes.detail)}</p><p>Version-checked repair manifests can be supplied separately. Kodi Manager manages your existing setup without installing third-party patch payloads.</p></div>`);
+    out(`${pageHead("Custom fixes", "Checks your custom playback, navigation and skin fixes against their tested copies.")}<div class="panel"><p>${esc(fixes.detail)}</p><p>Version-checked repair manifests can be supplied separately. Kodi Manager manages your existing setup without installing third-party patch payloads.</p></div>`);
     return;
   }
   const labels = {ok:'Protected', changed:'Files replaced', version_changed:'Update needs review'};
-  out(`<div class="panel"><h2>Custom fixes</h2><p>Checks your custom playback, navigation and skin fixes against their tested copies.</p><p>${esc(fixes.detail)}</p>
+  out(`${pageHead("Custom fixes", "Checks your custom playback, navigation and skin fixes against their tested copies.")}<div class="panel"><p>${esc(fixes.detail)}</p>
     <table class="addon-table"><thead><tr><th>Fix</th><th>Status</th><th>Add-on version</th></tr></thead><tbody>${(fixes.groups || []).map(g=>`<tr><td>${esc(g.label)}</td><td>${dashboardPill(g.status==='ok'?'ok':'warn', labels[g.status] || g.status, g.status==='ok'?'check':'help')}</td><td>${esc(g.installed_version || 'Missing')} · tested ${esc(g.tested_version)}</td></tr>`).join('')}</tbody></table>
     ${fixes.healthy?'<p>All custom fixes are intact.</p>':'<p>Known older files can be restored from the verified copy. A new version or an unrecognised change needs review.</p>'}
     <button id="restoreFixes" class="primary" ${!state.writeEnabled ? writeAttrs() : fixes.repairable ? '' : 'disabled title="Nothing here can be restored automatically."'}>Restore tested fixes</button><p class="muted">Creates a backup before restoring. Stop playback first; restart Kodi afterwards.</p><p id="fixResult" role="status"></p></div>`);

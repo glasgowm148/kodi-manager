@@ -25,6 +25,7 @@ function harness(readOnly = false) {
     if (path === '/api/status') return {write_enabled:!readOnly};
     if (path === '/api/pipeline') return pipe;
     if (path === '/api/accounts') return {summary:{},groups:[]};
+    if (path === '/api/overview') return {accounts:[]};
     throw new Error('Unexpected endpoint ' + path);
   };
   return {ui,elements,calls};
@@ -72,7 +73,7 @@ test('accounts cannot submit writes when writes are off', async () => {
   await ui.accountsView();
   assert.equal(elements.get('#saveAccounts').disabled,true);
   await elements.get('#saveAccounts').onclick();
-  assert.deepEqual(calls, ['/api/status','/api/accounts']);
+  assert.deepEqual(calls, ['/api/status','/api/accounts','/api/overview']);
 });
 
 test('cached rows page names skin-cached sources readably and escapes them', () => {

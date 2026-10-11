@@ -2,30 +2,38 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
   <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
   <title>Kodi Manager</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="settings-ui.css">
   <link rel="stylesheet" href="widgets.css">
+  <script src="core.js"></script>
 </head>
 <body>
-  <header>
-    <div class="brand"><button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav">Menu</button><h1>Kodi Manager</h1></div>
-    <div class="topbar" role="search"><label for="globalSearch" class="sr-only">Search add-on settings</label><input id="globalSearch" type="search" placeholder="Search settings, e.g. torbox"><button id="runSearch" class="action" type="button">Search</button><span id="top">Starting…</span><span id="dirtyStatus" class="muted" aria-live="polite">No unsaved changes</span><button id="saveChanges" class="action" type="button" disabled>Save changes</button></div>
+  <a class="skip-link" href="#content">Skip to content</a>
+  <header class="appbar">
+    <div class="brand"><button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav">Menu</button><a class="brand-link" href="#/dashboard"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="5" width="26" height="18" rx="4"/><path d="M11 28h10M16 23v5"/></svg><h1>Kodi Manager</h1></a></div>
+    <div class="topbar" role="search"><label for="globalSearch" class="sr-only">Search add-on settings</label><input id="globalSearch" type="search" placeholder="Search settings, e.g. torbox"><button id="runSearch" class="action" type="button">Search</button></div>
+    <div class="appbar-end"><span id="top" class="appbar-status">Starting…</span><button id="themeToggle" class="icon-button" type="button" title="Theme"><span class="sr-only">Theme</span></button></div>
   </header>
+  <div class="savebar" role="region" aria-label="Unsaved changes"><span id="dirtyStatus" class="muted" aria-live="polite">No unsaved changes</span><button id="saveChanges" class="primary" type="button" disabled>Save changes</button></div>
   <div class="shell">
-    <nav id="nav" aria-label="Main"></nav>
+    <nav id="nav" aria-label="All pages"></nav>
     <main>
+      <nav id="subnav" class="subnav" aria-label="Pages in this section" hidden></nav>
       <section id="banner"></section>
       <section id="content" tabindex="-1"></section>
     </main>
   </div>
-  <script src="core.js"></script>
+  <nav id="tabbar" class="tabbar" aria-label="Sections"></nav>
   <script src="settings-ui.js"></script>
   <script src="widgets.js"></script>
+  <script src="charts.js"></script>
+  <script src="status.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
