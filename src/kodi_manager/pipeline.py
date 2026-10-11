@@ -477,7 +477,8 @@ def _plan_changes(index, changes, config, account=False):
                 raise ValueError("Unknown raw setting: %s" % sid)
             if isinstance(value, (dict, list)):
                 raise ValueError("Expected a single value: %s" % sid)
-            plan.append({"component": aid, "addon": addon, "setting_id": sid, "value": str(value), "source": "raw"})
+            plan.append({"component": aid, "addon": addon, "setting_id": sid, "value": str(value), "source": "raw",
+                         "previous": parse_user_settings(addon.get("user_settings_path")).get(sid, "")})
             continue
         parsed = parse_schema(addon.get("settings_schema_path"), addon.get("path"), addon.get("user_settings_path"), True)
         setting = flatten_settings(parsed).get(sid)
@@ -489,7 +490,8 @@ def _plan_changes(index, changes, config, account=False):
                 raise ValueError("Only text secret replacement is supported: %s" % sid)
         elif not setting_editable(setting, True):
             raise ValueError("Unsupported setting rejected: %s" % sid)
-        plan.append({"component": aid, "addon": addon, "setting_id": sid, "value": coerce_value(setting, value), "source": "settings.xml"})
+        plan.append({"component": aid, "addon": addon, "setting_id": sid, "value": coerce_value(setting, value), "source": "settings.xml",
+                     "previous": setting.get("value") or ""})
     for aid, (addon, pairs) in db_changes.items():
         for sid, value in fenlight_db.validate_changes(addon, pairs):
             plan.append({"component": aid, "addon": addon, "setting_id": sid, "value": value, "source": "settings.db"})
@@ -509,19 +511,46 @@ def _backup_touched(plan, kodi_version):
     return create_file_backup("pipeline", files, kodi_version, note="Settings changed from the dashboard")
 
 
+def write_settings(kodi, xml_writes, db_writes=()):
+    """Apply a validated batch: Kodi settings one by one, then each settings.db in one transaction.
+
+    ``xml_writes`` is [(addon_id, setting_id, value, previous value)] and
+    ``db_writes`` is [(addon, [(setting_id, value)])]. When any write fails, the
+    Kodi settings already written are set back to their previous values (newest
+    first) before the error is raised, so a batch is never left half-applied.
+    """
+    applied = []
+    try:
+        for aid, sid, value, previous in xml_writes:
+            kodi.set_addon_setting(aid, sid, value)
+            applied.append((aid, sid, previous))
+        for addon, pairs in db_writes:
+            fenlight_db.write_changes(addon, pairs)
+    except Exception as exc:
+        stuck = []
+        for aid, sid, previous in reversed(applied):
+            try:
+                kodi.set_addon_setting(aid, sid, "" if previous is None else str(previous))
+            except Exception:
+                stuck.append("%s %s" % (aid, sid))
+        if stuck:
+            raise RuntimeError("Saving settings failed (%s) and %s could not be put back; restore the backup "
+                               "taken before this change" % (type(exc).__name__, ", ".join(stuck))) from exc
+        raise
+
+
 def _apply_plan(kodi, plan):
-    changed, db_writes = [], {}
+    changed, db_writes, xml_writes = [], {}, []
     for item in plan:
         if item["source"] == "settings.db":
             db_writes.setdefault(item["component"], (item["addon"], []))[1].append((item["setting_id"], item["value"]))
         else:
-            kodi.set_addon_setting(item["component"], item["setting_id"], item["value"])
+            xml_writes.append((item["component"], item["setting_id"], item["value"], item.get("previous", "")))
         entry = {"component": item["component"], "setting_id": item["setting_id"], "value_present": bool(str(item["value"]))}
         if item["source"] != "settings.xml":
             entry["source"] = item["source"]
         changed.append(entry)
-    for addon, pairs in db_writes.values():
-        fenlight_db.write_changes(addon, pairs)
+    write_settings(kodi, xml_writes, list(db_writes.values()))
     return changed
 
 

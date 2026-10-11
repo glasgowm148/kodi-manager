@@ -18,7 +18,7 @@ try:
     from .backup import set_retention, create_backup, create_stack_backup, list_backups, restore_backup, restore_stack_backup
     from .settings_schema import parse_schema, flatten_settings, parse_user_settings, setting_description
     from .stack_detector import detect_stack
-    from .pipeline import build_pipeline, apply_pipeline_settings, pipeline_backup, switch_player, build_accounts, apply_account_settings, pretty_label
+    from .pipeline import build_pipeline, apply_pipeline_settings, pipeline_backup, switch_player, build_accounts, apply_account_settings, pretty_label, write_settings
     from .kodi_api import debug_paths, translate
     from .validation import coerce_value, redact, mask_query_secrets
     from .widget_catalog import list_sources, browse_directory, suggest_kids_rows
@@ -43,7 +43,7 @@ except ImportError:
     from backup import set_retention, create_backup, create_stack_backup, list_backups, restore_backup, restore_stack_backup
     from settings_schema import parse_schema, flatten_settings, parse_user_settings, setting_description
     from stack_detector import detect_stack
-    from pipeline import build_pipeline, apply_pipeline_settings, pipeline_backup, switch_player, build_accounts, apply_account_settings, pretty_label
+    from pipeline import build_pipeline, apply_pipeline_settings, pipeline_backup, switch_player, build_accounts, apply_account_settings, pretty_label, write_settings
     from kodi_api import debug_paths, translate
     from validation import coerce_value, redact, mask_query_secrets
     from widget_catalog import list_sources, browse_directory, suggest_kids_rows
@@ -895,24 +895,26 @@ def make_handler(state):
                     db_pairs.append((sid, ch.get("value")))
                     continue
                 if ch.get("source") == "raw":
-                    if sid not in parse_user_settings(addon.get("user_settings_path")):
+                    raw = parse_user_settings(addon.get("user_settings_path"))
+                    if sid not in raw:
                         raise ValueError("Unknown raw setting: %s" % sid)
                     if isinstance(ch.get("value"), (dict, list)):
                         raise ValueError("Expected a single value: %s" % sid)
-                    clean.append({"id": sid, "value": str(ch.get("value")), "source": "raw"})
+                    clean.append({"id": sid, "value": str(ch.get("value")), "source": "raw", "previous": raw[sid]})
                     continue
                 if sid not in settings:
                     raise ValueError("Unknown setting: %s" % sid)
                 setting = settings[sid]
                 if not setting.get("editable"):
                     raise ValueError("Setting not editable: %s" % sid)
-                clean.append({"id": sid, "value": coerce_value(setting, ch.get("value"))})
+                clean.append({"id": sid, "value": coerce_value(setting, ch.get("value")), "previous": setting.get("value") or ""})
             # The whole batch is validated (including settings.db types) before anything is written.
             db_clean = fenlight_db.validate_changes(addon, db_pairs) if db_pairs else []
             backup = create_backup(addon, state.kodi.get_kodi_version(), adapter.name)
-            for ch in clean:
-                state.kodi.set_addon_setting(aid, ch["id"], ch["value"])
-            fenlight_db.write_changes(addon, db_clean)
+            # Rolls back the settings already written if any write in the batch fails.
+            # Previous values stay out of the response and the adapter's after_write hook.
+            writes = [(aid, ch["id"], ch["value"], ch.pop("previous")) for ch in clean]
+            write_settings(state.kodi, writes, [(addon, db_clean)] if db_clean else [])
             clean += [{"id": sid, "value": value, "source": "settings.db"} for sid, value in db_clean]
             return {"changed_count": len(clean), "backup_id": backup["backup_id"], "warnings": adapter.after_write(aid, clean)}
 
