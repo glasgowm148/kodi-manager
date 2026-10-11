@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Any, Dict
 
 try:
     from .path_probe import translate_special, listdir_xbmcvfs, listdir_os, probe_all
@@ -107,7 +108,7 @@ class KodiAPI:
     def __init__(self, installer_seed=None):
         self.installer_seed = installer_seed or {}
 
-    def jsonrpc(self, method, params=None):
+    def jsonrpc(self, method, params=None) -> Dict[str, Any]:
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
         if not xbmc:
             return {"error": {"message": "Kodi APIs unavailable"}}

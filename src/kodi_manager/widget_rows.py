@@ -78,7 +78,7 @@ class RowStore:
     def listing(self):
         """Rows with the URL a skin should use for each."""
         return [dict(row, widget_url=cache_url(row["source"], pages=row.get("pages"),
-                                               hide_watched=row.get("hide_watched")))
+                                               hide_watched=bool(row.get("hide_watched"))))
                 for row in self.load()]
 
 

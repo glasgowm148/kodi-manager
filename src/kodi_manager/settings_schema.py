@@ -1,6 +1,7 @@
 import os
 import xml.etree.ElementTree as ET
 from decimal import Decimal, InvalidOperation
+from typing import Any, Dict
 
 try:
     from .language_resolver import LanguageResolver
@@ -132,7 +133,7 @@ def _parse_options(elem, resolver=None):
     return opts
 
 
-def parse_schema(schema_path, addon_path=None, user_settings_path=None, allow_secret_replacement=False):
+def parse_schema(schema_path, addon_path=None, user_settings_path=None, allow_secret_replacement=False) -> Dict[str, Any]:
     resolver = LanguageResolver(addon_path)
     user_values = parse_user_settings(user_settings_path)
     groups = []

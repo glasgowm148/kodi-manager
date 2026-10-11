@@ -52,9 +52,9 @@ class WidgetRoutes(RequestHandler):
 
     def api_widget_rows_add(self):
         body = self.body()
-        pages = body.get("pages")
+        pages = str(body.get("pages") or "")
         return self._rows().add(body.get("label", ""), body.get("source", ""),
-                                pages=int(pages) if str(pages or "").isdigit() else None,
+                                pages=int(pages) if pages.isdigit() else None,
                                 hide_watched=bool(body.get("hide_watched")))
 
     def api_widget_rows_remove(self):

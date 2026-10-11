@@ -17,6 +17,7 @@ import threading
 import uuid
 import xml.etree.ElementTree as ET
 from urllib.parse import urlsplit, parse_qs
+from typing import Literal, Optional, overload
 
 try:
     from .kodi_api import translate
@@ -53,6 +54,10 @@ def _hash(data):
     return hashlib.sha256(data).hexdigest() if data is not None else "absent"
 
 
+@overload
+def _read(path: str, optional: Literal[False] = ...) -> bytes: ...
+@overload
+def _read(path: str, optional: bool) -> Optional[bytes]: ...
 def _read(path, optional=False):
     if optional and not os.path.lexists(path):
         return None
@@ -63,6 +68,14 @@ def _read(path, optional=False):
     if len(data) > 2_000_000:
         raise ValueError("Shortcut file exceeds size limit")
     return data
+
+
+def _child(node, tag):
+    """``node``'s first ``tag`` element; a menu item without one cannot be edited."""
+    child = node.find(tag)
+    if child is None:
+        raise ValueError("Menu item has no <%s>" % tag)
+    return child
 
 
 def _xml(data):
@@ -347,7 +360,7 @@ def _sections(kodi, index, state, root, snapshots):
                         section['id'] == 'menu:' + row['id'])), None)
         entry = dict(row, order=order, kind=target['kind'] if target else 'destination',
                      target_section_id=target['id'] if target else None)
-        shared = target.get('shared_menu_labels') if target and target['kind'] == 'hub' else [
+        shared = (target.get('shared_menu_labels') or []) if target and target['kind'] == 'hub' else [
             other['label'] for other in menu_rows if other['action'].casefold() == row['action'].casefold()]
         entry.update(shared_target=entry['target_section_id'], shared=len(shared) > 1,
                      shared_menu_labels=shared)
@@ -545,7 +558,7 @@ def _preview_repurpose(kodi, index, body):
     old_id = old_ids[position]
     if not old_id or any(_display_label(n).casefold() == label.casefold() for n in menu_nodes if n is not target):
         raise ValueError('Kids menu identity already exists or cannot be verified')
-    target.find('label').text = label
+    _child(target, 'label').text = label
     for disabled in target.findall('disabled'):
         target.remove(disabled)
     new_ids = _label_ids(menu_nodes)
@@ -640,13 +653,13 @@ def _preview_section(kodi, index, body):
                 raise ValueError('Arbitrary actions cannot be changed; choose a folder source')
             label = request.get('label', original['label'])
             if label not in (original['label'], original['raw_label']):
-                node.find('label').text = _label(label)
+                _child(node, 'label').text = _label(label)
             path = request.get('path', original['path'])
             changed = path != original['path']
             if changed:
                 path = _rows({'rows': [{'label': _display_label(node), 'path': path}]})[0]['path']
                 _validate_destination(index, path)
-                node.find('action').text = 'ActivateWindow(Videos,%s,return)' % path
+                _child(node, 'action').text = 'ActivateWindow(Videos,%s,return)' % path
             original_ids.append(original['label_id'])
             edits.append({'id': rid, 'label': _display_label(node), 'path': path,
                           'action': node.findtext('action'), 'validate_source': changed})

@@ -13,6 +13,7 @@ import time
 import ipaddress
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, unquote, urlsplit
+from typing import Any, Dict, Optional, Tuple
 
 try:
     from .version import VERSION
@@ -74,9 +75,9 @@ class RequestHandler(BaseHTTPRequestHandler):
     """
     server_version = "KodiManager/" + VERSION
     timeout = 20
-    state = None  # type: AdminState
-    route_table = ()  # type: tuple
-    _body = None  # type: dict | None
+    state: AdminState
+    route_table: Tuple[Any, ...] = ()
+    _body: Optional[Dict[str, Any]] = None
 
     def handle_one_request(self):
         # Close the connection if the request line and headers are not complete in time.
@@ -113,9 +114,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             return False
         return parsed
 
-    def log_message(self, fmt, *args):
+    def log_message(self, format, *args):
         # The request line can carry ?token=...: mask query secrets before logging.
-        self.state.log(mask_query_secrets(fmt % args))
+        self.state.log(mask_query_secrets(format % args))
 
     # --- responses -------------------------------------------------------
 

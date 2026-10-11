@@ -169,7 +169,7 @@ def directory_content(result):
     kinds = {_media_type(item) for item in result["files"]}
     if len(kinds) == 1:
         return {"movie": "movies", "tvshow": "tvshows", "season": "seasons",
-                "episode": "episodes", "musicvideo": "musicvideos"}.get(kinds.pop(), "videos")
+                "episode": "episodes", "musicvideo": "musicvideos"}.get(kinds.pop() or "", "videos")
     return "videos"
 
 

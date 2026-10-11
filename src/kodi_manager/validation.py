@@ -1,4 +1,5 @@
 import re
+from typing import Any
 
 SECRET_WORDS = (
     "token", "trakt", "oauth", "refresh", "access", "secret", "password",
@@ -42,7 +43,7 @@ def mask_secrets_in_text(text):
     return _ASSIGNED_SECRET.sub(lambda m: m.group(1) + m.group(2) + (m.group(3) if m.group(3) in ("***", "\u2022" * 8) else MASK), text)
 
 
-def redact(obj):
+def redact(obj) -> Any:
     if isinstance(obj, dict):
         out = {}
         for k, v in obj.items():

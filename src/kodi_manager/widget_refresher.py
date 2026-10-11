@@ -2,6 +2,7 @@
 
 Kept apart from widget_cache.py, which every widget invocation loads: only the service needs this.
 """
+import threading
 import time
 
 try:
@@ -26,6 +27,7 @@ class Refresher:
     WORK_BUDGET = 10
     BATCH_PAUSE = 10
     ROW_PAUSE = 1.5              # seconds between rows so Kodi stays responsive
+    stop: threading.Event        # set by the service (service_workers.start_widget_refresher)
 
     def __init__(self, cache, jsonrpc, is_playing, bump, log=lambda msg: None, clock=time.time,
                  external_reload=lambda: "", is_busy=lambda: False, sleep=None):

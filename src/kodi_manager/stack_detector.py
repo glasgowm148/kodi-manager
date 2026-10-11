@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from typing import Any, Dict
 
 try:
     from .settings_schema import parse_schema, parse_user_settings
@@ -24,7 +25,7 @@ def trakt_integration(addons):
         scanned.append(aid)
         vals = parse_user_settings(addon.get("user_settings_path"))
         parsed = parse_schema(addon.get("settings_schema_path"), addon.get("path"), addon.get("user_settings_path"), True)
-        settings = {s["id"]: dict(s, configured=s["id"] in vals and credential_present(vals.get(s["id"])))
+        settings: Dict[str, Dict[str, Any]] = {s["id"]: dict(s, configured=s["id"] in vals and credential_present(vals.get(s["id"])))
                     for g in parsed.get("groups", []) for s in g.get("settings", [])}
         settings.update({sid: {"id": sid, "value": value, "configured": credential_present(value), "source": "settings.xml"} for sid, value in vals.items()})
         data_path = addon.get("addon_data_path")
@@ -124,7 +125,7 @@ def detect_stack(kodi, index):
     skin = index.get(active.get("addon_id")) if active.get("addon_id") else None
     skin_text = "%s %s %s" % (active.get("addon_id", ""), active.get("name", ""), active.get("path", ""))
     skin_like = "bingie" in skin_text.lower()
-    out = {"skin": _summary(skin or active, "BingieSkinAdapter" if skin_like else "GenericAdapter")}
+    out: Dict[str, Any] = {"skin": _summary(skin or active, "BingieSkinAdapter" if skin_like else "GenericAdapter")}
     out["skin"]["bingie_like"] = skin_like
     out["skin"]["active"] = bool(active.get("addon_id"))
     if out["skin"]["active"]:

@@ -5,6 +5,7 @@ Health, the overview screen, the backup timeline, row titles and the playback dr
 """
 import time
 from urllib.parse import urlsplit
+from typing import Any, Dict
 
 try:
     from .version import VERSION
@@ -77,7 +78,7 @@ def _fenlight_db_settings(addon):
     return settings
 
 
-def settings_for_addon(addon):
+def settings_for_addon(addon) -> Dict[str, Any]:
     """Dashboard settings show stored values, including tokens, so users can enter and repair them."""
     parsed = parse_schema(addon.get("settings_schema_path"), addon.get("path"), addon.get("user_settings_path"), True)
     if _setting_count(parsed.get("groups")) == 0 and addon.get("has_user_settings"):
@@ -152,7 +153,7 @@ def maintenance_checks(kodi):
         rows = []
     if rows:
         drift = [r for r in rows if not r["ok"] and not r["missing"]]
-        check = {"id": "baseline", "label": "Protected settings",
+        check: Dict[str, Any] = {"id": "baseline", "label": "Protected settings",
                  "status": "warning" if drift else "ok",
                  "detail": ("%d changed: %s" % (len(drift), "; ".join("%s is %s, expected %s" % (r["label"], r["current"], r["expected"]) for r in drift)))
                  if drift else "%d settings as you set them" % len(rows)}

@@ -5,19 +5,16 @@ services that streaming add-ons depend on. If most of them stop answering,
 or memory and swap run low, Kodi shows one notification that says what to do,
 instead of an add-on failing later with a cryptic timeout.
 """
+import http.client as http_client
 import threading
 import time
-
-try:
-    import http.client as http_client
-except ImportError:  # pragma: no cover - Python 2 is not supported
-    http_client = None
+from typing import Any, Dict
 
 # Plain HTTP on port 80: every host answers with a redirect, which proves a
 # full request/response round trip without depending on TLS certificates.
 DEFAULT_HOSTS = (("TorBox", "api.torbox.app"), ("Trakt", "api.trakt.tv"), ("TMDb", "api.themoviedb.org"))
 
-LAST = {"internet": None, "memory": None}   # read by the Health page
+LAST: Dict[str, Any] = {"internet": None, "memory": None}   # read by the Health page
 _LOCK = threading.Lock()
 
 
@@ -40,6 +37,7 @@ def probe(host, timeout=8.0, connection_class=None):
 
 
 class Watchdog:
+    stop: threading.Event   # set by the service (service_workers.start_watchdog)
     CHECK_EVERY = 10 * 60      # seconds between checks while healthy
     RECHECK_EVERY = 90         # seconds between checks after a failure
     NOTIFY_AGAIN_AFTER = 6 * 3600

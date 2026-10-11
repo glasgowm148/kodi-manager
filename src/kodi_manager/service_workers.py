@@ -93,10 +93,11 @@ def start_widget_refresher(kodi):
     cache = WidgetCache(translate("special://profile/addon_data/service.kodi.addonadmin/widget_cache"))
     home = xbmcgui.Window(10000)
     player = xbmc.Player()
+    visible = xbmc.getCondVisibility
     refresher = Refresher(cache, jsonrpc_via(xbmc), player.isPlayingVideo,
                           lambda value: home.setProperty(RELOAD_PROPERTY, value), kodi.log,
                           external_reload=lambda: external_reload_token(home),
-                          is_busy=lambda: xbmc.getCondVisibility(BUSY_CONDITION))
+                          is_busy=lambda: visible(BUSY_CONDITION))
     refresher.stop = threading.Event()
     refresher.sleep = refresher.stop.wait
     health = WidgetHealth(cache, home.setProperty, lambda: xbmcgui.Dialog().notification(

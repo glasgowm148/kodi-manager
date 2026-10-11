@@ -11,10 +11,7 @@ import os
 import ssl
 import time
 
-try:
-    from urllib.request import Request, urlopen
-except ImportError:  # pragma: no cover
-    Request = urlopen = None
+from urllib.request import Request, urlopen
 
 DAY = 86400
 TORBOX_WARN_DAYS = 14

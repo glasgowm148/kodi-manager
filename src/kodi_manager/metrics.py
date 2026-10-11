@@ -16,6 +16,7 @@ import os
 import re
 import threading
 import time
+from typing import Any, Dict, List, Optional, Union
 
 try:
     from .fsutil import atomic_write_json, path_lock
@@ -45,14 +46,14 @@ def _number(value):
     return int(value) if float(value).is_integer() else round(float(value), 3)
 
 
-def clean_sample(sample):
+def clean_sample(sample) -> Optional[Dict[str, Any]]:
     """A validated copy of a stored sample, or None. Files are untrusted input."""
     if not isinstance(sample, dict):
         return None
     t = _number(sample.get("t"))
     if t is None or t <= 0:
         return None
-    out = {"t": int(t)}
+    out: Dict[str, Any] = {"t": int(t)}
     for key in _NUMBER_KEYS:
         value = _number(sample.get(key))
         if value is not None and value >= 0:
@@ -149,7 +150,7 @@ def process_started_at(proc="/proc", pid="self"):
 
 def build_sample(now, memory=None, internet=None, rows=None, last_probe=None, started=None):
     """One sample from figures the service already has. ``internet`` is netwatch's newest result."""
-    sample = {"t": int(now)}
+    sample: Dict[str, Any] = {"t": int(now)}
     memory = memory or {}
     if memory.get("status") not in (None, "unknown"):
         for key, name in (("ma", "available_mb"), ("mt", "total_mb"), ("mk", "kodi_mb"), ("sw", "swap_used_pct")):
@@ -173,7 +174,7 @@ class MetricsHistory:
         self.path, self.retention, self.resolution = path, retention, resolution
         self.max_samples, self.max_bytes, self.clock = max_samples, max_bytes, clock
 
-    def load(self):
+    def load(self) -> List[Dict[str, Any]]:
         """Stored samples, oldest first. A missing or damaged file is an empty history."""
         try:
             with open(self.path, encoding="utf-8") as handle:
@@ -216,7 +217,7 @@ class MetricsHistory:
                 return sample["nt"]
         return None
 
-    def series(self, days=7, now=None):
+    def series(self, days: Union[int, str] = 7, now=None):
         """Columns for the dashboard: aligned arrays, ``None`` where a figure is missing."""
         now = self.clock() if now is None else now
         try:

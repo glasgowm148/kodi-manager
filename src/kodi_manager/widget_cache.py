@@ -251,7 +251,7 @@ def content_for(source, files):
     kinds = {media_type(item) for item in files}
     if len(kinds) == 1:
         return {"movie": "movies", "tvshow": "tvshows", "season": "seasons",
-                "episode": "episodes", "musicvideo": "musicvideos"}.get(kinds.pop(), "videos")
+                "episode": "episodes", "musicvideo": "musicvideos"}.get(kinds.pop() or "", "videos")
     return "videos"
 
 
@@ -264,7 +264,7 @@ def media_type(item, content=None):
         return "episode"
     if isinstance(season, int) and season >= 0 and item.get("filetype") == "directory":
         return "season"
-    return {"movies": "movie", "tvshows": "tvshow", "seasons": "season", "episodes": "episode"}.get(content)
+    return {"movies": "movie", "tvshows": "tvshow", "seasons": "season", "episodes": "episode"}.get(content or "")
 
 
 def _next_page(item):
@@ -355,7 +355,9 @@ def preview_items(files, limit=6):
     for item in files if isinstance(files, list) else []:
         if not isinstance(item, dict):
             continue
-        art = item.get("art") if isinstance(item.get("art"), dict) else {}
+        art = item.get("art")
+        if not isinstance(art, dict):
+            art = {}
         poster = next((v for v in (art.get("poster"), art.get("thumb")) if isinstance(v, str) and v.startswith("https://") and len(v) <= 600), "")
         title = re.sub(r"\[/?(?:COLOR[^\]]*|B|I)\]", "", str(item.get("title") or item.get("label") or ""), flags=re.I).strip()[:80]
         if title or poster:
@@ -591,7 +593,7 @@ def _set_info(xbmc, li, item, kind):
             rating = None
     unique_ids = item.get("uniqueid") if isinstance(item.get("uniqueid"), dict) else None
     set_video_info(li, info, resume=item.get("resume") or {}, unique_ids=unique_ids, default_id="tmdb",
-                   rating=rating, votes=votes, cast=item.get("cast") if isinstance(item.get("cast"), list) else None,
+                   rating=rating, votes=votes or 0, cast=item.get("cast") if isinstance(item.get("cast"), list) else None,
                    actor=getattr(xbmc, "Actor", None))
 
 
@@ -719,7 +721,7 @@ def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
             elif cache.is_stale(entry):
                 cache.request(source, priority=True)
             cache.touch(source)
-        more = view_more_url(source, entry.get("more"))
+        more = view_more_url(source, bool(entry.get("more")))
         if excluded and not full:
             more = cache_url(source, reload=False, pages=pages, hide_watched=hide_watched,
                              exclude_genres=excluded, full=True)

@@ -22,6 +22,7 @@ import re
 import threading
 import time
 import uuid
+from typing import Any
 
 try:
     import xbmc
@@ -44,7 +45,7 @@ def _coordinator():
 
 COORDINATOR = _coordinator()
 ENABLED = COORDINATOR is not None
-if ENABLED:
+if ENABLED and xbmcvfs is not None:
     ROOT = xbmcvfs.translatePath('special://masterprofile/addon_data/' + COORDINATOR)
     PROFILE = xbmcvfs.translatePath('special://profile/').rstrip('/\\')
     STATE = os.path.join(ROOT, 'transition.json')
@@ -67,8 +68,12 @@ def _install_thread_ownership():
         if owner:
             thread.__dict__['_kodi_profile_worker_owner'] = owner
         return original(thread, *args, **kwargs)
-    start._kodi_profile_tracking = True
-    threading.Thread.start = start
+    # Patching a stdlib class at runtime: neither the function attribute nor the
+    # replaced method is part of their declared types.
+    tracked: Any = start
+    tracked._kodi_profile_tracking = True
+    thread_class: Any = threading.Thread
+    thread_class.start = start
 
 
 if ENABLED:
@@ -109,7 +114,8 @@ class Lease:
                 bool(state.get('switching') and state.get('outgoing') == self.profile))
 
 
-_BaseMonitor = getattr(xbmc, "Monitor", object)
+# xbmc.Monitor inside Kodi, a plain object elsewhere: the base class depends on where this runs.
+_BaseMonitor: Any = getattr(xbmc, "Monitor", object)
 
 
 class Monitor(_BaseMonitor):

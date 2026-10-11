@@ -102,7 +102,7 @@ def dashboard_address(config, lan_ip=None):
     host = str(config.get("host") or "127.0.0.1")
     if host in ("0.0.0.0", "::"):
         try:
-            host = (lan_ip() if callable(lan_ip) else lan_ip) or "127.0.0.1"
+            host = str((lan_ip() if callable(lan_ip) else lan_ip) or "127.0.0.1")
         except Exception:
             host = "127.0.0.1"
     if ":" in host and not host.startswith("["):

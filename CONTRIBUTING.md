@@ -12,6 +12,7 @@ playback/foreground state; CI must never contact a household TV.
 python -m pip install -e '.[dev]'
 pytest -q
 ruff check .
+python -m pip install pyright==1.1.414 && pyright   # types, checked as Python 3.8
 node --test tests/*.js
 python -m build
 python scripts/build_addon.py

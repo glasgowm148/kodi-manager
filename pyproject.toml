@@ -30,10 +30,21 @@ packages = ["src/kodi_manager"]
 "web" = "kodi_manager/web"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "web", "addon", "tests", "scripts", "docs", ".github", ".gitattributes", "pyproject.toml", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "SECURITY.md", "AGENTS.md"]
+include = ["src", "web", "addon", "tests", "scripts", "docs", ".github", "typings", ".gitattributes", "pyproject.toml", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "SECURITY.md", "AGENTS.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.ruff.lint]
 select = ["E9", "F", "B"]
+
+[tool.pyright]
+# The service runs on the Python Kodi embeds: 3.8 on Kodi 19-21 for Android.
+include = ["src"]
+pythonVersion = "3.8"
+typeCheckingMode = "standard"
+# Inside the add-on the modules import each other without the package (see the ImportError fallbacks).
+extraPaths = ["src/kodi_manager"]
+# Stubs for xbmc, xbmcaddon, xbmcgui, xbmcplugin and xbmcvfs, which only exist inside Kodi.
+stubPath = "typings"
+reportMissingModuleSource = "none"

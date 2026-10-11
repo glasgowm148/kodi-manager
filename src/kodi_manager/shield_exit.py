@@ -71,7 +71,7 @@ class ShieldExitGuard:
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=stderr, start_new_session=True, close_fds=True)
         finally:
-            if hasattr(stderr, 'close'):
+            if not isinstance(stderr, int):
                 stderr.close()
 
     def previous_report(self):
