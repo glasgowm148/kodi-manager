@@ -29,6 +29,14 @@ class ServerShutdownTests(unittest.TestCase):
         service.join(0.8)
         self.assertFalse(service.is_alive())
 
+    def test_stop_closes_only_the_listening_socket(self):
+        service = self.create_server(BaseHTTPRequestHandler)
+        self.assertFalse(service.httpd.block_on_close)
+        with patch.object(service.httpd, 'server_close', side_effect=AssertionError('joined handlers')):
+            self.stop_without_waiting(service)
+        self.assertEqual(service.httpd.socket.fileno(), -1)
+        self.assertTrue(service.stopping.is_set())
+
     def test_stop_while_request_waits_for_kodi(self):
         entered, release = threading.Event(), threading.Event()
 

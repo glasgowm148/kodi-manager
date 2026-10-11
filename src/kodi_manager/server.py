@@ -1011,6 +1011,9 @@ class BoundedThreadingHTTPServer(ThreadingHTTPServer):
     unbounded number of threads that each wait on Kodi.
     """
     daemon_threads = True
+    # Never join handler threads on close: one may be blocked in a Kodi call
+    # while a profile change holds Kodi's GUI lock.
+    block_on_close = False
     max_handlers = MAX_HANDLERS
     max_per_client = MAX_HANDLERS_PER_CLIENT
     header_deadline = HEADER_DEADLINE
@@ -1103,4 +1106,6 @@ class ServerThread(threading.Thread):
         # Profile changes stop scripts while Kodi's UI thread is unavailable.
         # Never wait on a server thread that might be blocked in a Kodi call.
         self.stopping.set()
-        self.httpd.server_close()
+        # Close the listening socket only. The server loop closes its own
+        # request state; service shutdown never joins HTTP handlers here.
+        self.httpd.socket.close()
