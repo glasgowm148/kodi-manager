@@ -237,7 +237,7 @@ def test_held_notifications_are_dropped_when_the_problem_cleared_during_playback
 def test_nightly_checkpoint_stops_when_the_service_exits(monkeypatch):
     import threading
     from types import SimpleNamespace
-    from kodi_manager import addon_index, backup, server, service
+    from kodi_manager import addon_index, backup, dashboard_data, service
     seen = {}
 
     def stack_backup(addons, kodi_version="", note="", should_stop=None):
@@ -245,8 +245,8 @@ def test_nightly_checkpoint_stops_when_the_service_exits(monkeypatch):
         return {"backup_id": "x"}
     monkeypatch.setattr(backup, "create_stack_backup", stack_backup)
     monkeypatch.setattr(backup, "list_backups", lambda **kwargs: [])
-    monkeypatch.setattr(server, "stack_backup_addons", lambda kodi, index: [])
-    monkeypatch.setattr(server, "make_baseline", lambda kodi: None)
+    monkeypatch.setattr(dashboard_data, "stack_backup_addons", lambda kodi, index: [])
+    monkeypatch.setattr(dashboard_data, "make_baseline", lambda kodi: None)
     monkeypatch.setattr(addon_index, "AddonIndex", lambda kodi: SimpleNamespace(refresh=lambda force=False: None))
     kodi = SimpleNamespace(log=lambda msg: None, notify=lambda *a: None, get_kodi_version=lambda: "22",
                            get_addon_setting=lambda addon, sid: "")

@@ -8,6 +8,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "kodi_manager"))
 import kodi_api  # noqa: E402
 import service  # noqa: E402
+import service_config  # noqa: E402
 
 
 class TypedSettings:
@@ -43,7 +44,7 @@ class TypedAddon:
 
 class LoadConfigTypedBoolTests(unittest.TestCase):
     def load(self, addon):
-        with tempfile.TemporaryDirectory() as folder, patch.object(service, "translate", return_value=folder):
+        with tempfile.TemporaryDirectory() as folder, patch.object(service_config, "translate", return_value=folder):
             return service.load_config(addon)
 
     def test_bools_come_from_the_typed_api(self):

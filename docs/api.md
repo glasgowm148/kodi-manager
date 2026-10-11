@@ -1,7 +1,8 @@
 # HTTP API
 
 The dashboard is a static page plus this JSON API, served by the Kodi Manager service inside Kodi
-(default port 8765). This list follows `route_api` in `src/kodi_manager/server.py`.
+(default port 8765). This list follows `ROUTES` in `src/kodi_manager/server.py`; the handlers are in
+`api_status.py`, `api_addons.py` and `api_widgets.py` next to it.
 
 ## Conventions
 

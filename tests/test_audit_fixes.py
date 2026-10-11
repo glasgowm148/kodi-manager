@@ -182,6 +182,7 @@ import socket  # noqa: E402
 from unittest.mock import Mock, patch  # noqa: E402
 
 from kodi_manager import server  # noqa: E402
+from kodi_manager import api_addons, dashboard_data, http_base  # noqa: E402
 from kodi_manager.client import READ_POSTS  # noqa: E402
 
 
@@ -227,7 +228,7 @@ def api_server():
 
 
 def test_writes_outside_api_prefix_are_not_routed_and_need_no_token(api_server):
-    with patch.object(server, "restore_backup") as restore:
+    with patch.object(api_addons, "restore_backup") as restore:
         for target in ("/x/addons/plugin.video.pov/restore", "/api2/addons/plugin.video.pov/restore",
                        "/x/api/addons/plugin.video.pov/restore"):
             assert api_server.call("POST", target, {"backup_id": "b"}, token=None)[0] == 404
@@ -235,7 +236,7 @@ def test_writes_outside_api_prefix_are_not_routed_and_need_no_token(api_server):
 
 
 def test_absolute_form_and_unnormalised_targets_are_rejected(api_server):
-    with patch.object(server, "restore_backup") as restore:
+    with patch.object(api_addons, "restore_backup") as restore:
         for target in ("http://evil/api/addons/plugin.video.pov/restore",
                        "/api/addons/../addons/plugin.video.pov/restore", "/api//status", "/api/%2e%2e/status"):
             status, body, _ = api_server.call("POST", target, {"backup_id": "b"}, token=None)
@@ -263,8 +264,8 @@ def test_no_wildcard_cors_and_security_headers(api_server):
 
 def test_cross_origin_writes_are_refused(api_server):
     host = "%s:%s" % api_server.httpd.server_address
-    with patch.object(server, "create_stack_backup", return_value={"backup_id": "x"}), \
-            patch.object(server, "detect_stack", return_value={k: {} for k in ("tmdbhelper", "fenlight", "fen", "pov", "cocoscrapers", "trakt", "skin")}):
+    with patch.object(api_addons, "create_stack_backup", return_value={"backup_id": "x"}), \
+            patch.object(dashboard_data, "detect_stack", return_value={k: {} for k in ("tmdbhelper", "fenlight", "fen", "pov", "cocoscrapers", "trakt", "skin")}):
         status, body, _ = api_server.call("POST", "/api/stack/backup", {}, headers={"Origin": "http://evil.example"})
         assert status == 403 and body["error"]["code"] == "origin_mismatch"
         assert api_server.call("POST", "/api/stack/backup", {}, headers={"Origin": "null"})[0] == 403
@@ -274,10 +275,10 @@ def test_cross_origin_writes_are_refused(api_server):
 
 def test_private_client_check_applies_to_any_non_loopback_bind(api_server):
     api_server.state.config["host"] = "192.168.1.10"
-    with patch.object(server, "_private_client", return_value=False):
+    with patch.object(http_base, "_private_client", return_value=False):
         assert api_server.call("GET", "/api/logs")[0] == 403
     api_server.state.config["host"] = "127.0.0.1"
-    with patch.object(server, "_private_client", return_value=False):
+    with patch.object(http_base, "_private_client", return_value=False):
         assert api_server.call("GET", "/api/logs")[0] == 200
     assert not server.is_loopback("0.0.0.0") and server.is_loopback("localhost")
 
@@ -326,8 +327,8 @@ def test_actions_that_open_windows_on_the_tv_wait_for_playback_to_stop(api_serve
 
 def test_restores_require_idle_unless_forced(api_server):
     api_server.players["result"] = [{"playerid": 1}]
-    with patch.object(server, "restore_backup", return_value={"restored": True}) as restore, \
-            patch.object(server, "restore_stack_backup", return_value={"restored": []}) as stack:
+    with patch.object(api_addons, "restore_backup", return_value={"restored": True}) as restore, \
+            patch.object(api_addons, "restore_stack_backup", return_value={"restored": []}) as stack:
         status, body, _ = api_server.call("POST", "/api/addons/plugin.video.pov/restore", {"backup_id": "b"})
         assert status == 409 and "Stop playback" in body["error"]["message"] and body["code"] == "playback_active"
         assert api_server.call("POST", "/api/stack/restore", {"backup_id": "b"})[0] == 409
@@ -336,14 +337,14 @@ def test_restores_require_idle_unless_forced(api_server):
         assert api_server.call("POST", "/api/addons/plugin.video.pov/restore", {"backup_id": "b", "force": True})[0] == 200
         assert api_server.call("POST", "/api/stack/restore", {"backup_id": "b", "force": True})[0] == 200
     api_server.players["result"] = []
-    with patch.object(server, "restore_backup", return_value={"restored": True}):
+    with patch.object(api_addons, "restore_backup", return_value={"restored": True}):
         assert api_server.call("POST", "/api/addons/plugin.video.pov/restore", {"backup_id": "b"})[0] == 200
 
 
 def test_settings_report_editable_and_read_only_reason(api_server):
     adapter = SimpleNamespace(name="Generic", get_warnings=lambda addon: [])
-    with patch.object(server, "settings_for_addon", return_value={"groups": []}), \
-            patch.object(server, "adapter_for", return_value=adapter):
+    with patch.object(api_addons, "settings_for_addon", return_value={"groups": []}), \
+            patch.object(api_addons, "adapter_for", return_value=adapter):
         get = lambda aid: api_server.call("GET", "/api/addons/%s/settings" % aid)[1]["data"]  # noqa: E731
         assert get("plugin.video.pov")["editable"] is True and get("plugin.video.pov")["read_only_reason"] is None
         other = get("plugin.video.other")
@@ -358,7 +359,7 @@ def test_settings_report_editable_and_read_only_reason(api_server):
 
 
 def test_settings_patch_never_writes_kodi_manager_itself(api_server):
-    with patch.object(server, "create_backup") as snapshot:
+    with patch.object(api_addons, "create_backup") as snapshot:
         status, body, _ = api_server.call("PATCH", "/api/addons/service.kodi.addonadmin/settings",
                                           {"changes": [{"id": "auth_token", "value": "x", "source": "raw"}]})
         assert status == 403 and body["code"] == "self_read_only"
@@ -748,7 +749,7 @@ def test_autocache_and_layout_backups_are_pruned_to_retention(tmp_path):
 
 # --- Service resilience ---------------------------------------------------------------------
 
-from kodi_manager import service, widget_rows  # noqa: E402
+from kodi_manager import service, service_config, widget_rows  # noqa: E402
 
 
 class _Addon:
@@ -763,7 +764,7 @@ class _Addon:
 
 
 def _config(tmp_path, **settings):
-    with patch.object(service, "translate", return_value=str(tmp_path)):
+    with patch.object(service_config, "translate", return_value=str(tmp_path)):
         return service.load_config(_Addon(**settings))
 
 

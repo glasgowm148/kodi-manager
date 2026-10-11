@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from kodi_manager import server
+from kodi_manager import dashboard_data, server
 
 OTHER = "plugin.video.notallowed"
 
@@ -36,7 +36,7 @@ class Kodi:
 @pytest.fixture
 def api(tmp_path, monkeypatch):
     store = tmp_path / "baseline.json"
-    monkeypatch.setattr(server, "translate", lambda path: str(store))
+    monkeypatch.setattr(dashboard_data, "translate", lambda path: str(store))
     kodi = Kodi()
     addons = {"plugin.video.pov": {"addon_id": "plugin.video.pov", "is_stack_addon": True}}
     state = SimpleNamespace(kodi=kodi, logs=[], log=lambda msg: None,

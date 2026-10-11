@@ -1,7 +1,10 @@
-import hashlib
+"""Kodi Manager's service: starts the dashboard, the background work and the private extension,
+reacts to settings changes and Kodi notifications, and stops everything when Kodi asks.
+
+Settings are read in service_config.py; the background threads live in service_workers.py.
+"""
 import json
 import os
-import tempfile
 import time
 
 try:
@@ -11,254 +14,24 @@ except ImportError:
 
 try:
     from . import extension, profile_transition
-    from .auth import generate_token
     from .kodi_api import KodiAPI, service_addon, translate
-    from .netconfig import DEFAULT_PORT, effective_host, parse_int
     from .server import ServerThread
     from .shield_exit import ShieldExitGuard, process_start, supported_build
-    from .widget_cache import Refresher, WidgetCache, jsonrpc_via, RELOAD_PROPERTY
+    # Re-exported: these lived here before the service was split up.
+    from .service_config import BOOL_KEYS, NETWORK_KEYS, _bool, load_config, write_private_file  # noqa: F401
+    from .service_workers import (  # noqa: F401
+        BUSY_CONDITION, EXTERNAL_RELOAD_PROPERTIES, WIDGET_FAILURES_PROPERTY, WidgetHealth, external_reload_token,
+        persistent_widget_failures, start_maintenance, start_sampler, start_watchdog, start_widget_refresher, tv_busy)
 except ImportError:
     import extension
     import profile_transition
-    from auth import generate_token
     from kodi_api import KodiAPI, service_addon, translate
-    from netconfig import DEFAULT_PORT, effective_host, parse_int
     from server import ServerThread
     from shield_exit import ShieldExitGuard, process_start, supported_build
-    from widget_cache import Refresher, WidgetCache, jsonrpc_via, RELOAD_PROPERTY
-
-# Settings that need a new listening socket when they change.
-NETWORK_KEYS = ("host", "port", "allow_lan")
-
-
-def _bool(v):
-    return str(v).lower() in ("true", "1", "yes", "on")
-
-
-# Boolean settings are read through Kodi's typed settings API when it exists
-# (Kodi 20+); getSetting's text form is the fallback for older Kodi and fakes.
-BOOL_KEYS = frozenset(("enabled", "shield_exit_workaround", "allow_lan", "write_enabled",
-                       "widget_cache_auto", "delete_installer_result_after_first_login"))
-
-
-def load_config(addon):
-    def get(key, default=""):
-        try:
-            if key in BOOL_KEYS and hasattr(addon, "getSettings"):
-                return "true" if addon.getSettings().getBool(key) else "false"
-        except Exception:
-            pass
-        try:
-            val = addon.getSetting(key)
-            return val if val != "" else default
-        except Exception:
-            return default
-    token = get("auth_token", "")
-    if not token:
-        token = generate_token()
-        try:
-            addon.setSetting("auth_token", token)
-        except Exception:
-            pass
-    data_dir = translate("special://profile/addon_data/service.kodi.addonadmin")
-    flag = os.path.join(data_dir, "allow_lan_first_run.flag")
-    seed_path = os.path.join(data_dir, "installer_seed.json")
-    seed = {}
-    seed_digest = ""
-    if os.path.exists(seed_path):
-        try:
-            with open(seed_path, "rb") as fh:
-                raw = fh.read()
-            seed = json.loads(raw.decode("utf-8"))
-            seed_digest = hashlib.sha256(raw).hexdigest()
-        except Exception:
-            seed = {}
-    # The installer seed is a one-time handoff. Apply its network settings and
-    # write installer_result.json once per seed, so later changes the user makes
-    # in the add-on settings (for example switching LAN access off) persist.
-    applied_path = os.path.join(data_dir, "installer_seed.applied")
-    first_seed_run = False
-    if seed:
-        try:
-            with open(applied_path, "r", encoding="utf-8") as fh:
-                first_seed_run = fh.read().strip() != seed_digest
-        except OSError:
-            first_seed_run = True
-    if os.path.exists(flag):
-        try:
-            addon.setSetting("allow_lan", "true")
-            addon.setSetting("host", "0.0.0.0")
-            addon.setSetting("port", "8765")
-            os.remove(flag)
-        except Exception:
-            pass
-    if first_seed_run:
-        try:
-            addon.setSetting("allow_lan", "true" if seed.get("allow_lan", True) else "false")
-            addon.setSetting("host", seed.get("host", "0.0.0.0"))
-            addon.setSetting("port", str(seed.get("port", 8765)))
-        except Exception:
-            pass
-    allow_lan = _bool(get("allow_lan", "false"))
-    # LAN access with the host left at 127.0.0.1 listens on 0.0.0.0; LAN off listens on loopback.
-    host = effective_host(get("host", "127.0.0.1"), allow_lan)
-    config = {
-        "enabled": _bool(get("enabled", "true")),
-        "shield_exit_workaround": _bool(get("shield_exit_workaround", "false")),
-        "host": host,
-        "port": parse_int(get("port", str(DEFAULT_PORT)), DEFAULT_PORT, 1, 65535),
-        "allow_lan": allow_lan,
-        "write_enabled": _bool(get("write_enabled", "false")),
-        "auth_token": token,
-        "log_level": get("log_level", "info"),
-        "backup_retention": parse_int(get("backup_retention", "20"), 20, 1, 1000),
-        "widget_cache_auto": _bool(get("widget_cache_auto", "false")),
-        "widget_cache_auto_addons": [a.strip() for a in get("widget_cache_auto_addons", "").split(",") if a.strip()],
-        "allowed_addons_csv": get("allowed_addons_csv", ""),
-        "delete_installer_result_after_first_login": _bool(get("delete_installer_result_after_first_login", "false")),
-        "installer_seed": seed,
-        "addon_data_dir": data_dir,
-    }
-    if first_seed_run and token:
-        try:
-            os.makedirs(data_dir, exist_ok=True)
-            result = {
-                "ok": True,
-                "web_url": "http://%s:%s" % (seed.get("kodi_ip_hint", "127.0.0.1"), config["port"]),
-                "auth_token": token,
-                "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "installer_nonce": seed.get("installer_nonce", ""),
-            }
-            # Readers (the installer, /api/bootstrap/status) see the old file or the whole new one.
-            write_private_file(os.path.join(data_dir, "installer_result.json"),
-                               json.dumps(result, indent=2).encode("utf-8"))
-            write_private_file(applied_path, seed_digest.encode("utf-8"))
-        except Exception:
-            pass
-    return config
-
-
-def write_private_file(path, data):
-    """Replace ``path`` atomically with an owner-only file (it may hold the access token)."""
-    fd, temp = tempfile.mkstemp(prefix="." + os.path.basename(path) + ".", suffix=".tmp",
-                                dir=os.path.dirname(os.path.abspath(path)))
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp, path)
-    except BaseException:
-        try:
-            os.unlink(temp)
-        except OSError:
-            pass
-        raise
-
-
-# Refresh cached rows only while the TV is quiet: no media loaded, no busy or
-# progress dialog (POV searching for sources), no modal dialog and no remote
-# press for a minute.
-BUSY_CONDITION = ("Player.HasMedia | Window.IsActive(busydialog) | Window.IsActive(busydialognocancel)"
-                  " | Window.IsActive(progressdialog) | Window.IsActive(extendedprogressdialog)"
-                  " | Window.IsActive(progress_media.xml) | System.HasModalDialog | !System.IdleTime(60)")
-
-
-# Window(10000) properties widget add-ons bump after a library or Trakt sync;
-# a change refreshes the personal (progress) rows at the same time.
-EXTERNAL_RELOAD_PROPERTIES = ("TMDbBingieHelper.Widgets.Reload", "TMDbHelper.Widgets.Reload", "POV.Widgets.Reload")
-WIDGET_FAILURES_PROPERTY = "KM.WidgetFailures"
-
-
-def external_reload_token(home):
-    return "|".join(home.getProperty(name) for name in EXTERNAL_RELOAD_PROPERTIES)
-
-
-def persistent_widget_failures(cache):
-    """Count failed active rows without parsing their large artwork listings."""
-    try:
-        names = os.listdir(cache.health_dir)
-    except OSError:
-        return 0
-    count = 0
-    for name in names:
-        if not name.endswith(".json") or not os.path.isfile(os.path.join(cache.entries, name)):
-            continue
-        try:
-            with open(os.path.join(cache.health_dir, name), encoding="utf-8") as handle:
-                record = json.load(handle)
-            if isinstance(record, dict) and int(record.get("failures", 0)) >= 3:
-                count += 1
-        except (OSError, ValueError, TypeError):
-            pass
-    return count
-
-
-class WidgetHealth:
-    """Publish how many cached rows keep failing (KM.WidgetFailures, for skins).
-
-    Checked at most once a minute and only while the TV is quiet. One brief
-    notice per failure episode: it shows again only after the rows recovered.
-    """
-    INTERVAL = 60
-
-    def __init__(self, cache, set_property, notify, clock=time.time):
-        self.cache, self.set_property, self.notify, self.clock = cache, set_property, notify, clock
-        self.next_check = 0
-        self.warned = False
-
-    def tick(self, is_quiet):
-        if self.clock() < self.next_check or not is_quiet():
-            return
-        self.next_check = self.clock() + self.INTERVAL
-        persistent = persistent_widget_failures(self.cache)
-        self.set_property(WIDGET_FAILURES_PROPERTY, str(persistent))
-        if persistent and not self.warned:
-            self.notify()
-        self.warned = bool(persistent)
-
-
-def start_widget_refresher(kodi):
-    """Refresh cached widget rows one at a time in the background."""
-    if not xbmc:
-        return None
-    import threading
-    import xbmcgui
-    cache = WidgetCache(translate("special://profile/addon_data/service.kodi.addonadmin/widget_cache"))
-    home = xbmcgui.Window(10000)
-    player = xbmc.Player()
-    refresher = Refresher(cache, jsonrpc_via(xbmc), player.isPlayingVideo,
-                          lambda value: home.setProperty(RELOAD_PROPERTY, value), kodi.log,
-                          external_reload=lambda: external_reload_token(home),
-                          is_busy=lambda: xbmc.getCondVisibility(BUSY_CONDITION))
-    refresher.stop = threading.Event()
-    refresher.sleep = refresher.stop.wait
-    health = WidgetHealth(cache, home.setProperty, lambda: xbmcgui.Dialog().notification(
-        "TV rows", "Some rows are unavailable. Cached results are being kept.",
-        xbmcgui.NOTIFICATION_INFO, 4000, False))
-
-    def run():
-        while not refresher.stop.is_set():
-            try:
-                refresher.tick(refresher.stop.is_set)
-                health.tick(refresher._quiet)
-            except Exception as error:
-                kodi.log("Widget cache refresh error: %s" % type(error).__name__)
-            refresher.stop.wait(2)
-
-    # Daemon: profile changes stop scripts while Kodi calls may block.
-    threading.Thread(target=run, name="km-widget-cache", daemon=True).start()
-    return refresher
-
-
-def tv_busy():
-    """True while the TV is in use (see BUSY_CONDITION); False outside Kodi."""
-    if not xbmc:
-        return False
-    try:
-        return bool(xbmc.getCondVisibility(BUSY_CONDITION))
-    except Exception:
-        return True
+    from service_config import BOOL_KEYS, NETWORK_KEYS, _bool, load_config, write_private_file  # noqa: F401
+    from service_workers import (  # noqa: F401
+        BUSY_CONDITION, EXTERNAL_RELOAD_PROPERTIES, WIDGET_FAILURES_PROPERTY, WidgetHealth, external_reload_token,
+        persistent_widget_failures, start_maintenance, start_sampler, start_watchdog, start_widget_refresher, tv_busy)
 
 
 def media_playing():
@@ -269,108 +42,6 @@ def media_playing():
         return bool(xbmc.getCondVisibility("Player.HasMedia"))
     except Exception:
         return False
-
-
-def start_maintenance(kodi, is_busy=tv_busy, stopping=lambda: False):
-    """Nightly checkpoint, protected-settings check and account checks (see maintenance.py).
-
-    ``stopping`` is true once the service is exiting: a checkpoint in progress stops and is
-    discarded, so Kodi does not have to wait for it or kill it part way.
-    """
-    try:
-        try:
-            from .maintenance import Maintenance, nightly_checkpoint
-            from .account_health import trakt_status, torbox_status, run_checks
-            from .addon_index import AddonIndex
-            from .backup import create_stack_backup, list_backups, delete_stack_backup
-            from .server import stack_backup_addons, make_baseline
-        except ImportError:
-            from maintenance import Maintenance, nightly_checkpoint
-            from account_health import trakt_status, torbox_status, run_checks
-            from addon_index import AddonIndex
-            from backup import create_stack_backup, list_backups, delete_stack_backup
-            from server import stack_backup_addons, make_baseline
-    except Exception as error:
-        kodi.log("Maintenance unavailable: %s" % type(error).__name__)
-        return None
-    index = AddonIndex(kodi)
-
-    def checkpoint():
-        index.refresh(force=True)
-        return nightly_checkpoint(
-            # Copying addon_data competes with playback for storage: stop if the TV gets busy
-            # or the service is exiting.
-            lambda: create_stack_backup(stack_backup_addons(kodi, index), kodi.get_kodi_version(), note="nightly",
-                                        should_stop=lambda: stopping() or is_busy()),
-            lambda: list_backups(stack=True), delete_stack_backup)
-
-    def accounts():
-        return run_checks([lambda: trakt_status(kodi.get_addon_setting),
-                           lambda: torbox_status(kodi.get_addon_setting, translate)], kodi.log)
-
-    try:
-        nightly = [b for b in list_backups(stack=True) if b.get("note") == "nightly"]
-        last = max(str(b.get("backup_id", ""))[:8] for b in nightly) if nightly else ""
-        last_day = "%s-%s-%s" % (last[:4], last[4:6], last[6:8]) if len(last) == 8 else None
-    except Exception:
-        last_day = None
-    return Maintenance(lambda title, message: kodi.notify(title, message), baseline=make_baseline(kodi),
-                       accounts=accounts, checkpoint=checkpoint, log=kodi.log, last_nightly_day=last_day,
-                       is_quiet=lambda: not is_busy())
-
-
-def start_sampler(kodi, memory, internet):
-    """The dashboard's 7-day history (metrics.py), sampled from the watchdog loop while idle."""
-    try:
-        try:
-            from .metrics import HISTORY_FILE, MetricsHistory, Sampler, widget_row_counts
-        except ImportError:
-            from metrics import HISTORY_FILE, MetricsHistory, Sampler, widget_row_counts
-        rows_root = translate("special://profile/addon_data/service.kodi.addonadmin/widget_cache")
-        return Sampler(MetricsHistory(translate(HISTORY_FILE)), memory, internet,
-                       lambda: widget_row_counts(rows_root))
-    except Exception as error:
-        kodi.log("Metrics history unavailable: %s" % type(error).__name__)
-        return None
-
-
-def start_watchdog(kodi):
-    """Background connection and memory check; notifies once when something is wrong."""
-    import threading
-    try:
-        from .netwatch import Watchdog, latest_internet
-        from .memstat import memory_status
-    except ImportError:
-        from netwatch import Watchdog, latest_internet
-        from memstat import memory_status
-    watchdog = Watchdog(lambda title, message: kodi.notify(title, message),
-                        is_quiet=lambda: not tv_busy(),
-                        memory=memory_status, log=kodi.log)
-    watchdog.stop = threading.Event()
-    housekeeping = start_maintenance(kodi, stopping=watchdog.stop.is_set)
-    sampler = start_sampler(kodi, memory_status, latest_internet)
-
-    def run():
-        while not watchdog.stop.is_set():
-            try:
-                watchdog.tick(watchdog.stop.is_set)
-            except Exception as error:
-                kodi.log("Connection watchdog error: %s" % type(error).__name__)
-            if housekeeping is not None and not watchdog.stop.is_set():
-                try:
-                    housekeeping.tick(not tv_busy())
-                except Exception as error:
-                    kodi.log("Maintenance error: %s" % type(error).__name__)
-            if sampler is not None and not watchdog.stop.is_set():
-                try:
-                    # Idle only: nothing extra runs while something plays.
-                    sampler.tick(not tv_busy())
-                except Exception as error:
-                    kodi.log("Metrics history error: %s" % type(error).__name__)
-            watchdog.stop.wait(15)
-
-    threading.Thread(target=run, name="km-watchdog", daemon=True).start()
-    return watchdog
 
 
 # Shared by every profile (special://temp): which Kodi process and profile ran

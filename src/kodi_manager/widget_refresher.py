@@ -1,0 +1,126 @@
+"""Background refresh of cached widget rows (service side; see widget_cache.py).
+
+Kept apart from widget_cache.py, which every widget invocation loads: only the service needs this.
+"""
+import time
+
+try:
+    from . import widget_cache as _cache
+except ImportError:
+    import widget_cache as _cache
+
+
+class Refresher:
+    """Background, one-at-a-time refresh of queued widget rows (service side).
+
+    Refreshing runs the source add-on (often POV) once per row, so it only
+    happens while the TV is quiet: nothing playing, no busy or progress dialog
+    (POV searching for sources) and no remote presses for a while. A failed or
+    very short playback does not trigger a full refresh, and full refreshes
+    are rate-limited.
+    """
+
+    EVERYTHING_EVERY = 30 * 60   # at most one full refresh per 30 minutes
+    SHORT_PLAYBACK = 120         # seconds; shorter plays are treated as failed starts
+    MAX_ROWS_PER_TICK = 2
+    WORK_BUDGET = 10
+    BATCH_PAUSE = 10
+    ROW_PAUSE = 1.5              # seconds between rows so Kodi stays responsive
+
+    def __init__(self, cache, jsonrpc, is_playing, bump, log=lambda msg: None, clock=time.time,
+                 external_reload=lambda: "", is_busy=lambda: False, sleep=None):
+        self.cache, self.jsonrpc, self.is_playing, self.bump, self.log, self.clock = cache, jsonrpc, is_playing, bump, log, clock
+        self.is_busy = is_busy
+        self.sleep = sleep or (lambda seconds: None)
+        self.next_work = clock()
+        self.next_sweep = clock() + 20
+        self.after_playback = []
+        self.playback_started_at = None
+        self.last_everything = float("-inf")
+        # Add-ons such as TMDb Helper bump their own reload property after a
+        # Trakt sync; follow it so personal rows refresh at the same time.
+        self.external_reload = external_reload
+        self.last_external = None
+
+    def playback_started(self):
+        self.playback_started_at = self.clock()
+
+    def playback_stopped(self):
+        now = self.clock()
+        started, self.playback_started_at = self.playback_started_at, None
+        if started is not None and now - started < self.SHORT_PLAYBACK:
+            # A failed start or a quick back-out: watched state barely changed.
+            self.after_playback = [(now + 5, "progress")]
+            return
+        # Progress rows first (POV updates its local state on stop), then
+        # again plus everything else once Trakt has had time to sync.
+        self.after_playback = [(now + 5, "progress"), (now + 120, "everything")]
+
+    def _quiet(self):
+        try:
+            return not self.is_playing() and not self.is_busy()
+        except Exception:
+            return False
+
+    def tick(self, should_stop=lambda: False):
+        now = self.clock()
+        if not self._quiet() or now < self.next_work:
+            return 0
+        token = self.external_reload()
+        if token != self.last_external:
+            if self.last_external is not None:
+                self.cache.queue_stale(now, progress_only=True)
+            self.last_external = token
+        due = [kind for at, kind in self.after_playback if at <= now]
+        self.after_playback = [(at, kind) for at, kind in self.after_playback if at > now]
+        for kind in due:
+            if kind == "everything":
+                if now - self.last_everything < self.EVERYTHING_EVERY:
+                    kind = "stale"
+                else:
+                    self.last_everything = now
+            self.cache.queue_stale(now, progress_only=kind == "progress", everything=kind == "everything")
+        if now >= self.next_sweep:
+            self.next_sweep = now + 300
+            self.cache.queue_stale(now)
+            self.cache.prune(now)
+        changed = done = attempted = 0
+        started = self.clock()
+        first = True
+        for source in self.cache.take_queue(limit=self.MAX_ROWS_PER_TICK,
+                                                 ready=lambda value: self.cache.retry_ready(value, self.clock())):
+            if (should_stop() or not self._quiet() or attempted >= self.MAX_ROWS_PER_TICK
+                    or self.clock() - started >= self.WORK_BUDGET
+                    or not self.cache.retry_ready(source, self.clock())):
+                self.cache.request(source, priority=_cache.is_progress(source))
+                continue
+            if not first:
+                self.sleep(self.ROW_PAUSE)
+            first = False
+            if should_stop() or not self._quiet():
+                self.cache.request(source, priority=_cache.is_progress(source))
+                continue
+            try:
+                attempted += 1
+                _cache.validate_source(source)
+                pages = self.cache.pages_for(source)
+                files, more, next_art = _cache.fetch_listing(self.jsonrpc, source, pages)
+                previous = self.cache.load(source)
+                if not files and previous and previous.get("files") and not _cache.is_progress(source):
+                    # Many providers report a failed fetch as a successful empty directory.
+                    # Do not erase useful discovery rows on that ambiguous result.
+                    self.cache.record_failure(source, self.clock(), "unexpected_empty")
+                    self.cache.request(source)
+                    continue
+                changed += bool(self.cache.save(source, files, self.clock(), pages=pages, more=more, next_art=next_art))
+                done += 1
+            except Exception as exc:
+                self.cache.record_failure(source, self.clock())
+                self.cache.request(source, priority=_cache.is_progress(source))
+                self.log("Widget refresh failed (%s); preserving cached row" % type(exc).__name__)
+        if attempted:
+            self.next_work = self.clock() + self.BATCH_PAUSE
+        if changed:
+            self.bump(str(int(self.clock())))
+            self.log("Widget cache refreshed %d rows, %d changed" % (done, changed))
+        return done

@@ -13,6 +13,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "kodi_manager"))
 import server  # noqa: E402
+import api_widgets  # noqa: E402
 import widget_autocache as wa  # noqa: E402
 import widget_cache as wc  # noqa: E402
 import widget_plugin  # noqa: E402
@@ -135,7 +136,7 @@ def api(tmp_path):
                      headers={"Authorization": "Bearer t", "Content-Type": "application/json"})
         response = conn.getresponse()
         return response.status, json.loads(response.read())
-    with patch.object(server, "translate", return_value=str(tmp_path)):
+    with patch.object(api_widgets, "translate", return_value=str(tmp_path)):
         yield call
     http_server.shutdown()
     http_server.server_close()

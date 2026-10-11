@@ -150,6 +150,7 @@ def test_stale_and_empty_rows_are_counted_from_the_listing_edges(tmp_path):
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "kodi_manager"))
 import server  # noqa: E402
+import dashboard_data  # noqa: E402
 
 
 def test_cached_row_listing_carries_friendly_titles(tmp_path, monkeypatch):
@@ -157,7 +158,7 @@ def test_cached_row_listing_carries_friendly_titles(tmp_path, monkeypatch):
     write_shortcuts(shortcuts)
     kodi = SimpleNamespace(get_localized_string=kodi_string, get_active_skin=lambda: {"path": str(tmp_path / "skin")})
     index = SimpleNamespace(addons={"plugin.video.pov": {"name": "POV"}})
-    monkeypatch.setattr(server, "translate", lambda p: str(shortcuts) if p == server.SHORTCUTS_DATA else p)
+    monkeypatch.setattr(dashboard_data, "translate", lambda p: str(shortcuts) if p == server.SHORTCUTS_DATA else p)
     entries = server.with_row_titles(kodi, index, [{"source": HISTORY, "items": 3}, {"source": RECS, "items": 0}])
     assert entries[0]["title"] == "Recently watched" and entries[0]["where"] == ["Home", "Movies hub"]
     assert entries[0]["items"] == 3 and entries[0]["title_from"] == "skin"

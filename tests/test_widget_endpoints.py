@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "kodi_manager"))
 import server
+import api_widgets
 
 
 class WidgetEndpointTests(unittest.TestCase):
@@ -47,19 +48,19 @@ class WidgetEndpointTests(unittest.TestCase):
         self.state.index.refresh.assert_not_called()
 
     def test_sources_and_suggestions_dispatch_with_refreshed_index(self):
-        with patch.object(server, "list_sources", return_value={"sources": [{"addon_id": "plugin.video.pov"}]}) as sources:
+        with patch.object(api_widgets, "list_sources", return_value={"sources": [{"addon_id": "plugin.video.pov"}]}) as sources:
             status, payload = self.request("GET", "/api/widgets/sources")
             self.assertEqual(status, 200)
             self.assertEqual(payload["data"]["sources"][0]["addon_id"], "plugin.video.pov")
             sources.assert_called_once_with(self.state.kodi, self.state.index)
-        with patch.object(server, "suggest_kids_rows", return_value={"rows": [], "recommendations": ["Family movies"]}) as suggestions:
+        with patch.object(api_widgets, "suggest_kids_rows", return_value={"rows": [], "recommendations": ["Family movies"]}) as suggestions:
             self.assertEqual(self.request("POST", "/api/widgets/suggestions", {})[0], 200)
             suggestions.assert_called_once_with(self.state.kodi, self.state.index)
         self.assertEqual(self.state.index.refresh.call_count, 2)
 
     def test_browse_family_preview_keeps_paths_and_excludes_unknown_ratings(self):
         items = [{"label": "Family", "path": "plugin://plugin.video.pov/?id=1", "mpaa": "PG", "genre": ["Family"]}, {"label": "Unknown", "path": "plugin://plugin.video.pov/?id=2", "genre": ["Family"]}]
-        with patch.object(server, "browse_directory", return_value={"items": items}) as browse:
+        with patch.object(api_widgets, "browse_directory", return_value={"items": items}) as browse:
             status, payload = self.request("POST", "/api/widgets/browse", {"path": "plugin://plugin.video.pov/", "start": 2, "limit": 10, "family_preview": True, "max_rating": "12A"})
             browse.assert_called_once_with(self.state.kodi, self.state.index, "plugin://plugin.video.pov/", 2, 10, refresh=False)
         self.assertEqual(status, 200)
@@ -69,7 +70,7 @@ class WidgetEndpointTests(unittest.TestCase):
 
     def test_inspection_and_preview_disable_apply_when_writes_disabled(self):
         for method, path, function in (("GET", "/api/widgets/layout", "inspect_layout"), ("POST", "/api/widgets/layout/preview", "preview_layout")):
-            with patch.object(server, function, return_value={"can_apply": True, "reasons": [], "exports": [], "sections": [{"id": "movies", "editable": True}], "new_section_available": True}):
+            with patch.object(api_widgets, function, return_value={"can_apply": True, "reasons": [], "exports": [], "sections": [{"id": "movies", "editable": True}], "new_section_available": True}):
                 status, payload = self.request(method, path, {} if method == "POST" else None)
                 self.assertEqual(status, 200)
                 self.assertFalse(payload["data"]["can_apply"])
@@ -79,7 +80,7 @@ class WidgetEndpointTests(unittest.TestCase):
 
     def test_apply_write_gate_and_enabled_dispatch_do_not_write_in_test(self):
         body = {"label": "Kids", "expected_revision": "reviewed", "rows": []}
-        with patch.object(server, "apply_layout", return_value={"backup_id": "mock-only"}) as apply:
+        with patch.object(api_widgets, "apply_layout", return_value={"backup_id": "mock-only"}) as apply:
             self.assertEqual(self.request("POST", "/api/widgets/layout/apply", body)[0], 403)
             apply.assert_not_called()
             self.state.config["write_enabled"] = True
@@ -89,16 +90,16 @@ class WidgetEndpointTests(unittest.TestCase):
             apply.assert_called_once_with(self.state.kodi, self.state.index, body, True)
 
     def test_invalid_preview_type_and_rating_fail_without_action(self):
-        with patch.object(server, "browse_directory", return_value={"items": []}) as browse:
+        with patch.object(api_widgets, "browse_directory", return_value={"items": []}) as browse:
             self.assertEqual(self.request("POST", "/api/widgets/browse", {"family_preview": "true"})[0], 400)
             browse.assert_not_called()
             self.assertEqual(self.request("POST", "/api/widgets/browse", {"family_preview": True, "max_rating": "R"})[0], 400)
-        with patch.object(server, "preview_layout") as preview:
+        with patch.object(api_widgets, "preview_layout") as preview:
             self.assertEqual(self.request("POST", "/api/widgets/layout/preview", ["wrong shape"])[0], 400)
             preview.assert_not_called()
 
     def test_rebuild_requires_write_mode_and_dispatches_once_when_enabled(self):
-        with patch.object(server, "request_rebuild", return_value={"requested": True}) as rebuild, patch.object(server, "apply_layout") as apply:
+        with patch.object(api_widgets, "request_rebuild", return_value={"requested": True}) as rebuild, patch.object(api_widgets, "apply_layout") as apply:
             status, payload = self.request("POST", "/api/widgets/layout/rebuild", {})
             self.assertEqual(status, 403)
             self.assertIn("Write Mode is disabled", payload["error"]["message"])
@@ -113,7 +114,7 @@ class WidgetEndpointTests(unittest.TestCase):
     def test_rebuild_is_refused_during_playback(self):
         self.state.config["write_enabled"] = True
         self.players = [{"playerid": 1}]
-        with patch.object(server, "request_rebuild") as rebuild:
+        with patch.object(api_widgets, "request_rebuild") as rebuild:
             status, payload = self.request("POST", "/api/widgets/layout/rebuild", {})
         self.assertEqual(status, 400)
         self.assertIn("Stop playback", payload["error"]["message"])
@@ -145,7 +146,7 @@ class WidgetEndpointTests(unittest.TestCase):
         protection = Mock()
         protection.status.return_value = {'healthy': True}
         protection.repair.return_value = {'restored_files': 1}
-        with patch.object(server, 'protection_for_kodi', return_value=protection):
+        with patch.object(api_widgets, 'protection_for_kodi', return_value=protection):
             self.assertEqual(self.request('GET', '/api/fixes')[0], 200)
             self.assertEqual(self.request('POST', '/api/fixes/repair', {})[0], 403)
             protection.repair.assert_not_called()

@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "kodi_manager"))
 import service
+import service_config
 from kodi_api import KodiAPI
 
 
@@ -30,7 +31,7 @@ class ServiceConfigTests(unittest.TestCase):
                 with open(Path(folder) / "installer_seed.json", "w") as handle:
                     json.dump({"write_enabled": legacy}, handle)
                 addon = FakeAddon(current)
-                with patch.object(service, "translate", return_value=folder):
+                with patch.object(service_config, "translate", return_value=folder):
                     config = service.load_config(addon)
                 self.assertIs(config["write_enabled"], expected)
                 self.assertFalse(any(key == "write_enabled" for key, _ in addon.writes))

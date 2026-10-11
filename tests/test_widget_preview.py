@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "kodi_manager"))
 import widget_preview
 import server
+import api_widgets
 from widget_plugin import family_directory_url
 
 
@@ -247,7 +248,7 @@ class RowPreviewEndpointTests(unittest.TestCase):
         self.addCleanup(http_server.server_close)
         self.addCleanup(http_server.shutdown)
         body = {'section_id': 'home', 'row_id': 'saved-1', 'limit': 12}
-        with patch.object(server, 'row_preview', return_value={'status': 'ok', 'items': []}) as preview:
+        with patch.object(api_widgets, 'row_preview', return_value={'status': 'ok', 'items': []}) as preview:
             for authorized in (False, True):
                 headers = {'Content-Type': 'application/json'}
                 if authorized:

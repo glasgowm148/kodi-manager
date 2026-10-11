@@ -185,6 +185,8 @@ def test_sampler_remembers_the_last_recorded_probe_across_restarts(tmp_path):
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "kodi_manager"))
 import server  # noqa: E402
+import dashboard_data  # noqa: E402
+import api_status  # noqa: E402
 
 
 @pytest.fixture
@@ -215,11 +217,12 @@ def dashboard(tmp_path):
         conn.close()
         return response.status, body
     real_translate = server.translate
-    with patch.object(server, "translate", lambda p: str(path) if p == server.HISTORY_FILE else str(tmp_path / "cache") if p == server.WIDGET_CACHE_DIR else real_translate(p)), \
+    fake_translate = lambda p: str(path) if p == server.HISTORY_FILE else str(tmp_path / "cache") if p == server.WIDGET_CACHE_DIR else real_translate(p)  # noqa: E731
+    with patch.object(api_status, "translate", fake_translate), patch.object(dashboard_data, "translate", fake_translate), \
             patch.object(server.time, "time", return_value=NOW), \
-            patch.object(server, "list_backups", return_value=[{"backup_id": "20260101-030000-x", "timestamp": "20260101-030000", "note": "nightly", "total_bytes": 2048}]), \
-            patch.object(server, "make_baseline", side_effect=RuntimeError("no baseline")), \
-            patch.object(server, "protection_for_kodi", side_effect=RuntimeError("no fixes")):
+            patch.object(dashboard_data, "list_backups", return_value=[{"backup_id": "20260101-030000-x", "timestamp": "20260101-030000", "note": "nightly", "total_bytes": 2048}]), \
+            patch.object(dashboard_data, "make_baseline", side_effect=RuntimeError("no baseline")), \
+            patch.object(dashboard_data, "protection_for_kodi", side_effect=RuntimeError("no fixes")):
         yield SimpleNamespace(call=call, calls=calls, replies=replies)
     httpd.shutdown()
     httpd.server_close()
