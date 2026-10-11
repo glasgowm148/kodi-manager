@@ -16,6 +16,9 @@
   - POV routes that do not exist in POV (`mode=trakt_lists`, `mode=navigator`) are refused.
 - **A skin menu item without its `<label>` or `<action>`** now refuses a layout edit with a clear
   message (400) instead of failing with a server error.
+- **All add-ons fits a phone.** The page was wider than the screen on phones (the table's hidden
+  "Actions" heading escaped its scroll box), so the whole page zoomed out; wide tables now scroll
+  inside their own box everywhere.
 
 ### For developers
 
