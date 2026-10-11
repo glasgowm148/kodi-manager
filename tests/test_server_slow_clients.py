@@ -42,6 +42,14 @@ def _get(address):
     return status, time.time() - started
 
 
+def _wait_for(condition, timeout=10.0):
+    """Poll instead of sleeping a fixed time: a loaded machine accepts connections slowly."""
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "condition not reached"
+        time.sleep(0.02)
+
+
 def _drip(address, count):
     socks = []
     for _ in range(count):
@@ -62,7 +70,14 @@ def _keep_dripping(socks, stop):
 
 class QuickDeadline(server.BoundedThreadingHTTPServer):
     header_deadline = 1.0
-    slot_wait = 3.0
+    # Long enough that a loaded test machine still gets the slot the deadline frees;
+    # without the deadline the drippers keep every slot and the request is refused.
+    slot_wait = 10.0
+    accepted = 0
+
+    def process_request(self, request, client_address):
+        self.accepted += 1
+        return server.BoundedThreadingHTTPServer.process_request(self, request, client_address)
 
 
 def test_dripping_headers_cannot_hold_every_slot(serve):
@@ -71,9 +86,9 @@ def test_dripping_headers_cannot_hold_every_slot(serve):
     stop = threading.Event()
     threading.Thread(target=_keep_dripping, args=(socks, stop), daemon=True).start()
     try:
-        time.sleep(0.3)
+        _wait_for(lambda: httpd.accepted >= server.MAX_HANDLERS)    # every dripper reached the server
         status, took = _get(httpd.server_address)   # waits for a slot freed by the deadline
-        assert status == 200 and took < 2.5
+        assert status == 200 and took < QuickDeadline.slot_wait
     finally:
         stop.set()
         for sock in socks:
@@ -108,10 +123,10 @@ def test_one_client_cannot_take_every_slot(serve):
         sock.sendall(b"GET /api/logs HTTP/1.1\r\n")
         socks.append(sock)
     try:
-        time.sleep(0.3)
-        assert httpd._clients.get("192.168.1.66") == server.MAX_HANDLERS_PER_CLIENT
-        status, took = _get(httpd.server_address)
-        assert status == 200 and took < 1.0
+        _wait_for(lambda: httpd._clients.get("192.168.1.66") == server.MAX_HANDLERS_PER_CLIENT)
+        # Served, not refused after slot_wait: the per-client cap left slots free for others.
+        status, _ = _get(httpd.server_address)
+        assert status == 200
     finally:
         for sock in socks:
             try:

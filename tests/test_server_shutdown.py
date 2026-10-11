@@ -17,16 +17,17 @@ class ServerShutdownTests(unittest.TestCase):
             return server.ServerThread(Mock(), config, '')
 
     def stop_without_waiting(self, service):
+        # The blocked handler below holds its request for 10 s; stopping must not wait for it.
         stopped = threading.Thread(target=service.stop, daemon=True)
         stopped.start()
-        stopped.join(0.8)
+        stopped.join(3)
         self.assertFalse(stopped.is_alive(), 'Shutdown blocked on server thread')
 
     def test_stop_before_server_thread_starts(self):
         service = self.create_server(BaseHTTPRequestHandler)
         self.stop_without_waiting(service)
         service.start()
-        service.join(0.8)
+        service.join(3)
         self.assertFalse(service.is_alive())
 
     def test_stop_closes_only_the_listening_socket(self):
@@ -43,7 +44,7 @@ class ServerShutdownTests(unittest.TestCase):
         class WaitingHandler(BaseHTTPRequestHandler):
             def do_GET(self):
                 entered.set()
-                release.wait(2)
+                release.wait(10)
                 self.send_response(204)
                 self.end_headers()
 
@@ -65,9 +66,9 @@ class ServerShutdownTests(unittest.TestCase):
         client = threading.Thread(target=request, daemon=True)
         client.start()
         try:
-            self.assertTrue(entered.wait(1))
+            self.assertTrue(entered.wait(5))
             self.stop_without_waiting(service)
-            service.join(0.8)
+            service.join(3)
             self.assertFalse(service.is_alive())
             # A new profile can immediately bind the same service port.
             replacement = server.ThreadingHTTPServer(('127.0.0.1', port), BaseHTTPRequestHandler)
