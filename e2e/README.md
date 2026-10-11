@@ -37,11 +37,14 @@ npx playwright test --update-snapshots
 git add tests/__screenshots__
 ```
 
-To compare in CI (ubuntu-latest) as well, generate the Linux baselines in Playwright's image:
+The Linux baselines CI compares against are written by CI itself, so fonts and Chromium match
+exactly: run the **Test and package** workflow by hand with `update_snapshots` ticked, download its
+`linux-screenshots` artifact and commit the `*-linux.png` files:
 
 ```sh
-docker run --rm -v "$(cd .. && pwd)":/work -w /work/e2e mcr.microsoft.com/playwright:v1.63.0-noble \
-  bash -c "apt-get update -qq && apt-get install -y -qq python3 >/dev/null && npm ci && npx playwright test --update-snapshots"
+gh workflow run ci.yml -f update_snapshots=true
+gh run download <run id> -n linux-screenshots -D tests/__screenshots__
+git add tests/__screenshots__/*/*-linux.png
 ```
 
 The comparison tolerates anti-aliasing (`threshold: 0.2`) and at most 1 % of differing pixels.
