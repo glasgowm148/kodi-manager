@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.7.8 — 2026-10-11 (prerelease)
+
+A redesigned dashboard ([design notes](docs/ui.md)). The API only gains endpoints and fields.
+
+- **Overview.** The first screen is drawn as the TV: whether something is playing (and that actions
+  which restart Kodi wait for it), the active profile, one verdict ("All good", "2 things need a
+  look") with links to whatever needs attention, and tiles for memory, internet, home rows, backups,
+  protection and accounts, each with a plain sentence and a 7-day sparkline. It refreshes every
+  minute while visible and keeps focus where it was.
+- **Trends.** Charts of free memory and Kodi's memory, streaming services' answer times (with
+  timed-out checks marked), and failing home rows over 24 hours, 3 or 7 days. Gaps show when the TV
+  was busy. Every chart has hover and arrow-key reading and a table view.
+- **Row health.** Each cached home row as a card with its first titles' posters, freshness, title
+  count, failure streak, last failure and next retry; filter, search and sort, with a fresh / due /
+  failing summary bar.
+- **Backups** chart checkpoints per day by kind (nightly, manual, playback settings) and list the
+  newest first with size; **Health checks** read as a checklist with the problems first and a link to
+  where to look next; **Accounts** show sign-in and subscription checks with days left.
+- **Navigation by household task:** Status, Home screen, Add-ons & settings, Backups & recovery,
+  Accounts, Advanced. Section tabs on every page, a side menu on larger screens, a bottom bar on
+  phones, and arrow keys move focus between controls for TV remotes. The old routes still work;
+  `#/dashboard` is now the overview and the component table moved to `#/components`.
+- **Look and words.** Design tokens with separately chosen light and dark sets and a theme button
+  (Automatic, Light, Dark); system fonts; validated, colour-blind-safe chart colours; skeletons while
+  loading; empty states that say what to do. API error codes (`playback_active`, `write_disabled`,
+  `host_not_allowed`, …) become sentences that say what happened and what to do. View-only profiles
+  (writes off, such as a Kids profile) show one calm notice instead of warnings on every page.
+- **History on the TV.** The watchdog loop records memory, the newest internet check and cached-row
+  counts at most every 15 minutes, only while the TV is idle, into
+  `addon_data/service.kodi.addonadmin/metrics_history.json` (7 days, at most 800 samples and 256 KB,
+  atomic writes; a damaged file starts afresh).
+- **API additions:** `GET /api/overview`, `GET /api/metrics/history?days=1..7`; the internet check
+  lists each service's time (`hosts`), account checks carry `days_left`, `/api/widget-cache` entries
+  carry `fetched_at` and a six-title `preview`, and checkpoint manifests record `total_bytes`.
+- **Demo server:** `scripts/demo_server.py` runs the dashboard against synthetic data on
+  127.0.0.1 for design review and screenshots. It is not part of the add-on.
+
 ## 0.7.7 — 2026-10-11 (prerelease)
 
 - **Shield exit workaround on Kodi 22.0 RC1.** It was enabled only on 22.0 BETA2, so installing a

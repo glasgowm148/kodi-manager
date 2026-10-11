@@ -22,7 +22,7 @@ player, and what each add-on is set to. You can then change settings, back them 
 from a phone or computer. Use it on its own or as the on-device companion to
 [nvidia-MCP](https://github.com/glasgowm148/nvidia-MCP).
 
-![Kodi Manager dashboard with component statuses, settings links and backup checkpoints](docs/images/dashboard.png)
+![Kodi Manager overview: the TV's state, a one-line verdict and tiles for memory, internet, home rows, backups, protection and accounts with 7-day trends](docs/images/dashboard.png)
 
 *Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
@@ -35,6 +35,7 @@ from a phone or computer. Use it on its own or as the on-device companion to
 
 | Feature | What it shows or changes | Works with |
 | --- | --- | --- |
+| **Status at a glance** | One screen that says whether the TV is all right: what's playing, memory, internet, home rows, backups, protected settings and accounts about to expire, with 7-day trends | Any Kodi 19+ |
 | **Setup overview** | Installed and enabled add-ons and saved configuration; anything it can't confirm is marked unknown | Any Kodi 19+ |
 | **Settings** | Each add-on's settings with current and default values, searchable. Account tokens are visible so you can enter and repair them | Any Kodi 19+ |
 | **Playback pipeline** | Which player is selected, how metadata helpers route to it, and evidence for provider and account links | Any Kodi 19+ |
@@ -166,6 +167,7 @@ settings = flatten_settings(schema)  # Secret values are masked.
 | Guide | Use it for |
 | --- | --- |
 | [Setup](docs/setup.md) | Installing, the access token, connection troubleshooting |
+| [Dashboard design](docs/ui.md) | How the pages are organised, the charts and the history behind them |
 | [Widget cache](docs/widget-cache.md) | Row options, refresh schedule, limits, undo |
 | [API](docs/api.md) | Endpoints, authentication, layout workflows |
 | [Compatibility](docs/compatibility.md) | What has been tested live and what only in CI |
