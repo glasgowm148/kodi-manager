@@ -35,6 +35,17 @@
   there, instead of being replayed (for example "Restart the Shield" after the connection had
   recovered). The nightly checkpoint and connection probes also stop when Kodi quits or switches
   profile.
+- **Home layout no longer overwrites newer TV changes.** A draft started before the section changed
+  on another device or in Kodi's own editor is refused at Review instead of removing the rows added
+  there; drafts of untouched sections, and drafts restored from the browser, still apply.
+- **Undo toasts expire.** "Restore settings from before this save" and "Undo restore" disappear after
+  a minute or on navigation and ask first after 10 seconds, so a stray tap can't roll back later
+  changes.
+- **Rebuild stays available** after "Stop playback" refuses a skin-menu rebuild.
+- **Restore tested fixes and Health Re-apply ask first**, listing what they overwrite.
+- A refused settings batch highlights the setting it names; the cached-row Pages field allows 1–5
+  like the server; "Layout read only" shows when writes are off; the API docs list
+  `playback_active`, `origin_mismatch` and the actual layout fields.
 
 ## 0.7.5 — 2026-10-11 (prerelease)
 
