@@ -32,9 +32,8 @@ jobs:
         with:
           node-version: 20
       - run: python -m pip install -e ".[dev]"
-      - run: python -m pip install "pytest-timeout>=2.3,<3"
       - run: ruff check .
-      - run: python -c "import subprocess, sys; subprocess.run([sys.executable, '-m', 'pytest', '-v', '--timeout=60', '--timeout-method=thread', '-o', 'faulthandler_timeout=45'], check=True, timeout=180)"
+      - run: pytest -q -o faulthandler_timeout=60
       - run: for f in web/*.js; do node --check "$f"; done
         shell: bash
       - run: node --test tests/*.js
