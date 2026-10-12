@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 from typing import Any, Dict
 
 try:
@@ -113,6 +114,7 @@ def debug_paths(seed=None):
 class KodiAPI:
     def __init__(self, installer_seed=None):
         self.installer_seed = installer_seed or {}
+        self._log_history = None
 
     def jsonrpc(self, method, params=None) -> Dict[str, Any]:
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
@@ -216,6 +218,24 @@ class KodiAPI:
             except Exception:
                 continue
         return []
+
+    def log_history(self):
+        if self._log_history is None:
+            try:
+                from .log_history import LogHistory, HISTORY_FILE
+            except ImportError:
+                from log_history import LogHistory, HISTORY_FILE
+            self._log_history = LogHistory(translate(HISTORY_FILE), translate("special://logpath/"))
+        return self._log_history
+
+    def get_log_history(self, level="all", limit=100, before=0):
+        try:
+            return self.log_history().snapshot(level, limit, before)
+        except (OSError, sqlite3.Error):
+            # A storage failure must never look like a clean log.
+            return {"available": False, "catching_up": False, "retention_hours": 24,
+                    "counts": {"errors": 0, "warnings": 0, "notices": 0, "warning_lines": 0},
+                    "entries": [], "total": 0, "has_more": False, "next_before": None}
 
     def open_install_from_zip(self):
         """Open Kodi's own Install from zip file dialog on the TV.

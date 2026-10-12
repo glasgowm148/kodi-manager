@@ -21,7 +21,7 @@ try:
     from .service_config import BOOL_KEYS, NETWORK_KEYS, _bool, load_config, write_private_file  # noqa: F401
     from .service_workers import (  # noqa: F401
         BUSY_CONDITION, EXTERNAL_RELOAD_PROPERTIES, WIDGET_FAILURES_PROPERTY, WidgetHealth, external_reload_token,
-        persistent_widget_failures, start_maintenance, start_sampler, start_watchdog, start_widget_refresher, tv_busy)
+        persistent_widget_failures, start_log_collector, start_maintenance, start_sampler, start_watchdog, start_widget_refresher, tv_busy)
 except ImportError:
     import extension
     import profile_transition
@@ -31,7 +31,7 @@ except ImportError:
     from service_config import BOOL_KEYS, NETWORK_KEYS, _bool, load_config, write_private_file  # noqa: F401
     from service_workers import (  # noqa: F401
         BUSY_CONDITION, EXTERNAL_RELOAD_PROPERTIES, WIDGET_FAILURES_PROPERTY, WidgetHealth, external_reload_token,
-        persistent_widget_failures, start_maintenance, start_sampler, start_watchdog, start_widget_refresher, tv_busy)
+        persistent_widget_failures, start_log_collector, start_maintenance, start_sampler, start_watchdog, start_widget_refresher, tv_busy)
 
 
 def media_playing():
@@ -259,6 +259,11 @@ def main():
     except Exception as error:
         refresher = None
         kodi.log('Widget cache unavailable: %s' % type(error).__name__)
+    log_collector = None
+    try:
+        log_collector = start_log_collector(kodi)
+    except Exception as error:
+        kodi.log('Log history unavailable: %s' % type(error).__name__)
     watchdog = None
     if xbmc:
         try:
@@ -305,6 +310,8 @@ def main():
             else:
                 time.sleep(1)
     finally:
+        if log_collector:
+            log_collector.set()
         stop_extension(kodi, private)
         if refresher:
             refresher.stop.set()

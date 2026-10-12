@@ -4,7 +4,6 @@ Plain functions behind the API routes (api_*.py): settings of one add-on, accoun
 Health, the overview screen, the backup timeline, row titles and the playback dry run. No HTTP here.
 """
 import time
-import re
 from urllib.parse import urlsplit
 from typing import Any, Dict
 
@@ -24,6 +23,7 @@ try:
     from .metrics import process_started_at, widget_row_counts
     from .row_titles import label_resolver, row_titles
     from .baseline import Baseline
+    from .log_scan import scan_log_lines  # noqa: F401
     from . import maintenance
 except ImportError:
     from version import VERSION
@@ -41,6 +41,7 @@ except ImportError:
     from metrics import process_started_at, widget_row_counts
     from row_titles import label_resolver, row_titles
     from baseline import Baseline
+    from log_scan import scan_log_lines  # noqa: F401
     import maintenance
 
 WIDGET_CACHE_DIR = "special://profile/addon_data/service.kodi.addonadmin/widget_cache"
@@ -172,53 +173,19 @@ def maintenance_checks(kodi):
     return checks
 
 
-_LOG_LEVEL = re.compile(r"^(?:\d{4}-\d{2}-\d{2}\s+\S+\s+T:\d+\s+)?"
-                        r"(debug|info|notice|warning|warn|error|fatal)\b(?:\s*<[^>]*>)?\s*:?\s*(.*)$", re.I)
-
-
-def scan_log_lines(lines, skin=None):
-    """Retain raw warnings; only evidenced compatibility notices bypass Health's alert.
-
-    Bingie 2.0.2.3 deliberately uses focus buttons inside list layouts. Kodi keeps
-    them but warns (GUIListGroup::AddControl); removing them breaks focus actions.
-    Other skins, versions and control types remain warnings.
-    """
-    skin = skin or {}
-    focus_buttons = (skin.get("active") and skin.get("addon_id") == "skin.bingie"
-                     and skin.get("version") == "2.0.2.3")
-    errors, warnings, notices, raw_warnings = [], [], [], []
-    prior_notice = False
-    for i, line in enumerate(lines):
-        parsed = _LOG_LEVEL.match(line)
-        if not parsed:
-            if re.search(r"\b(error|exception|traceback)\b", line, re.I):
-                errors.append(line)
-            continue
-        level, message = parsed.group(1).lower(), parsed.group(2)
-        if level in ("error", "fatal"):
-            errors.append(line)
-        if level not in ("warning", "warn"):
-            prior_notice = False
-            continue
-        raw_warnings.append(line)
-        if re.fullmatch(r"Skipped \d+ duplicate messages\.\.", message):
-            (notices if prior_notice else warnings).append(line)
-            continue
-        resolved_type = (message == 'JSONRPC: Could not parse type "Setting.Details.SettingList"'
-                         and any("JSONRPC: Resolving incomplete types/methods referencing Setting.Details.Setting"
-                                 in following for following in lines[i + 1:i + 6]))
-        prior_notice = bool(resolved_type or (focus_buttons and message == "Trying to add unsupported control type 7"))
-        (notices if prior_notice else warnings).append(line)
-    return errors, warnings, notices, raw_warnings
-
-
 def health_summary(kodi, index, config):
     index.refresh()
     stack = detect_stack(kodi, index)
     addons = index.list()
     paths = debug_paths(config.get("installer_seed", {}))
-    logs = kodi.get_log_lines(200)
-    errors, warnings, notices, raw_warnings = scan_log_lines(logs, stack.get("skin"))
+    history = kodi.get_log_history(limit=20)
+    counts = history["counts"]
+    log_status = "error" if counts["errors"] else ("warning" if counts["warnings"] or not history["available"] or history["catching_up"] else "ok")
+    log_detail = "%s errors · %s warnings%s in the past 24 hours" % (counts["errors"], counts["warnings"], " · %s known notices" % counts["notices"] if counts["notices"] else "")
+    if not history["available"]:
+        log_detail += " · collection unavailable"
+    elif history["catching_up"]:
+        log_detail += " · importing available logs"
     core = ["skin", "tmdbhelper", "fenlight", "fen", "pov", "cocoscrapers"]
     memory = memory_status()
     found = sum(1 for key in core if stack.get(key, {}).get("found") or stack.get(key, {}).get("active"))
@@ -229,9 +196,7 @@ def health_summary(kodi, index, config):
         {"id": "addons_path", "label": "Installed add-ons path", "status": "ok" if paths.get("addons_probe", {}).get("selected_path") else "warning", "detail": paths.get("addons_probe", {}).get("selected_path", "")},
         {"id": "write_mode", "label": "Write mode", "status": "ok" if config.get("write_enabled") else "warning", "detail": "enabled" if config.get("write_enabled") else "disabled"},
         dict({"id": "memory", "label": "Memory"}, **{k: v for k, v in memory.items() if k in ("status", "detail")}),
-        {"id": "logs", "label": "Kodi log scan", "status": "error" if errors else ("warning" if warnings else "ok"),
-         "detail": "%s errors · %s warnings%s in last 200 lines" %
-         (len(errors), len(warnings), " · %s known notices" % len(notices) if notices else "")},
+        {"id": "logs", "label": "Kodi log scan", "status": log_status, "detail": log_detail},
     ]
     internet = internet_check()
     if internet:
@@ -248,15 +213,16 @@ def health_summary(kodi, index, config):
             "enabled_addons": len([a for a in addons if a.get("enabled") is True]),
             "config_folders": len([a for a in addons if a.get("config_present")]),
             "stack_detected": found,
-            "kodi_log_errors": len(errors),
-            "kodi_log_warnings": len(warnings),
-            "kodi_log_notices": len(notices),
-            "kodi_log_warning_lines": len(raw_warnings),
+            "kodi_log_errors": counts["errors"],
+            "kodi_log_warnings": counts["warnings"],
+            "kodi_log_notices": counts["notices"],
+            "kodi_log_warning_lines": counts["warning_lines"],
             "kodi_memory_mb": memory.get("kodi_mb"),
         },
         # Log lines can carry tokens and keys (URLs, headers): mask them like API errors.
-        "recent_errors": redact(errors[-20:]),
-        "recent_warnings": redact(raw_warnings[-20:]),
+        "recent_errors": redact([e["line"] for e in history["entries"] if e["level"] == "error"]),
+        "recent_warnings": redact([e["line"] for e in history["entries"] if e["level"] != "error"]),
+        "log_history": {k: history.get(k) for k in ("retention_hours", "since", "tracking_started_at", "last_scan_at", "available", "catching_up")},
     }
 
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.25 — 2026-10-12
+
+- Health counts warnings, errors and known notices over the past 24 hours. A background
+  collector imports the available current/previous logs and then reads new bytes, even
+  while playing. Masked history persists across restarts and profile changes; old entries expire.
+- Kodi log opens the retained history with level filters and pages of older entries.
+  The current 500-line raw tail remains available separately. Collection failures and
+  initial catch-up are shown instead of claiming the log is clear.
+
 ## 0.7.24 — 2026-10-12 (prerelease)
 
 - Explain add-on purposes, Kodi components, shared libraries, update repositories, resource packs and background services. Link declared dependents, including disabled and optional imports; add type/review filters and conservative removal guidance for the current profile. Repeat explanations on settings pages. No automatic removal or device mutations are added.

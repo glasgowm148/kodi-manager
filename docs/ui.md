@@ -121,3 +121,12 @@ The service keeps a small history so the charts have something to show:
 - One accent (indigo, the glow of a TV in a dark room); the TV-shaped Overview header is the one
   decorative element. Cards are flat with hairline borders; depth comes from the page plane.
 - Motion only answers an action (opening a menu, a tooltip) and is off with reduced motion.
+
+## Kodi warnings and errors
+
+Health's log scan covers the past 24 hours. **Kodi log** shows retained warnings, errors and known
+notices, with level filters and **Load older entries** to page through the complete history.
+Entries survive Kodi restarts and profile changes, are masked before storage, and expire after
+24 hours. **Current raw log tail** separately shows the newest 500 lines, including info messages.
+Initial importing and collection failures are shown. Earlier problems can only be recovered from
+log files still available when collection starts; missing old logs cannot be reconstructed.

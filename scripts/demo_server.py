@@ -212,10 +212,31 @@ class Demo:
                   {"id": "baseline", "label": "Protected settings", "status": "ok", "detail": "6 settings as you set them"}]
         checks += [{"id": a["id"], "label": a["label"], "status": a["status"], "detail": a["detail"]} for a in self.accounts_now()]
         checks += [{"id": "nightly", "label": "Nightly checkpoint", "status": "ok", "detail": "Last taken today 03:12"},
-                   {"id": "logs", "label": "Kodi log scan", "status": "warning", "detail": "0 errors · 3 warnings in last 200 lines"}]
+                   {"id": "logs", "label": "Kodi log scan", "status": "warning", "detail": "0 errors · 123 warnings · 1 known notices in the past 24 hours"}]
         return {"status": "warning", "checks": checks,
-                "stats": {"addons": len(ADDONS), "enabled_addons": len(ADDONS) - 1, "config_folders": 7, "stack_detected": 4, "kodi_log_errors": 0, "kodi_log_warnings": 3, "kodi_memory_mb": 612},
+                "stats": {"addons": len(ADDONS), "enabled_addons": len(ADDONS) - 1, "config_folders": 7, "stack_detected": 4, "kodi_log_errors": 0, "kodi_log_warnings": 123, "kodi_memory_mb": 612},
                 "recent_errors": [], "recent_warnings": ["warning <general>: Skin has invalid include: DemoInclude", "warning <general>: Texture not found: demo.png", "warning <general>: Slow directory listing (2.1 s)"]}
+
+    def log_history(self, query):
+        level = query.get("level", ["all"])[0]
+        limit = int(query.get("limit", ["100"])[0])
+        before = int(query.get("before", ["0"])[0])
+        if level not in ("all", "error", "warning", "notice") or not 1 <= limit <= 500 or before < 0:
+            raise ValueError("Invalid history filter")
+        entries = [{"id": i, "timestamp": self.now - 60 * (124 - i), "level": "warning",
+                    "line": "warning <general>: Demo warning %s" % i} for i in range(1, 124)]
+        entries.append({"id": 124, "timestamp": self.now - 10, "level": "notice", "line": "warning <general>: Demo compatibility notice"})
+        entries = [e for e in reversed(entries) if level == "all" or e["level"] == level]
+        total = len(entries)
+        if before:
+            entries = [e for e in entries if e["id"] < before]
+        page = entries[:limit]
+        return {"retention_hours": 24, "since": self.now - 86400, "now": self.now,
+                "tracking_started_at": self.now - 86400, "last_scan_at": self.now,
+                "available": True, "catching_up": False,
+                "counts": {"errors": 0, "warnings": 123, "notices": 1, "warning_lines": 124},
+                "entries": page, "total": total, "has_more": len(entries) > limit,
+                "next_before": page[-1]["id"] if len(entries) > limit else None}
 
     def addons(self):
         # Use the same classification logic as Kodi, with synthetic manifests and dependencies.
@@ -379,6 +400,8 @@ def make_handler(demo):
                 if path == "/api/logs":
                     clock = time.strftime("%H:%M:%S", time.localtime(d.clock()))
                     return {"lines": ["%s Demo service started" % clock, "%s Widget cache refreshed 3 rows, 1 changed" % clock]}
+                if path == "/api/kodi/logs/history":
+                    return d.log_history(query)
                 if path == "/api/kodi/logs":
                     return {"lines": ["info <general>: Starting Kodi (22.0)", "warning <general>: Texture not found: demo.png", "error <general>: Demo error line for the log view", "info <general>: Demo finished loading"]}
                 if path == "/api/search/config":

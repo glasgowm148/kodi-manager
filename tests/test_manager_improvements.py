@@ -20,6 +20,10 @@ class FakeKodi:
     def get_log_lines(self, n=200):
         return ["INFO ok", "WARNING sample warning", "ERROR sample error"]
 
+    def get_log_history(self, **kwargs):
+        return {"available": True, "catching_up": False, "counts": {"errors": 1, "warnings": 1, "notices": 0, "warning_lines": 1},
+                "entries": [{"level": "error", "line": "ERROR sample error"}, {"level": "warning", "line": "WARNING sample warning"}]}
+
     def list_addons(self):
         return []
 

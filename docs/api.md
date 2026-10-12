@@ -62,22 +62,37 @@ platforms retain their existing behavior. See [tvOS storage/recovery limits](app
 | `GET /api/metrics/history?days=1..7` | – | – | The 7-day history behind the charts (see below): `{resolution_seconds, retention_days, days, now, count, series{t[], memory_available_mb[], memory_total_mb[], kodi_mb[], swap_used_pct[], rows_cached[], rows_failing[], rows_persistent[], network_status[], kodi_started_at[]}, hosts[], latency_ms{HOST: [ms]}, kodi_starts[]}`; `kodi_starts` lists each Kodi start inside the window. Arrays are aligned with `t` (Unix seconds); `null` marks a figure that was not sampled. `days` outside 1–7 answers `400` `bad_request`. |
 | `GET /api/bootstrap/status` | – | – | `{installed, web_url, needs_auth, nonce_present}` (legacy installer only) |
 | `GET /api/stack` | – | – | Detected stack: `skin` (with `bingie_like`), `tmdbhelper`, `fenlight`, `fen`, `pov`, `cocoscrapers`, `trakt`, `trakt_integration`, `warnings`, … |
-| `GET /api/health` | – | – | `{status, checks[], stats{}, recent_errors[], recent_warnings[]}` (log lines masked like `/api/kodi/logs`) |
+| `GET /api/health` | – | – | `{status, checks[], stats{}, recent_errors[], recent_warnings[], log_history{}}` (log lines masked like `/api/kodi/logs`) |
 | `GET /api/integrations` | – | – | Account-integration summary per add-on |
 | `GET /api/addons` | – | – | Array of add-ons: `addon_id`, `name`, `version`, `installed`, `enabled`, `config_present`, … |
 | `GET /api/addons/ID` | – | – | That add-on plus `warnings[]` and `related` details |
 | `GET /api/search/config?q=TEXT` | – | – | `{query, count, results[]}`; each result has `addon_id`, `addon_name`, `group`, `id`, `label`, `value`, `type`, `editable`, `masked`, `warning` (at most 500) |
 | `GET /api/logs` | – | – | `{lines[]}`: the service's last 200 log lines |
 | `GET /api/kodi/logs` | – | – | `{lines[]}`: the last 500 lines of Kodi's log, with tokens, keys and bearer headers masked |
+| `GET /api/kodi/logs/history?level=all&limit=100&before=ID` | – | – | Masked 24-hour history: `entries[{id,timestamp,level,line}]`, `counts{errors,warnings,notices,warning_lines}`, `total`, `has_more`, `next_before`, `retention_hours`, `since`, `now`, `tracking_started_at`, `last_scan_at`, `available`, `catching_up`. `level`: all/error/warning/notice; limit 1–500; use `next_before` for the next page. Invalid filters answer 400. |
 | `GET /api/debug/paths` | – | – | Kodi version, platform and resolved profile paths |
 | `GET /api/debug/stack-raw` | – | – | Raw add-on probes, merged records and the classified stack |
 
-Health's log check uses each line's log level. Its `kodi_log_warnings` statistic counts actionable
+Since 0.7.25, Health's log check uses a persisted rolling 24-hour history and each line's log level. Its `kodi_log_warnings` statistic counts actionable
 warning lines; `kodi_log_notices` counts evidenced startup/compatibility notices and
 `kodi_log_warning_lines` counts all raw warning lines. `recent_warnings` retains raw warnings,
 including notices. The focus-button exception applies only to active `skin.bingie` version
 2.0.2.3; other skins, versions and unsupported controls still raise warnings. A duplicate-message
 notice without a known harmless original remains actionable.
+
+The collector runs every two seconds, including during playback, without Kodi calls from its worker.
+It incrementally reads `kodi.log` and `kodi.old.log`, stores masked entries and file cursors in
+`special://masterprofile/addon_data/service.kodi.addonadmin/log-history.db`, and shares that history
+across profiles. Retention uses Kodi's local log timestamps; undated continuation lines inherit
+preceding timestamps (file modification time when no timestamp is available). Repeated physical
+lines remain separate entries. Log rotation, service restarts and repeated reads do not duplicate
+committed entries. Collection reads at most 1 MiB plus complete-line/context overhead per file per pass.
+`catching_up` marks an incomplete initial import; unavailable or stale collection raises a Health warning.
+
+History begins when this collector is installed/enabled. It recovers earlier entries only from logs
+still on disk; it cannot recover files already overwritten while collection was off. The Health
+preview shows the newest 20 entries; the paginated history exposes every retained entry. The
+existing `/api/kodi/logs` raw-tail response is unchanged. No raw credentials are stored in history.
 
 ## Add-on settings and backups
 

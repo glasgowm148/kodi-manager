@@ -117,7 +117,9 @@ def test_kodi_log_lines_are_masked(dashboard):
 
 
 def test_health_log_lines_are_masked():
-    kodi = SimpleNamespace(get_log_lines=lambda n=300: list(SECRET_LINES), get_kodi_version=lambda: "21.0")
+    kodi = SimpleNamespace(get_kodi_version=lambda: "21.0", get_log_history=lambda **kw: {"available": True, "catching_up": False,
+        "counts": {"errors": 1, "warnings": 1, "notices": 0, "warning_lines": 1},
+        "entries": [{"level": "error", "line": SECRET_LINES[1]}, {"level": "warning", "line": SECRET_LINES[2]}]})
     index = SimpleNamespace(refresh=Mock(), list=lambda: [])
     with patch.object(dashboard_data, "detect_stack", return_value={}), patch.object(dashboard_data, "debug_paths", return_value={}), \
             patch.object(dashboard_data, "memory_status", return_value={}), patch.object(dashboard_data, "internet_check", return_value=None), \
@@ -126,6 +128,7 @@ def test_health_log_lines_are_masked():
     assert summary["stats"]["kodi_log_errors"] == 1 and summary["stats"]["kodi_log_warnings"] == 1
     assert_masked(summary["recent_errors"] + summary["recent_warnings"] + ["token=***"])
     assert "Bearer" in summary["recent_errors"][0]
+    assert "past 24 hours" in next(c for c in summary["checks"] if c["id"] == "logs")["detail"]
 
 
 @pytest.mark.parametrize("host", [
@@ -160,3 +163,21 @@ def test_server_refuses_foreign_host_names_for_pages_and_api(dashboard):
     assert dashboard.call("GET", "/api/kodi/logs", host="192.168.1.50:8765")[0] == 200
     assert dashboard.call("GET", "/api/kodi/logs", host="shield.local:8765")[0] == 200
     assert dashboard.call("GET", "/api/kodi/logs", host=False)[0] == 200
+
+
+def test_history_route_validates_pages_and_returns_masked_entries(dashboard, tmp_path):
+    from log_history import LogHistory
+    import time
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "kodi.log").write_text("\n".join(SECRET_LINES) + "\n")
+    history = LogHistory(tmp_path / "history.db", logs, time.time)
+    history.collect()
+    dashboard.state.kodi.get_log_history = history.snapshot
+    status, body = dashboard.call("GET", "/api/kodi/logs/history?level=warning&limit=1")
+    assert status == 200
+    assert body["data"]["total"] == 1
+    assert "sk-test-12345" not in str(body)
+    for query in ("level=debug", "limit=501", "before=-1", "limit=no"):
+        status, body = dashboard.call("GET", "/api/kodi/logs/history?" + query)
+        assert status == 400 and body["code"] == "bad_request"

@@ -231,3 +231,25 @@ def start_watchdog(kodi):
 
     threading.Thread(target=run, name="km-watchdog", daemon=True).start()
     return watchdog
+
+
+def start_log_collector(kodi):
+    """Collect new log bytes while playing too; never call Kodi from the worker."""
+    if not xbmc:
+        return None
+    import threading
+    stop = threading.Event()
+    history = kodi.log_history()
+    skin = dict(kodi.get_active_skin() or {}, active=True)
+
+    def run():
+        while not stop.is_set():
+            try:
+                history.collect(skin, stopping=stop.is_set)
+            except Exception:
+                # Health reports unavailable/stale collection; avoid logging into a loop.
+                pass
+            stop.wait(2)
+
+    threading.Thread(target=run, name="km-log-history", daemon=True).start()
+    return stop

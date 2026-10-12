@@ -226,3 +226,21 @@ test("the theme button cycles automatic, light and dark and is remembered", asyn
   expect(await page.evaluate(() => localStorage.getItem("km_theme"))).toBeNull();
   expect(app.errors).toEqual([]);
 });
+
+
+test("Kodi log retains 24 hours with pagination, filters and a separate raw tail", async ({ page, app }) => {
+  await app.open("kodi-logs");
+  await expect(page.locator("#content")).toContainText("past 24 hours");
+  await expect(page.locator("#historyLogBox .log-line")).toHaveCount(100);
+  await page.locator("#olderLogEntries").click();
+  await expect(page.locator("#historyLogBox .log-line")).toHaveCount(124);
+  await expect(page.locator("#olderLogEntries")).toBeHidden();
+  await page.locator('[data-history-level="error"]').click();
+  await expect(page.locator("#historyLogBox")).toContainText("No retained entries");
+  await page.locator('[data-history-level="notice"]').click();
+  await expect(page.locator("#historyLogBox .log-line")).toHaveCount(1);
+  await page.locator("details summary").click();
+  await page.locator("#loadRawKodiLog").click();
+  await expect(page.locator("#rawKodiLog")).toContainText("info");
+  expect(app.errors).toEqual([]);
+});

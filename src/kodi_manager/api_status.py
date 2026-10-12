@@ -133,6 +133,9 @@ class StatusRoutes(RequestHandler):
     def api_kodi_logs(self):
         return {"lines": redact(self.state.kodi.get_log_lines(500))}
 
+    def api_kodi_log_history(self):
+        return self.state.kodi.get_log_history(self.query("level", "all"), self.query("limit", "100"), self.query("before", "0"))
+
     # --- Kodi windows --------------------------------------------------------------
 
     def api_open_skin_settings(self):

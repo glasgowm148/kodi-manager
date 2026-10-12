@@ -648,7 +648,7 @@ async function componentsView(refresh=false){
 }
 const HEALTH_WORDS = {ok:"OK", warning:"Needs a look", error:"Problem"};
 /* Where to look next for each health check. */
-const HEALTH_LINKS = {logs:["#/kodi-logs","Open Kodi’s log"], memory:["#/trends","See memory over time"], internet:["#/trends","See answer times"], nightly:["#/backups","Open backups"], trakt:["#/accounts","Open accounts"], torbox:["#/accounts","Open accounts"], stack:["#/components","See your add-ons"], write_mode:["#/setup","How changes are allowed"]};
+const HEALTH_LINKS = {logs:["#/kodi-logs","See the past 24 hours"], memory:["#/trends","See memory over time"], internet:["#/trends","See answer times"], nightly:["#/backups","Open backups"], trakt:["#/accounts","Open accounts"], torbox:["#/accounts","Open accounts"], stack:["#/components","See your add-ons"], write_mode:["#/setup","How changes are allowed"]};
 const HEALTH_STATS = {addons:"Add-ons installed", enabled_addons:"Turned on", config_folders:"With saved settings", stack_detected:"Core add-ons found", kodi_log_errors:"Errors in Kodi’s log", kodi_log_warnings:"Warnings in Kodi’s log", kodi_memory_mb:"Memory used by Kodi"};
 function healthTone(status){ return status === "ok" ? "ok" : status === "error" ? "bad" : "warn"; }
 async function healthView(){
@@ -662,7 +662,7 @@ async function healthView(){
   <section class="verdict verdict--${tone}" aria-label="Summary">${dashboardIcon(tone === "ok" ? "check" : "alert")}<div><h3>${esc(verdict)}</h3><p>${esc(attention.length ? "The checks that need a look are listed first." : "Nothing needs doing right now.")}</p></div></section>
   <ul class="checklist">${[...attention, ...checks.filter(c => c.status === "ok")].map(c => `<li class="check check--${healthTone(c.status)}"><span class="check-icon">${dashboardIcon(c.status === "ok" ? "check" : "alert")}</span><div class="check-body"><div class="check-head"><b>${esc(c.label)}</b>${dashboardPill(healthTone(c.status), HEALTH_WORDS[c.status] || c.status, c.status === "ok" ? "check" : "alert")}</div><p class="muted">${esc(c.detail)}</p>${healthAction(c)}${HEALTH_LINKS[c.id] && c.status !== "ok" ? `<a class="check-link" href="${HEALTH_LINKS[c.id][0]}">${esc(HEALTH_LINKS[c.id][1])}</a>` : ""}</div></li>`).join("")}</ul>
   <section class="panel"><h3>At a glance</h3><dl class="facts-grid">${Object.entries(h.stats || {}).map(([k,v]) => `<div><dt>${esc(HEALTH_STATS[k] || k.replace(/_/g," "))}</dt><dd>${esc(statValue(k, v))}</dd></div>`).join("")}</dl></section>
-  <details class="panel log-problems"><summary>Recent problems in Kodi’s log</summary><h4>Errors</h4><pre>${esc(logBlock(h.recent_errors))}</pre><h4>Warnings</h4><pre>${esc(logBlock(h.recent_warnings))}</pre></details>`);
+  <details class="panel log-problems"><summary>Latest recorded problems from the past 24 hours</summary><h4>Errors</h4><pre>${esc(logBlock(h.recent_errors))}</pre><h4>Warnings</h4><pre>${esc(logBlock(h.recent_warnings))}</pre><a href="#/kodi-logs">See all retained warnings and errors</a></details>`);
   bindHealthActions();
 }
 function healthAction(check){
@@ -1048,7 +1048,45 @@ function renderLogs(title, lines){
   draw("all");
 }
 async function logs(){ const l=await api("/api/logs"); renderLogs("Service log", l.lines || []); }
-async function kodiLogs(){ const l=await api("/api/kodi/logs"); renderLogs("Kodi log", l.lines || []); }
+function logHistoryMarkup(history, level){
+  const c = history.counts || {};
+  const note = !history.available ? "Collection is unavailable. Saved entries are shown below." : history.catching_up ? "Importing the available log files. Counts may still increase." : "New entries are collected in the background. Entries expire after 24 hours.";
+  return `${pageHead("Kodi log", "Warnings and errors from the past 24 hours, retained across Kodi restarts and profile changes. Tokens and keys are masked.")}
+    <div class="panel"><p>${esc(c.errors ?? 0)} errors · ${esc(c.warnings ?? 0)} warnings · ${esc(c.notices ?? 0)} known notices</p><p class="muted" role="status">${esc(note)}</p>
+    <p class="muted">History started ${esc(history.tracking_started_at ? new Date(history.tracking_started_at * 1000).toLocaleString() : "collecting just now")}. Earlier entries are recovered from the log files still available.</p>
+    <div class="tabs" role="group" aria-label="Filter retained log entries">${[["all","All"],["error","Errors"],["warning","Warnings"],["notice","Known notices"]].map(([key,label]) => `<button type="button" data-history-level="${key}" aria-pressed="${String(key === level)}" class="${key === level ? "active" : ""}">${label}</button>`).join("")}</div>
+    <div id="historyLogBox" class="log-view">${logHistoryEntries(history.entries)}</div>
+    <p id="historyLogCount" class="muted">${esc((history.entries || []).length)} of ${esc(history.total ?? 0)} entries shown</p>
+    <button type="button" id="olderLogEntries" ${history.has_more ? "" : "hidden"}>Load older entries</button>
+    <button type="button" id="refreshLogHistory">Refresh history</button></div>
+    <details class="panel"><summary>Current raw log tail</summary><p class="muted">The newest 500 lines, including info messages. The warning/error history above is retained separately.</p><button type="button" id="loadRawKodiLog">Load current tail</button><pre id="rawKodiLog"></pre></details>`;
+}
+function logHistoryEntries(entries){
+  return (entries || []).length ? entries.map(e => `<div class="log-line log-${e.level === "error" ? "error" : e.level === "warning" ? "warn" : "info"}"><time>${esc(new Date(e.timestamp * 1000).toLocaleString())}</time> ${esc(e.line)}</div>`).join("") : '<p class="muted">No retained entries in this filter.</p>';
+}
+async function kodiLogs(level="all"){
+  const h = await api(`/api/kodi/logs/history?level=${encodeURIComponent(level)}`);
+  out(logHistoryMarkup(h, level));
+  document.querySelectorAll("[data-history-level]").forEach(b => b.onclick = withErrors(() => kodiLogs(b.dataset.historyLevel)));
+  $("#refreshLogHistory").onclick = withErrors(() => kodiLogs(level));
+  let before = h.next_before, shown = (h.entries || []).length;
+  $("#olderLogEntries").onclick = withErrors(async () => {
+    const button = $("#olderLogEntries"), box = $("#historyLogBox");
+    button.disabled = true;
+    try {
+      const older = await api(`/api/kodi/logs/history?level=${encodeURIComponent(level)}&before=${encodeURIComponent(before)}`);
+      if (!box.isConnected) return;
+      box.insertAdjacentHTML("beforeend", (older.entries || []).length ? logHistoryEntries(older.entries) : "");
+      shown += (older.entries || []).length; before = older.next_before;
+      $("#historyLogCount").textContent = `${shown} of ${older.total ?? shown} entries shown`;
+      button.hidden = !older.has_more;
+    } finally { button.disabled = false; }
+  });
+  $("#loadRawKodiLog").onclick = withErrors(async () => {
+    const box = $("#rawKodiLog"), raw = await api("/api/kodi/logs");
+    if (box.isConnected) box.textContent = (raw.lines || []).join("\n");
+  });
+}
 function addonUsageMarkup(addon){
   const used = addon.required_by || [];
   if (!used.length) return '<span class="muted">No declared dependents found</span>';
