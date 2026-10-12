@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.13 — 2026-10-12 (prerelease)
+
+- Dashboard requests time out after 60 seconds, including a stalled response body, and release
+  busy controls. No change is retried automatically: a timeout can mean Kodi is still working.
+- A delayed authentication failure from an old token no longer clears a newer sign-in. This can
+  happen when signing in again after a Kodi profile change while an earlier request is pending.
+- Setup now identifies the installable release asset, profile-specific tokens, HTTP versus HTTPS,
+  manual updates, skin support, cached-row setup and common network failures. The README and
+  compatibility page distinguish the public package from live use with household extensions.
+- Includes 0.7.12's corrected log-level and known-notice handling, previously on main only.
+
 ## 0.7.12 — 2026-10-12 (prerelease)
 
 - **Log health follows log levels.** Words such as "error" inside an INFO message no longer

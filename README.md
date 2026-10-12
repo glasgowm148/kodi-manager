@@ -27,7 +27,8 @@ from a phone or computer. Use it on its own or as the on-device companion to
 *Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
 > [!NOTE]
-> **Prerelease.** 0.6.2 has been used day to day on one device (an NVIDIA Shield with Kodi 22 beta 2).
+> **Prerelease.** Current version: **0.7.13**. Service versions through 0.7.12 have been used on one
+> NVIDIA Shield with Kodi 22 beta 2 / RC1, including separate household extensions.
 > Other skins and devices are covered by automated tests rather than live use so far; see
 > [compatibility](docs/compatibility.md).
 
@@ -57,7 +58,9 @@ from a phone or computer. Use it on its own or as the on-device companion to
 ## Quick start
 
 1. **Download** `service.kodi.addonadmin-<version>.zip` from
-   [Releases](https://github.com/glasgowm148/kodi-manager/releases).
+   [Releases](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.13), under **Assets**.
+   Choose the `service.kodi.addonadmin` ZIP; GitHub's **Source code** ZIP, wheel and tar.gz are not
+   installable Kodi add-ons.
 2. **Install it.** In Kodi, choose **Add-ons → Install from zip file** and pick the ZIP. Allow
    unknown sources if Kodi asks.
 3. **Allow the dashboard on your network.** Go to **Add-ons → My add-ons → Services → Kodi Manager →
@@ -68,7 +71,9 @@ from a phone or computer. Use it on its own or as the on-device companion to
 
 To change settings from the dashboard, turn on **Enable writes** in the same place.
 
-The [setup guide](docs/setup.md) has menu-by-menu steps and troubleshooting.
+The [setup guide](docs/setup.md) has menu-by-menu steps. Start with
+[troubleshooting](docs/troubleshooting.md) if installation, sign-in or a feature fails.
+The dashboard works without an AI agent, MCP, Python on your computer or ADB.
 
 <details>
 <summary><strong>Let an AI agent do the computer side</strong></summary>
@@ -111,7 +116,8 @@ settings. Settings and layout changes take a backup first, and installs and menu
 run while something is playing. The optional row cache only switches rows over if you turn that on.
 
 **Which Kodi versions?**
-Kodi 19 or newer; the optional row cache needs Kodi 20. It's tested on Kodi 22 beta 2; see
+Kodi 19 or newer; the optional row cache needs Kodi 20. Live use covers one Shield on Kodi 22 beta 2
+and RC1; see
 [compatibility](docs/compatibility.md).
 
 **Is it safe on my network?**

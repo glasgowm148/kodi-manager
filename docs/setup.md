@@ -4,7 +4,7 @@ Kodi Manager has a **TV service**, **browser dashboard** and **computer-side Pyt
 For live settings/dashboard access, install the service ZIP inside Kodi. Installing the library on
 your computer alone does not install or start the TV service.
 
-The current portable release is **0.7.11**, marked prerelease. See [compatibility](compatibility.md)
+The current portable release is **0.7.13**, marked prerelease. See [compatibility](compatibility.md)
 for remaining live checks. Back up an existing customized installation before upgrading: public
 releases deliberately omit household settings and separate third-party patch bundles.
 
@@ -29,8 +29,9 @@ or JSON editing tasks. Ask only for missing connection information or unavoidabl
 
 1. Check for an existing Manager installation and inspect its version/profile before replacing it.
    Preserve local changes and create an appropriate private backup for an authorized upgrade.
-2. Download `service.kodi.addonadmin-0.7.11.zip` and `SHA256SUMS` from the
-   [release](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.11). Verify the ZIP checksum.
+2. Download `service.kodi.addonadmin-0.7.13.zip` and `SHA256SUMS` from the release's **Assets** at
+   [v0.7.13](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.13). Verify the ZIP checksum.
+   GitHub's **Source code** ZIP, Python wheel and tar.gz cannot be installed through Kodi.
    nvidia-MCP users can instead export the pinned bundle with `nvidia-mcp --export-manager DIRECTORY`.
 3. Transfer the verified ZIP to a Kodi-accessible folder using authorized ADB, a mounted share or
    local storage. Use only the configured device, not a LAN scan. Give the user the exact folder and
@@ -56,6 +57,8 @@ native installation and service permissions still need to be applied inside Kodi
 In Kodi, open **Add-ons → Video add-ons → Kodi Manager → Open the dashboard on another device**.
 It shows the dashboard address and access token, or tells you to turn on LAN access first. Open
 that address in a browser on the same network and enter the token when asked.
+Use `http://` as shown, not `https://`. The token belongs to the active Kodi profile; switching
+profiles can require signing in again with that profile's token.
 
 Once signed in, **Setup** in the dashboard offers a **Copy sign-in link** button. The link has the form
 `http://KODI_IP:8765/#token=…`: opening it on your phone or another computer signs that browser in.
@@ -98,3 +101,5 @@ The dashboard, settings, playback setup, backups and cached rows work with any s
 editor currently recognises reviewed **Bingie 2.0.2 / Skin Shortcuts 2.0.3** sources; other skins and
 unknown forks do not get it.
 For backups/restores and safe upgrades, see [recovery](recovery.md). For clients, see [API](api.md).
+For download mistakes, network isolation, missing features and updates, see
+[troubleshooting](troubleshooting.md).

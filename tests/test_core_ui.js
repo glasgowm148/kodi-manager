@@ -10,7 +10,7 @@ const app = web('app.js').replace(/boot\(\)\.catch[^\n]+;\s*$/, '');
 
 function context(extra = {}) {
   const storage = new Map();
-  const ui = {console:{error(){}}, setTimeout, clearTimeout, setInterval, clearInterval, URLSearchParams,
+  const ui = {console:{error(){}}, setTimeout, clearTimeout, setInterval, clearInterval, URLSearchParams, AbortController,
     localStorage:{getItem:key => storage.get(key) ?? null, setItem:(key, value) => storage.set(key, value), removeItem:key => storage.delete(key)},
     ...extra};
   vm.createContext(ui);
@@ -75,6 +75,61 @@ test('api clears a rejected token and asks for a new one', async () => {
   assert.equal(storage.has('bsa_token'), false);
   assert.equal(vm.runInContext('session.token', ui), '');
   assert.equal(ui.asked, 1);
+});
+
+test('a delayed rejection of an old token preserves the new sign-in', async () => {
+  let reply;
+  const {ui, storage} = context({fetch:() => new Promise(resolve => { reply = resolve; })});
+  ui.storeToken('old-profile-token');
+  const pending = ui.api('/api/status');
+  ui.storeToken('new-profile-token');
+  reply(response(401, {ok:false}));
+  await assert.rejects(pending, error => error.name === 'AbortError');
+  assert.equal(storage.get('bsa_token'), 'new-profile-token');
+});
+
+test('stalled headers or response bodies time out and release a busy button without retrying', async () => {
+  for (const stage of ['headers', 'body']) {
+    let expire, calls = 0, cleared = 0;
+    const errors = [];
+    const {ui, storage} = context({
+      setTimeout:(fn, ms) => { assert.equal(ms, 60000); expire = fn; return 1; },
+      clearTimeout:() => { cleared++; },
+      console:{error:message => errors.push(message)},
+      fetch:async (_, {signal}) => {
+        calls++;
+        const hang = () => new Promise((_, reject) => signal.addEventListener('abort', () => {
+          const error = new Error('aborted'); error.name = 'AbortError'; reject(error);
+        }));
+        return stage === 'headers' ? hang() : {status:200, json:hang};
+      }
+    });
+    ui.storeToken('still-valid');
+    const button = {tagName:'BUTTON', disabled:false};
+    const pending = ui.withErrors(() => ui.api('/api/stack/restore', {backup_id:'synthetic'}))({currentTarget:button});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(button.disabled, true);
+    expire();
+    await pending;
+    assert.equal(button.disabled, false);
+    assert.equal(calls, 1);
+    assert.equal(cleared, 1);
+    assert.equal(storage.get('bsa_token'), 'still-valid');
+    assert.match(errors[0], /Check the current state before trying a change again/);
+  }
+});
+
+test('caller cancellation remains silent and cancels the request timeout', async () => {
+  let cleared = 0;
+  const controller = new AbortController();
+  const {ui} = context({clearTimeout:timer => { clearTimeout(timer); cleared++; },
+    fetch:(_, {signal}) => new Promise((_, reject) => signal.addEventListener('abort', () => {
+      const error = new Error('aborted'); error.name = 'AbortError'; reject(error);
+    }))});
+  const pending = ui.api('/api/status', undefined, controller.signal);
+  controller.abort();
+  await assert.rejects(pending, error => error.name === 'AbortError');
+  assert.equal(cleared, 1);
 });
 
 test('withErrors turns failures into a notice and keeps the button usable', async () => {

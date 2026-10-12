@@ -35,31 +35,51 @@ function dashboardLink(origin, token) {
   return `${String(origin).replace(/\/+$/, "")}/#token=${encodeURIComponent(token || "")}`;
 }
 
+const REQUEST_TIMEOUT_MS = 60000;
 async function request(method, path, body, signal) {
   const headers = {"Content-Type": "application/json"};
-  if (session.token) headers.Authorization = "Bearer " + session.token;
-  let res;
+  const sentToken = session.token;
+  if (sentToken) headers.Authorization = "Bearer " + sentToken;
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (signal?.aborted) cancel();
+  else signal?.addEventListener("abort", cancel, {once:true});
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; cancel(); }, REQUEST_TIMEOUT_MS);
   try {
-    res = await fetch(path, {method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal});
+    const res = await fetch(path, {method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal:controller.signal});
+    let json = null;
+    try { json = await res.json(); } catch (error) {
+      if (controller.signal.aborted) throw error;
+    }
+    if (res.status === 401) {
+      // A late reply from an old profile/token must not sign out a newly authenticated browser.
+      if (sentToken !== session.token) {
+        const error = new Error("Sign-in changed while the request was running.");
+        error.name = "AbortError";
+        throw error;
+      }
+      storeToken("");
+      const error = new ApiError(json?.error?.message || "The access token is missing or no longer valid.", {status: 401, code: "unauthorized"});
+      if (typeof session.onUnauthorized === "function") session.onUnauthorized(error);
+      throw error;
+    }
+    if (!json || typeof json !== "object") {
+      throw new ApiError(`Kodi Manager sent an unexpected response (HTTP ${res.status}).`, {status: res.status, code: "bad_response"});
+    }
+    if (!json.ok) {
+      throw new ApiError(json.error?.message || `Request failed (HTTP ${res.status}).`, {status: res.status, code: json.error?.code || "", details: json.error?.details || null});
+    }
+    return json.data;
   } catch (error) {
+    if (timedOut) throw new ApiError("Kodi Manager took too long to reply. Kodi may still be working; check the current state before trying a change again.", {code: "timeout"});
+    if (error instanceof ApiError) throw error;
     if (error && error.name === "AbortError") throw error;
     throw new ApiError("Couldn’t reach Kodi Manager. Check that Kodi is running and this device is on the same network.", {code: "network"});
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", cancel);
   }
-  let json = null;
-  try { json = await res.json(); } catch (_) { json = null; }
-  if (res.status === 401) {
-    storeToken("");
-    const error = new ApiError(json?.error?.message || "The access token is missing or no longer valid.", {status: 401, code: "unauthorized"});
-    if (typeof session.onUnauthorized === "function") session.onUnauthorized(error);
-    throw error;
-  }
-  if (!json || typeof json !== "object") {
-    throw new ApiError(`Kodi Manager sent an unexpected response (HTTP ${res.status}).`, {status: res.status, code: "bad_response"});
-  }
-  if (!json.ok) {
-    throw new ApiError(json.error?.message || `Request failed (HTTP ${res.status}).`, {status: res.status, code: json.error?.code || "", details: json.error?.details || null});
-  }
-  return json.data;
 }
 function api(path, body, signal) { return request(body ? "POST" : "GET", path, body, signal); }
 function apiMethod(method, path, body) { return request(method, path, body); }
@@ -117,6 +137,7 @@ const ERROR_TEXT = {
   write_disabled: ["Changes are switched off for this Kodi profile.", WRITE_HINT],
   unauthorized: ["This browser isn’t signed in to Kodi Manager.", "Enter the access token shown on the TV."],
   network: ["Couldn’t reach the TV.", "Check that Kodi is running and that this device is on the same home network."],
+  timeout: ["Kodi Manager took too long to reply.", "Kodi may still be working. Check the current state before trying a change again."],
   host_not_allowed: ["Open the dashboard by the TV’s IP address.", "Use http://<TV address>:8765 or a .local name rather than another host name."],
   origin_mismatch: ["That request came from another web page and was blocked.", "Use the dashboard itself to make changes."],
   forbidden: ["Only devices on your home network can use this dashboard.", ""],
