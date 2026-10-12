@@ -83,9 +83,11 @@ def _backup_path(*parts):
     if any(not isinstance(p, str) or not re.fullmatch(r'[A-Za-z0-9._-]+', p)
            or p in ('.', '..') for p in parts):
         raise ValueError('Invalid backup identifier')
-    root = Path(backup_root()).resolve()
+    # Preserve Kodi's translated spelling for tvOS VFS keys. Resolve only the
+    # confinement check; directory aliases must not change the storage backend.
+    root = Path(os.path.abspath(backup_root()))
     target = root.joinpath(*parts)
-    if root not in target.resolve().parents:
+    if root.resolve() not in target.resolve().parents:
         raise ValueError('Backup path leaves its directory')
     return str(target)
 
@@ -355,7 +357,7 @@ def _roll_back(done, error):
     for aid, dest, skip, undo in reversed(done):
         undo_src = os.path.join(_backup_path(aid, undo["backup_id"]), "addon_data")
         try:
-            _replace_tree(undo_src, dest, skip, expected_files=undo.get("files_copied"))
+            _restore_folder(aid, undo_src, dest, skip, undo.get("files_copied"))
         except Exception:
             failed.append("%s (undo backup %s)" % (aid, undo["backup_id"]))
     if failed:

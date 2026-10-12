@@ -130,6 +130,89 @@ def test_virtual_backup_restore_undo_and_prune(tvos):
     assert not any(p.startswith(str(target) + os.sep) for p in values)
 
 
+def test_backup_path_alias_keeps_xml_in_virtual_storage(tvos, monkeypatch):
+    root, values, _fail = tvos
+    alias = root.parent / "userdata-alias"
+    try:
+        alias.symlink_to(root, target_is_directory=True)
+    except OSError:
+        pytest.skip("Directory symlinks unavailable")
+    monkeypatch.setattr(storage.xbmcvfs, "translatePath", lambda _: str(alias))
+    monkeypatch.setattr(backup, "backup_root", lambda: str(alias / "backups"))
+    live = alias / "addon_data/plugin.video.example"
+    live.mkdir(parents=True)
+    path = str(live / "settings.xml")
+    values[path] = b"original"
+    addon = {"addon_id": "plugin.video.example", "addon_data_path": str(live)}
+    snapshot = backup.create_backup(addon)
+    stored = os.path.join(backup._backup_path(addon["addon_id"], snapshot["backup_id"]), "addon_data", "settings.xml")
+    assert storage.virtual_xml(stored) and values[stored] == b"original"
+    assert not os.path.exists(stored)
+    values[path] = b"current"
+    result = backup.restore_backup(addon, snapshot["backup_id"])
+    assert values[path] == b"original"
+    backup.restore_backup(addon, result["undo_backup_id"])
+    assert values[path] == b"current"
+
+
+def test_missing_virtual_backup_key_refuses_physical_shadow(tvos):
+    root, values, _fail = tvos
+    live = root / "addon_data/plugin.video.example"
+    live.mkdir(parents=True)
+    path = str(live / "settings.xml")
+    values[path] = b"snapshot"
+    addon = {"addon_id": "plugin.video.example", "addon_data_path": str(live)}
+    snapshot = backup.create_backup(addon)
+    stored = os.path.join(backup._backup_path(addon["addon_id"], snapshot["backup_id"]), "addon_data", "settings.xml")
+    del values[stored]
+    Path(stored).write_bytes(b"physical shadow")
+    values[path] = b"current"
+    with pytest.raises(ValueError, match="incomplete"):
+        backup.restore_backup(addon, snapshot["backup_id"])
+    assert values[path] == b"current" and Path(stored).read_bytes() == b"physical shadow"
+
+
+@pytest.mark.parametrize("kind", ["addon", "stack"])
+@pytest.mark.parametrize("virtual", [False, True])
+def test_failed_self_restore_preserves_access_changes_after_undo_snapshot(tvos, monkeypatch, kind, virtual):
+    root, values, _fail = tvos
+    monkeypatch.setattr(storage, "is_tvos", lambda: virtual)
+    live = root / "addon_data" / backup.SELF_ID
+    live.mkdir(parents=True)
+    settings, identity, content = [str(live / name) for name in ("settings.xml", "device_identity.xml", "content.xml")]
+
+    def put(items):
+        for path, data in items.items():
+            if virtual:
+                values[path] = data
+            else:
+                Path(path).write_bytes(data)
+
+    put({settings: b"snapshot access", identity: b"snapshot owner", content: b"snapshot content"})
+    addon = {"addon_id": backup.SELF_ID, "addon_data_path": str(live)}
+    index = SimpleNamespace(get=lambda aid: addon if aid == backup.SELF_ID else None)
+    snapshot = backup.create_backup(addon) if kind == "addon" else backup.create_stack_backup([addon])
+    put({settings: b"access at undo", identity: b"live owner", content: b"live content"})
+    original, attempts = backup._restore_folder, []
+
+    def interrupted(*args):
+        attempts.append(True)
+        original(*args)
+        if len(attempts) == 1:
+            # Kodi's settings UI can rotate access while restoration is in flight.
+            put({settings: b"new access after undo"})
+            raise OSError("synthetic restore failure")
+
+    monkeypatch.setattr(backup, "_restore_folder", interrupted)
+    with pytest.raises(OSError, match="synthetic restore failure"):
+        if kind == "addon":
+            backup.restore_backup(addon, snapshot["backup_id"])
+        else:
+            backup.restore_stack_backup(index, snapshot["backup_id"])
+    assert storage.read_bytes(settings) == b"new access after undo"
+    assert storage.read_bytes(identity) == b"live owner" and storage.read_bytes(content) == b"live content"
+
+
 @pytest.mark.parametrize("active", [False, None])
 def test_inactive_or_unreadable_kodi_blocks_layout_before_work(tvos, monkeypatch, active):
     monkeypatch.setattr(storage, "application_active", lambda: active)

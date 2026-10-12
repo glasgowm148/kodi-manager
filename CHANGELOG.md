@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.22 — 2026-10-12 (prerelease)
+
+- Preserve live Manager access settings and device identity during failed add-on/checkpoint restore rollback, just as during successful restore. A token changed after the undo snapshot must not be resurrected from that snapshot.
+- Preserve translated backup-root spelling for tvOS VFS keys while resolving canonical paths for confinement checks. Directory aliases no longer send XML snapshots to physical shadows. Existing traversal/symlink refusal remains.
+- Test failed self-restore on POSIX and virtual storage, aliased backup/restore/undo and missing virtual backup keys. Older alias-affected physical snapshots may be refused as incomplete; take a fresh validated snapshot and retain independent private recovery copies. No live TV changes or physical Apple TV validation.
+
 ## 0.7.21 — 2026-10-12 (prerelease)
 
 - Preserve Kodi's translated path spelling when reading virtual `profiles.xml`; resolve canonical paths only for confinement comparisons. An alias such as `/var` → `/private/var` must not bypass the nested-profile check. Add a synthetic directory-alias regression.

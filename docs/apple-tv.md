@@ -47,6 +47,12 @@ the previous value on failure. Backups, undo, pipeline snapshots and pruning use
 stale physical shadows cannot replace it after a failed VFS read. Android retains its normal
 POSIX atomic writes. Virtual XML readback/backups are limited to 2 MB per file. From 0.7.17, incomplete/changed VFS reads and empty/oversized virtual writes are refused before accepting a snapshot or changing a preference. Version 0.7.18 also verifies existence/stat against the handle, since Kodi's Python constructor can silently ignore a failed native open.
 
+From 0.7.22, backup paths retain Kodi's translated directory spelling for virtual XML keys,
+including aliases such as `/var` → `/private/var`. Canonical paths are used only for confinement.
+Take a fresh validated snapshot after updating: older alias-affected physical XML snapshots may
+be refused as incomplete. Missing virtual keys never fall back to physical shadows; retained
+files are left intact. Keep independent private recovery copies.
+
 Non-XML files, directories, cache databases and backup manifests remain disposable tvOS storage.
 A missing source directory cannot enumerate retained XML keys; Manager refuses that snapshot instead of treating it as empty. Reopen the affected add-on on the TV to recreate its directories, then inspect before backing up. Purged subdirectories/manifests cannot establish a complete recoverable snapshot.
 
@@ -66,7 +72,8 @@ Version 0.7.21 preserves translated VFS key paths when master userdata uses a di
 symlinks and non-text extensions. The bearer token can read private configuration through this
 API; never expose it or attach snapshots to bug reports. There is no arbitrary file-write API.
 The ID identifies this Manager installation, not the Apple TV hardware; deletion/cloning of
-userdata can change/copy it. Self-restore preserves the live identity and access settings.
+userdata can change/copy it. Self-restore preserves the live identity and access settings, including failed restore rollback
+from 0.7.22.
 
 Before promoting tvOS support, verify on a spare/backed-up device: installation/auth, both profiles,
 active/background detection, one reversible setting/layout edit and undo, cache refresh,
