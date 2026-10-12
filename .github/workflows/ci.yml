@@ -33,7 +33,13 @@ jobs:
           node-version: 20
       - run: python -m pip install -e ".[dev]"
       - run: ruff check .
-      - run: pytest -q
+      - run: python scripts/ci_pytest.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: pytest-${{ matrix.os }}-${{ matrix.python }}
+          path: pytest.log
+          retention-days: 7
       - run: for f in web/*.js; do node --check "$f"; done
         shell: bash
       - run: node --test tests/*.js
@@ -57,7 +63,13 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install -e ".[dev]"
-      - run: python -m pytest -q tests/test_tvos_storage.py tests/test_server_slow_clients.py
+      - run: python scripts/ci_pytest.py tests/test_tvos_storage.py tests/test_server_slow_clients.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: pytest-windows-portable
+          path: pytest.log
+          retention-days: 7
 
   # Kodi 19-21 on Android embeds Python 3.8, which runs the service code. The library itself
   # needs 3.9+, so this job runs the test suite against the sources rather than installing them.
