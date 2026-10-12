@@ -1,13 +1,26 @@
 # Python library
 
 Download the Python wheel from [release assets](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.23)
-and verify it against `SHA256SUMS`, then install the downloaded file in your virtual environment:
+and [verify it against `SHA256SUMS`](setup.md#verify-the-download). Create a **Python 3.9+** virtual
+environment before installing; reuse an existing suitable one instead of replacing it.
+
+On macOS/Linux, from the download folder:
 
 ```sh
-python -m pip install ./kodi_manager-0.7.23-py3-none-any.whl
+python3 -m venv .venv
+.venv/bin/python -m pip install ./kodi_manager-0.7.23-py3-none-any.whl
 ```
 
-Create/activate a Python 3.9+ virtual environment on the computer. The installable Kodi service is a separate ZIP;
+On Windows (PowerShell):
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install .\kodi_manager-0.7.23-py3-none-any.whl
+```
+
+Run the Python examples below with that environment's interpreter (`.venv/bin/python` or
+`.venv\Scripts\python.exe`), or activate it before running `python`.
+The installable Kodi service is a separate ZIP;
 follow [setup](setup.md) if you also need the dashboard/API running on the TV.
 
 ## Connect to the running service
@@ -36,7 +49,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install .
 ```
 
-On Windows use `py -3 -m venv .venv` and `.venv\Scripts\python.exe`.
+On Windows use `py -3 -m venv .venv` and `.\.venv\Scripts\python.exe -m pip install .`.
 
 ```python
 from kodi_manager import parse_schema, flatten_settings

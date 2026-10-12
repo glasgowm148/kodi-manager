@@ -59,7 +59,7 @@ computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-
    Configure** and turn on **Allow LAN access**. It takes effect straight away.
 4. **Open the dashboard.** In Kodi, open **Add-ons → Video add-ons → Kodi Manager → Open the
    dashboard on another device**. It shows the address and access token to use in a browser. Once you
-   are in, **Setup** offers a sign-in link (`http://IP:8765/#token=…`) to open it on your other devices.
+   are in, **Advanced → Connection** offers a sign-in link (`http://IP:8765/#token=…`) for your other devices.
 
 To change settings from the dashboard, turn on **Enable writes** in the same place.
 

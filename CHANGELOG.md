@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Clarify clean Python-library installation, checksum verification, current Connection navigation, token storage/authentication and storage-blocked sign-in. Correct provider-cache and add-on editing support claims.
 - Shorten the main README and add linked documentation indexes, FAQ and Python library examples. Clarify add-on editing limits, background activity and screenshot-test skips; runtime is unchanged.
 
 - Give the oversized virtual-write fixture a short test ID instead of embedding its two-megabyte buffer in CI output. Bound test processes and console lines, retain full logs as artifacts, and cancel superseded runs. These changes affect tests and CI; add-on runtime bytes are unchanged.

@@ -18,7 +18,7 @@ For **Apple TV**, follow [tvOS installation and recovery](apple-tv.md). Install 
    About → Network**; on Google TV use the connected **Network & Internet** entry or About/Status.
 3. If an agent will transfer files or read the token through ADB, enable the device’s **Network
    debugging**, **ADB Debugging** (Fire OS), or paired **Wireless debugging** (Google TV).
-   Follow [Android TV / Fire TV preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md)
+   Follow [Android TV / Fire TV preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/android-tv.md)
    for device-specific menus and pairing/connection ports. Approve the debugging prompt
    when the agent connects. A mounted/local Kodi storage path is another option.
 4. Confirm viewing has finished before TV navigation, installation or restarting Kodi.
@@ -29,8 +29,9 @@ for the Manager dashboard alone.
 ## Let an AI agent handle the computer side
 
 You handle the TV and Kodi's installer; the agent downloads, verifies and transfers the ZIP and
-connects to the dashboard. For Android TV or Fire OS, complete nvidia-MCP's
-[device debugging preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md) first.
+connects to the dashboard. If using ADB for transfer on Android TV or Fire OS, complete the
+[device debugging preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/android-tv.md) first.
+Manual installation or transfer through a Kodi-readable share does not require ADB or nvidia-MCP.
 
 ```text
 Set up https://github.com/glasgowm148/kodi-manager for my Kodi device.
@@ -58,6 +59,28 @@ or JSON editing tasks. Ask only for missing connection information or unavoidabl
    local storage. Use only the configured device, not a LAN scan. Give the user the exact folder and
    file name to select. If no transfer route is available, explain the specific manual copy needed.
 
+## Verify the download
+
+On the computer, save both release assets in one folder and run this Python snippet from that folder.
+An agent should perform this check before transferring the ZIP. To check a wheel instead, change `name`
+to that asset's filename. A missing entry or mismatched digest means stop and download again.
+
+```python
+import hashlib
+from pathlib import Path
+
+name = "service.kodi.addonadmin-0.7.23.zip"
+entries = [line.split() for line in Path("SHA256SUMS").read_text().splitlines() if line.strip()]
+matches = [parts[0] for parts in entries if len(parts) == 2 and parts[1] == name]
+if len(matches) != 1:
+    raise SystemExit("Missing or duplicate checksum entry")
+if hashlib.sha256(Path(name).read_bytes()).hexdigest() != matches[0]:
+    raise SystemExit("Checksum mismatch: do not install")
+print("Verified", name)
+```
+
+Checksums detect changed bytes; they are not an independent publisher signature.
+
 ## Install and configure — inside Kodi on the TV
 
 1. Open **Settings → System → Add-ons** and enable **Unknown sources** if needed. If the option is
@@ -81,10 +104,12 @@ that address in a browser on the same network and enter the token when asked.
 Use `http://` as shown, not `https://`. The token belongs to the active Kodi profile; switching
 profiles can require signing in again with that profile's token.
 
-Once signed in, **Setup** in the dashboard offers a **Copy sign-in link** button. The link has the form
+Once signed in, **Advanced → Connection** offers a **Copy sign-in link** button. The link has the form
 `http://KODI_IP:8765/#token=…`: opening it on your phone or another computer signs that browser in.
-The token sits after `#`, so browsers never send it to the server, and the dashboard removes it from
-the address bar. Treat the link like a password.
+The fragment after `#` is omitted from the initial HTTP URL; the dashboard consumes it, removes it
+from the address bar and sends the token in the `Authorization: Bearer` header for API requests.
+It saves the token in that browser's local storage; use **Forget token in this browser** on a shared
+device. Treat the sign-in link like a password.
 
 ## Connect and verify — agent/computer
 
@@ -92,10 +117,13 @@ the address bar. Treat the link like a password.
    `addon_data/service.kodi.addonadmin/settings.xml` through local/mounted/authorized ADB storage.
    Parse it in a local process without printing it into tool output. It is separate from Kodi's HTTP
    username/password. A library install or HTTP password does not generate this token.
+   If storage is inaccessible, use the full token displayed by **Video add-ons → Kodi Manager →
+   Open the dashboard on another device** and private input; the settings field may be masked.
 2. Open `http://YOUR_KODI_IP:8765` using the actual IP/port. Enter the generated token in the
    dashboard's sign-in form, privately. Do not share a filled config, token-bearing URL or
    diagnostics. A manual installer can read and enter the same token through private local access.
-3. Verify `/api/status`, installed add-ons, the active profile and pipeline. Start with read-only
+3. Verify `/api/status`, `/api/overview` (active profile), `/api/addons` and `/api/pipeline` with
+   the bearer token. Start with read-only
    requests; provider folder previews execute installed add-on code and can make network requests.
 4. For nvidia-MCP, merge `KODI_MANAGER_TOKEN` and `KODI_MANAGER_PORT` into the client's private
    environment, preserve other servers and reload the connection. Follow
@@ -118,7 +146,8 @@ can contain credentials; keep them private.
 | Provider preview empty/fails | Provider enabled, accounts configured and route available; see provider logs |
 | Agent cannot read Kodi files | Android scoped storage may block ADB; use an available mounted/local route |
 
-The dashboard, settings, playback setup, backups and cached rows work with any skin. The Home layout
+The general dashboard works across skins. Add-on settings need a supported schema/adapter, editing
+needs an allowed add-on, and cached rows need a supported listing route and compatible skin picker. The Home layout
 editor currently recognises reviewed **Bingie 2.0.2 / Skin Shortcuts 2.0.3** sources; other skins and
 unknown forks do not get it.
 For backups/restores and safe upgrades, see [recovery](recovery.md). For clients, see [API](api.md).

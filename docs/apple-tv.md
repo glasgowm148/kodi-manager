@@ -11,7 +11,8 @@ pending; synthetic tests establish the storage/refusal contracts, not firmware c
 Export/download the release ZIP and verify its checksum on the computer. Make it available through
 a private network source Kodi can read, then use Kodi's **Install from zip file**. Enable Manager's
 **Allow LAN access** and open `http://<apple-tv-ip>:8765` in your browser. Enter the token privately
-from Manager's settings. Keep write mode off initially. Tokens and configuration belong to the
+using **Video add-ons → Kodi Manager → Open the dashboard on another device** inside Kodi; this
+shows the full token even if the settings field is masked. Keep write mode off initially. Tokens and configuration belong to the
 active Kodi profile; switch profiles deliberately and use the corresponding token.
 
 There is no ADB push, Android storage root or loopback forwarding on Apple TV. Initial installation

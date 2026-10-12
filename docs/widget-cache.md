@@ -5,7 +5,9 @@ similar) spend 1–3 seconds per row before anything appears, and a hub asks for
 once. The widget cache serves each row from its last listing on disk instead, so rows appear in
 about half a second, and refreshes them one at a time in the background.
 
-It works with any skin and any video add-on. It needs Kodi 20 or newer.
+It needs Kodi 20 or newer, an installed/enabled video add-on with a supported read-only listing
+route, and a skin that can select that row as a widget. It cannot cache arbitrary action/play routes
+or make an unauthenticated provider work; see [route limits](api.md#home-layout-supported-skins).
 
 ![Without the cache, the skin asks the add-on for every row at once and waits 1–3 seconds per row. With Kodi Manager, rows come from a cache in about half a second, and a background refresher updates them one at a time, never during playback.](images/widget-cache.svg)
 
