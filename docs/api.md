@@ -39,7 +39,9 @@ The dashboard is a static page plus this JSON API, served by the Kodi Manager se
 | Method | Route | Result |
 | --- | --- | --- |
 | GET | `/api/portable/state` | `platform` (`tvos` or `other`), native `active` (`true`/`false`/`null`), persistent `device_id`, current `profile` label and Kodi-relative `profile_root` |
-| GET | `/api/portable/file?path=userdata/guisettings.xml` | Active-profile/add-on text: `path`, `bytes`, `sha256`, `base64`; at most 600,000 bytes |
+| GET | `/api/portable/file?path=userdata/guisettings.xml` | Active-profile/add-on text: `path`, `bytes`, `sha256`, `base64`; at most 600,000 bytes. From 0.7.17: `device_id`, `profile_root` |
+
+From 0.7.17, file queries may include expected `device_id` and `profile_root`; mismatches or changes during a read are refused. The absolute target uses the captured profile.
 
 Both require the existing bearer token. File reads allow simple ASCII paths under the **active**
 profile or `addons/`, with `.xml`, `.json`, `.properties`, `.txt` or `.po` extensions. Traversal,

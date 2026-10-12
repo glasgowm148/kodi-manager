@@ -124,7 +124,7 @@ def _copy_file(src, dst):
         raise
 
 
-def _copytree(src, dst, skip_top=(), should_stop=None):
+def _copytree(src, dst, skip_top=(), should_stop=None, preserve_files=()):
     """Copy the regular files under src into dst. Symlinks are skipped on both sides:
     a link in src is not followed, and a link in dst is replaced, never written through.
 
@@ -132,9 +132,13 @@ def _copytree(src, dst, skip_top=(), should_stop=None):
     when it returns true the copy raises BackupAborted."""
     files = []
     if not src or not os.path.isdir(src):
+        if src and tvos_storage.userdata(src):
+            raise ValueError("tvOS source directory is missing; virtual XML cannot be enumerated safely")
         return files
     os.makedirs(dst, exist_ok=True)
     for rel_file in _source_files(src, skip_top):
+        if rel_file in preserve_files:
+            continue
         if should_stop is not None and should_stop():
             raise BackupAborted("Snapshot stopped before it completed")
         target = dst
@@ -202,7 +206,7 @@ def prune(scope, keep=None):
     return removed
 
 
-def _replace_tree(src, dst, skip_top=(), expected_files=None):
+def _replace_tree(src, dst, skip_top=(), expected_files=None, preserve_files=()):
     """Make dst match src: copy every file from src, then remove files that src lacks.
 
     Top-level folders in `skip_top` are left untouched on both sides. Refuses
@@ -217,7 +221,7 @@ def _replace_tree(src, dst, skip_top=(), expected_files=None):
         raise ValueError("Backup is incomplete (%d of %d files); nothing was restored" % (count, expected_files))
     if expected_files is None and count == 0:
         raise ValueError("Backup is empty; nothing was restored")
-    wanted = set(_copytree(src, dst, skip_top))
+    wanted = set(_copytree(src, dst, skip_top, preserve_files=preserve_files)) | set(preserve_files)
     for root, _dirs, names in tvos_storage.walk(dst, topdown=False):
         rel = os.path.relpath(root, dst)
         if rel.split(os.sep)[0] in skip_top:
@@ -232,21 +236,10 @@ def _replace_tree(src, dst, skip_top=(), expected_files=None):
 
 def _restore_folder(aid, src, dest, skip, expected):
     """Make the live folder of ``aid`` match a snapshot (see _replace_tree)."""
-    kept = {}
-    if aid == SELF_ID:
-        for name in SELF_KEEP:
-            path = os.path.join(dest, name)
-            if tvos_storage.exists(path) and not os.path.islink(path):
-                kept[name] = tvos_storage.read_bytes(path)
-            else:
-                kept[name] = None
-    _replace_tree(src, dest, skip, expected_files=expected)
-    for name, data in kept.items():
-        path = os.path.join(dest, name)
-        if data is not None:
-            atomic_write_bytes(path, data)
-        elif tvos_storage.exists(path) and not os.path.islink(path):
-            tvos_storage.remove(path)
+    # Never transiently replace the live token/identity with snapshot values:
+    # concurrent authenticated reads must see the same owner throughout restore.
+    _replace_tree(src, dest, skip, expected_files=expected,
+                  preserve_files=SELF_KEEP if aid == SELF_ID else ())
 
 
 def _write_manifest(dest, manifest):

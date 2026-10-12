@@ -214,8 +214,12 @@ def test_portable_endpoints_keep_auth_and_bound_file_reads(serve, tmp_path, monk
     assert get("/api/portable/state", "wrong")[0] == 401
     status, data = get("/api/portable/state")
     assert status == 200 and len(data["data"]["device_id"]) == 32
+    identifier = data["data"]["device_id"]
     status, data = get("/api/portable/file?path=userdata/guisettings.xml")
     assert status == 200 and base64.b64decode(data["data"]["base64"]) == b"<settings/>"
+    assert data["data"]["device_id"] == identifier and data["data"]["profile_root"] == "userdata"
+    assert get("/api/portable/file?path=userdata/guisettings.xml&device_id=" + "b" * 32)[0] == 400
+    assert get("/api/portable/file?path=userdata/guisettings.xml&profile_root=userdata/profiles/Kids")[0] == 400
     assert get("/api/portable/file?path=userdata/../secret.xml")[0] == 400
     (root / "guisettings.xml").write_bytes(b"x" * 600_001)
     assert get("/api/portable/file?path=userdata/guisettings.xml")[0] == 400

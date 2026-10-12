@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.17 — 2026-10-12 (prerelease)
+
+- Check virtual file length before/after reading: Kodi can return partial data without an exception. Refuse empty/oversized virtual writes before mutation and retain the old value.
+- Refuse a missing tvOS source directory instead of creating an empty snapshot of inaccessible persistent XML. Cache purging still requires independent private recovery.
+- Bind portable file responses to device/profile ownership, accept expected ownership in queries, pin the absolute profile path and reject configured nonstandard profiles from master-profile reads.
+- Keep live Manager identity/access files untouched throughout self-restore, including concurrent reads. Preserve existing Android behavior and reviewed skin gates.
+
 ## 0.7.16 — 2026-10-12 (prerelease)
 
 - Add experimental Apple TV handling for userdata XML stored in Kodi VFS/NSUserDefaults.

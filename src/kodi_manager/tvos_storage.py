@@ -45,7 +45,14 @@ def read_bytes(path, limit=2_000_000):
     if virtual_xml(path) and xbmcvfs:
         handle = xbmcvfs.File(str(path))
         try:
+            expected = handle.size()
+            if type(expected) is not int or expected < 0:
+                raise OSError("Kodi virtual file length is unreadable")
+            if expected > limit:
+                raise ValueError("File exceeds the size limit")
             data = bytes(handle.readBytes(limit + 1))
+            if len(data) != expected or handle.size() != expected:
+                raise OSError("Kodi virtual file read was incomplete or changed")
         finally:
             handle.close()
     else:
@@ -111,6 +118,10 @@ def write_xml(path, data):
     assert xbmcvfs is not None
     vfs = xbmcvfs
     old = read_bytes(path) if exists(path) else None
+    if not data or len(data) > 2_000_000 or old == b"":
+        # Kodi's Python write wrapper never calls Write for an empty buffer, so
+        # an empty preference cannot be created/restored reliably through it.
+        raise ValueError("Virtual XML must be nonempty and within the size limit")
 
     def save(value):
         handle = vfs.File(str(path), "w")

@@ -24,6 +24,9 @@ def tvos(tmp_path, monkeypatch):
                 raise OSError("Synthetic VFS failure")
             return values[self.path][:limit]
 
+        def size(self):
+            return len(values[self.path])
+
         def write(self, data):
             values[self.path] = bytes(data)
             if fail["write"]:
@@ -232,3 +235,87 @@ def test_missing_target_symlink_is_not_an_optional_shortcut(tvos):
         pytest.skip("Symlinks unavailable")
     with pytest.raises(ValueError, match="symlinks"):
         skin_layout._read(str(path), optional=True)
+
+
+def test_silent_partial_vfs_read_is_not_backed_up(tvos, monkeypatch):
+    root, values, _fail = tvos
+    live = root / "addon_data/plugin.video.example"
+    live.mkdir(parents=True)
+    values[str(live / "settings.xml")] = b"complete original XML"
+    original = storage.xbmcvfs.File
+
+    class PartialFile(original):
+        def readBytes(self, limit):
+            return super().readBytes(limit)[:4]
+
+    monkeypatch.setattr(storage.xbmcvfs, "File", PartialFile)
+    with pytest.raises(OSError, match="incomplete"):
+        backup.create_backup({"addon_id": "plugin.video.example", "addon_data_path": str(live)})
+    assert values[str(live / "settings.xml")] == b"complete original XML"
+    assert not list((root / "backups").rglob("manifest.json"))
+
+
+@pytest.mark.parametrize("candidate", [b"", b"x" * 2_000_001])
+def test_invalid_virtual_write_is_refused_before_mutation(tvos, candidate):
+    root, values, _fail = tvos
+    path = str(root / "settings.xml")
+    values[path] = b"original"
+    with pytest.raises(ValueError, match="size limit"):
+        fsutil.atomic_write_bytes(path, candidate)
+    assert values[path] == b"original"
+
+
+def test_missing_tvos_directory_cannot_create_false_empty_backup(tvos):
+    root, values, _fail = tvos
+    live = root / "addon_data/plugin.video.example"
+    values[str(live / "settings.xml")] = b"persistent XML after cache purge"
+    with pytest.raises(ValueError, match="cannot be enumerated"):
+        backup.create_backup({"addon_id": "plugin.video.example", "addon_data_path": str(live)})
+    assert values[str(live / "settings.xml")] == b"persistent XML after cache purge"
+
+
+def test_self_restore_never_transiently_changes_live_owner(tvos, monkeypatch):
+    root, values, _fail = tvos
+    live = root / "addon_data" / backup.SELF_ID
+    live.mkdir(parents=True)
+    identity, settings = str(live / "device_identity.xml"), str(live / "settings.xml")
+    values.update({identity: b"old identity", settings: b"old token", str(live / "other.xml"): b"original"})
+    addon = {"addon_id": backup.SELF_ID, "addon_data_path": str(live)}
+    snapshot = backup.create_backup(addon)
+    values.update({identity: b"current identity", settings: b"current token"})
+    original = backup._copy_file
+
+    def observed(src, dst):
+        assert values[identity] == b"current identity" and values[settings] == b"current token"
+        assert dst not in (identity, settings)
+        original(src, dst)
+
+    monkeypatch.setattr(backup, "_copy_file", observed)
+    backup.restore_backup(addon, snapshot["backup_id"])
+    assert values[identity] == b"current identity" and values[settings] == b"current token"
+
+
+def test_master_profile_blocks_nonstandard_other_profile_directory(tvos, monkeypatch):
+    root, values, _fail = tvos
+    values[str(root / "profiles.xml")] = b"<profiles><profile><directory pathversion='1'>Kids/</directory></profile></profiles>"
+    monkeypatch.setattr(portable_api, "translate", lambda _: str(root))
+    with pytest.raises(ValueError, match="active Kodi profile"):
+        portable_api.file_path("userdata/Kids/guisettings.xml")
+
+
+def test_file_path_uses_captured_profile_when_special_path_changes(tvos, monkeypatch):
+    root, _values, _fail = tvos
+    first, second = root / "profiles/A", root / "profiles/B"
+    first.mkdir(parents=True)
+    second.mkdir()
+    calls = []
+
+    def translate(path):
+        if path == "special://profile/":
+            calls.append(path)
+            return str(first if len(calls) == 1 else second)
+        return str(root)
+
+    monkeypatch.setattr(portable_api, "translate", translate)
+    assert portable_api.file_path("userdata/profiles/A/guisettings.xml") == str(first / "guisettings.xml")
+    assert len(calls) == 1

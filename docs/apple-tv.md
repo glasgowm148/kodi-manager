@@ -43,9 +43,11 @@ Kodi's tvOS userdata XML lives in VFS/NSUserDefaults, as shown in
 Manager explicitly reads that virtual value, writes XML in one call, checks readback and restores
 the previous value on failure. Backups, undo, pipeline snapshots and pruning use virtual XML;
 stale physical shadows cannot replace it after a failed VFS read. Android retains its normal
-POSIX atomic writes. Virtual XML readback/backups are limited to 2 MB per file.
+POSIX atomic writes. Virtual XML readback/backups are limited to 2 MB per file. From 0.7.17, incomplete/changed VFS reads and empty/oversized virtual writes are refused before accepting a snapshot or changing a preference.
 
 Non-XML files, directories, cache databases and backup manifests remain disposable tvOS storage.
+A missing source directory cannot enumerate retained XML keys; Manager refuses that snapshot instead of treating it as empty. Reopen the affected add-on on the TV to recreate its directories, then inspect before backing up. Purged subdirectories/manifests cannot establish a complete recoverable snapshot.
+
 On-device configuration snapshots provide useful undo while intact, **not durable disaster
 recovery**. A raw filesystem/SMB copy may omit real preference values. Keep important configuration
 in separate private computer copies using VFS-aware reads; the MCP file reader can snapshot
@@ -57,7 +59,7 @@ Manager. Do not uninstall Kodi to fix a settings problem without independent rec
 
 Authenticated `/api/portable/state` reports platform, native active state, active profile/path and
 a persistent Manager-instance ID. `/api/portable/file?path=…` reads active-profile or installed
-add-on text, bounded to 600 KB, with byte count/base64/SHA-256. It rejects other profiles, traversal,
+add-on text, bounded to 600 KB, with byte count/base64/SHA-256. Version 0.7.17 adds device/profile ownership to the response and optional expected ownership query fields. It rejects other profiles, traversal,
 symlinks and non-text extensions. The bearer token can read private configuration through this
 API; never expose it or attach snapshots to bug reports. There is no arbitrary file-write API.
 The ID identifies this Manager installation, not the Apple TV hardware; deletion/cloning of
