@@ -350,3 +350,18 @@ def test_failed_native_open_cannot_mask_existing_virtual_contents(tvos, monkeypa
     with pytest.raises(OSError, match="length is unreadable"):
         fsutil.atomic_write_bytes(str(path), b"candidate")
     assert values[str(path)] == b"original contents"
+
+
+def test_parent_traversal_handles_windows_short_path_aliases(monkeypatch):
+    import ntpath
+    path_api = SimpleNamespace(dirname=ntpath.dirname, normcase=ntpath.normcase, normpath=ntpath.normpath,
+                               realpath=lambda p: p.replace('RUNNER~1', 'runneradmin'))
+    monkeypatch.setattr(portable_api, 'os', SimpleNamespace(path=path_api))
+    source = r'C:\Users\RUNNER~1\Kodi\settings.xml'
+    assert list(portable_api._parents(source, r'C:\Users\runneradmin\Kodi')) == [source, ntpath.dirname(source)]
+
+
+def test_parent_traversal_cannot_loop_above_missing_boundary(tmp_path):
+    from itertools import islice
+    with pytest.raises(ValueError, match='leaves its directory'):
+        list(islice(portable_api._parents(str(tmp_path / 'settings.xml'), str(tmp_path / 'unrelated')), 100))

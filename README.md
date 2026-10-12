@@ -27,7 +27,7 @@ from a phone or computer. Use it on its own or as the on-device companion to
 *Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
 > [!NOTE]
-> **Prerelease.** Current version: **0.7.18**. Service versions through 0.7.12 have been used on one
+> **Prerelease.** Current version: **0.7.19**. Service versions through 0.7.12 have been used on one
 > NVIDIA Shield with Kodi 22 beta 2 / RC1, including separate household extensions.
 > Other skins and devices are covered by automated tests rather than live use so far; see
 > [compatibility](docs/compatibility.md).
@@ -58,7 +58,7 @@ from a phone or computer. Use it on its own or as the on-device companion to
 ## Quick start
 
 1. **Download** `service.kodi.addonadmin-<version>.zip` from
-   [Releases](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.18), under **Assets**.
+   [Releases](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.19), under **Assets**.
    Choose the `service.kodi.addonadmin` ZIP; GitHub's **Source code** ZIP, wheel and tar.gz are not
    installable Kodi add-ons.
 2. **Install it.** In Kodi, choose **Add-ons → Install from zip file** and pick the ZIP. Allow

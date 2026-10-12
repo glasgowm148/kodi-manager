@@ -60,7 +60,7 @@ def file_path(relative, active=None):
                     directory = translate(directory)
                 target = os.path.realpath(os.path.join(master, directory))
                 if target != os.path.realpath(master) and os.path.commonpath([os.path.realpath(master), target]) == os.path.realpath(master):
-                    prefix = "userdata/" + os.path.relpath(target, master).replace(os.sep, "/") + "/"
+                    prefix = "userdata/" + os.path.relpath(target, os.path.realpath(master)).replace(os.sep, "/") + "/"
                     if relative.startswith(prefix):
                         raise ValueError("Only the active Kodi profile can be read")
     if relative.startswith(active + "/"):
@@ -84,9 +84,15 @@ def file_path(relative, active=None):
 
 
 def _parents(path, root):
-    while path != root:
+    boundary = os.path.normcase(os.path.realpath(root))
+    while os.path.normcase(os.path.normpath(path)) != os.path.normcase(os.path.normpath(root)):
         yield path
-        path = os.path.dirname(path)
+        if os.path.normcase(os.path.realpath(path)) == boundary:
+            return
+        parent = os.path.dirname(path)
+        if parent == path:
+            raise ValueError("Kodi file path leaves its directory")
+        path = parent
 
 
 class PortableRoutes(RequestHandler):

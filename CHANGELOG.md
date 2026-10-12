@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.19 — 2026-10-12 (prerelease)
+
+- Bound portable path-parent traversal and recognize Windows short-path/case aliases. An unmatched root cannot loop forever; symlink checks still inspect every yielded path. Resolve nonstandard profile directories against the canonical master path.
+- Add Windows-path alias/missing-boundary regressions, CI stack dumps for stalled tests and a bounded job duration. Keep the 0.7.17/0.7.18 VFS and ownership safeguards.
+
 ## 0.7.18 — 2026-10-12 (prerelease)
 
 - Check virtual existence/stat as well as handle length: Kodi's Python File constructor ignores failed native opens, which can otherwise look like a successful zero-byte read. Refuse missing/disappearing files and preserve the original on open failure.
