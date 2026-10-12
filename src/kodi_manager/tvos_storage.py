@@ -26,7 +26,9 @@ def userdata(path):
 
 
 def virtual_xml(path):
-    return str(path).lower().endswith(".xml") and userdata(path)
+    # Match CTVOSFile::WantsFile: Siri Remote controller XML remains POSIX.
+    name = os.path.basename(path).lower()
+    return name.endswith(".xml") and not name.startswith("customcontroller.siriremote") and userdata(path)
 
 
 def exists(path):

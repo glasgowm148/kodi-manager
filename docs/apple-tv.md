@@ -40,7 +40,9 @@ MCP backend also checks paired system media and Kodi players before changes.
 
 Kodi's tvOS userdata XML lives in VFS/NSUserDefaults, as shown in
 [Kodi's TVOSFile implementation](https://github.com/xbmc/xbmc/blob/master/xbmc/platform/darwin/tvos/filesystem/TVOSFile.cpp).
-Manager explicitly reads that virtual value, writes XML in one call, checks readback and restores
+Kodi excludes `customcontroller.SiriRemote*.xml` from virtual storage. From Manager 0.7.20,
+these controller files retain normal physical reads, atomic replacement and backup.
+Manager explicitly reads other userdata XML from its virtual value, writes XML in one call, checks readback and restores
 the previous value on failure. Backups, undo, pipeline snapshots and pruning use virtual XML;
 stale physical shadows cannot replace it after a failed VFS read. Android retains its normal
 POSIX atomic writes. Virtual XML readback/backups are limited to 2 MB per file. From 0.7.17, incomplete/changed VFS reads and empty/oversized virtual writes are refused before accepting a snapshot or changing a preference. Version 0.7.18 also verifies existence/stat against the handle, since Kodi's Python constructor can silently ignore a failed native open.
@@ -59,7 +61,7 @@ Manager. Do not uninstall Kodi to fix a settings problem without independent rec
 
 Authenticated `/api/portable/state` reports platform, native active state, active profile/path and
 a persistent Manager-instance ID. `/api/portable/file?path=…` reads active-profile or installed
-add-on text, bounded to 600 KB, with byte count/base64/SHA-256. Version 0.7.17 adds device/profile ownership to the response and optional expected ownership query fields. It rejects other profiles, traversal,
+add-on text, bounded to 600 KB, with byte count/base64/SHA-256. Version 0.7.17 adds device/profile ownership to the response and optional expected ownership query fields. From 0.7.20, this also excludes configured profiles nested beneath the active profile. It rejects other profiles, traversal,
 symlinks and non-text extensions. The bearer token can read private configuration through this
 API; never expose it or attach snapshots to bug reports. There is no arbitrary file-write API.
 The ID identifies this Manager installation, not the Apple TV hardware; deletion/cloning of

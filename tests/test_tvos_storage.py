@@ -82,6 +82,22 @@ def test_failed_virtual_write_rolls_back_original(tvos):
     assert values[str(path)] == b"original"
 
 
+@pytest.mark.parametrize("name", ["customcontroller.SiriRemote.xml", "CustomController.SIRIREMOTE.alt.xml"])
+def test_siri_remote_xml_uses_physical_storage_and_backup(tvos, name):
+    root, values, _fail = tvos
+    path = root / name
+    path.write_bytes(b"original")
+    assert not storage.virtual_xml(path)
+    assert storage.read_bytes(path) == b"original"
+    fsutil.atomic_write_bytes(str(path), b"updated")
+    snapshot = root / "backups" / name
+    backup._copy_file(str(path), str(snapshot))
+    assert path.read_bytes() == snapshot.read_bytes() == b"updated"
+    assert str(path) not in values and str(snapshot) not in values
+    storage.remove(path)
+    assert not path.exists()
+
+
 def test_virtual_read_failure_never_falls_back_to_shadow(tvos):
     root, values, fail = tvos
     path = root / "settings.xml"
@@ -302,6 +318,23 @@ def test_master_profile_blocks_nonstandard_other_profile_directory(tvos, monkeyp
     monkeypatch.setattr(portable_api, "translate", lambda _: str(root))
     with pytest.raises(ValueError, match="active Kodi profile"):
         portable_api.file_path("userdata/Kids/guisettings.xml")
+
+
+@pytest.mark.parametrize("active", ["Adults", "Adults/Kids"])
+def test_nested_profiles_cannot_read_each_other(tvos, monkeypatch, active):
+    root, values, _fail = tvos
+    (root / "Adults/Kids").mkdir(parents=True)
+    values[str(root / "profiles.xml")] = (
+        b"<profiles><profile><directory>special://masterprofile/</directory></profile>"
+        b"<profile><directory>Adults/</directory></profile>"
+        b"<profile><directory>Adults/Kids/</directory></profile></profiles>"
+    )
+    mapping = {"special://masterprofile/": str(root), "special://profile/": str(root / active)}
+    monkeypatch.setattr(portable_api, "translate", mapping.__getitem__)
+    assert portable_api.file_path("userdata/" + active + "/settings.json") == str(root / active / "settings.json")
+    other = "Adults/Kids" if active == "Adults" else "Adults"
+    with pytest.raises(ValueError, match="active"):
+        portable_api.file_path("userdata/" + other + "/settings.json")
 
 
 def test_file_path_uses_captured_profile_when_special_path_changes(tvos, monkeypatch):

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.20 — 2026-10-12 (prerelease)
+
+- Confine portable file reads when a configured profile is nested inside the active profile. Allow the active nested profile itself while refusing parent/sibling configuration.
+- Match Kodi's tvOS storage exception for `customcontroller.SiriRemote*.xml`: read, atomically replace, back up and delete these physical files without using virtual preference keys.
+- Add synthetic nested-profile and Siri Remote storage regressions. No physical Apple TV validation or household TV changes.
+
 ## 0.7.19 — 2026-10-12 (prerelease)
 
 - Bound portable path-parent traversal and recognize Windows short-path/case aliases. An unmatched root cannot loop forever; symlink checks still inspect every yielded path. Resolve nonstandard profile directories against the canonical master path; reject case aliases of other profiles on case-insensitive storage.

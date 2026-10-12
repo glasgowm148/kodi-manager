@@ -49,20 +49,6 @@ def file_path(relative, active=None):
     active = profile_root() if active is None else active
     if active == "userdata" and relative.casefold().startswith("userdata/profiles/"):
         raise ValueError("Only the active Kodi profile can be read")
-    if active == "userdata":
-        master = translate("special://masterprofile/")
-        profiles = os.path.join(master, "profiles.xml")
-        if tvos_storage.exists(profiles):
-            # Kodi permits nonstandard profile directories, outside profiles/.
-            for element in ET.fromstring(tvos_storage.read_bytes(profiles)).findall("./profile/directory"):
-                directory = element.text or ""
-                if directory.startswith("special://"):
-                    directory = translate(directory)
-                target = os.path.realpath(os.path.join(master, directory))
-                if target != os.path.realpath(master) and os.path.commonpath([os.path.realpath(master), target]) == os.path.realpath(master):
-                    prefix = "userdata/" + os.path.relpath(target, os.path.realpath(master)).replace(os.sep, "/") + "/"
-                    if relative.casefold().startswith(prefix.casefold()):
-                        raise ValueError("Only the active Kodi profile can be read")
     if relative.casefold().startswith((active + "/").casefold()):
         # Resolve from the captured profile, rather than a second mutable
         # special://profile lookup that could select a different profile.
@@ -78,9 +64,32 @@ def file_path(relative, active=None):
     target = os.path.abspath(os.path.join(root, suffix))
     if os.path.commonpath([os.path.realpath(root), os.path.realpath(target)]) != os.path.realpath(root):
         raise ValueError("Kodi file path leaves its directory")
+    if relative.casefold().startswith((active + "/").casefold()):
+        _check_profile_boundaries(target, root)
     if any(os.path.islink(p) for p in _parents(target, os.path.abspath(root))):
         raise ValueError("Symlinked Kodi files are unsupported")
     return target
+
+
+def _check_profile_boundaries(target, active_root):
+    """Exclude configured descendants, while allowing the current profile's ancestors."""
+    master = os.path.realpath(translate("special://masterprofile/"))
+    profiles = os.path.join(master, "profiles.xml")
+    if not tvos_storage.exists(profiles):
+        return
+    current, candidate = [os.path.normcase(os.path.realpath(p)).casefold() for p in (active_root, target)]
+    for element in ET.fromstring(tvos_storage.read_bytes(profiles)).findall("./profile/directory"):
+        directory = element.text or ""
+        if directory.startswith("special://"):
+            directory = translate(directory)
+        other = os.path.normcase(os.path.realpath(os.path.join(master, directory))).casefold()
+        try:
+            ancestor = os.path.commonpath([other, current]) == other
+            contains_file = os.path.commonpath([other, candidate]) == other
+        except ValueError:
+            continue  # Different Windows drives cannot contain each other.
+        if not ancestor and contains_file:
+            raise ValueError("Only the active Kodi profile can be read")
 
 
 def _parents(path, root):
