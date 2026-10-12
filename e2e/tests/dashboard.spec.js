@@ -232,6 +232,7 @@ test("Kodi log retains 24 hours with pagination, filters and a separate raw tail
   await app.open("kodi-logs");
   await expect(page.locator("#content")).toContainText("past 24 hours");
   await expect(page.locator("#historyLogBox .log-line")).toHaveCount(100);
+  await page.locator('.original-log-entries > summary').click();
   await page.locator("#olderLogEntries").click();
   await expect(page.locator("#historyLogBox .log-line")).toHaveCount(124);
   await expect(page.locator("#olderLogEntries")).toBeHidden();
@@ -239,7 +240,7 @@ test("Kodi log retains 24 hours with pagination, filters and a separate raw tail
   await expect(page.locator("#historyLogBox")).toContainText("No retained entries");
   await page.locator('[data-history-level="notice"]').click();
   await expect(page.locator("#historyLogBox .log-line")).toHaveCount(1);
-  await page.locator("details summary").click();
+  await page.locator('summary').filter({hasText:'Current raw log tail'}).click();
   await page.locator("#loadRawKodiLog").click();
   await expect(page.locator("#rawKodiLog")).toContainText("info");
   expect(app.errors).toEqual([]);

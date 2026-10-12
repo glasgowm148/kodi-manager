@@ -1069,7 +1069,7 @@ function logIssueCards(issues, level='all', compact=false){
       <div class="actions"><a href="${esc(href)}">View this issue’s entries</a>${compact ? '' : `<button type="button" class="action" data-review-issue="${esc(issue.id)}" ${state.writeEnabled ? '' : 'disabled'}>Mark reviewed</button>`}</div></article>`;
   }).join('');
 }
-function logHistoryMarkup(history, level){
+function logHistoryMarkup(history, level, rawOpen=false){
   const c = history.counts || {};
   const note = !history.available ? "Collection is unavailable. Saved entries are shown below." : history.catching_up ? "Importing the available log files. Counts may still increase." : "New entries are collected in the background. Entries expire after 24 hours.";
   return `${pageHead("Kodi log", "Warnings and errors from the past 24 hours, retained across Kodi restarts and profile changes. Tokens and keys are masked.")}
@@ -1079,7 +1079,7 @@ function logHistoryMarkup(history, level){
     <div class="tabs" role="group" aria-label="Filter retained log entries">${[["all","All"],["error","Errors"],["warning","Warnings"],["notice","Known notices"]].map(([key,label]) => `<button type="button" data-history-level="${key}" aria-pressed="${String(key === level)}" class="${key === level ? "active" : ""}">${label}</button>`).join("")}</div>
     ${history.selected_issue ? '<p><a href="#/kodi-logs">Back to all issues</a></p>' : ''}
     <section aria-label="Issue groups"><h3>${esc(history.issue_total ?? 0)} issue groups</h3>${history.issues_ready === false ? '<p class="muted" role="status">Grouping older retained entries. Group counts may still increase.</p>' : ''}<div id="logIssueGroups">${logIssueCards(history.issues, level)}</div><button type="button" class="action" id="moreLogIssues" ${history.groups_has_more ? '' : 'hidden'}>Load more issue groups</button><p class="muted">Review points preserve the original entries and counts.${state.writeEnabled ? ' Mark an issue reviewed after checking or fixing it.' : ' Enable writes in Connection to record a review point.'}</p></section>
-    <details class="original-log-entries" ${history.selected_issue ? 'open' : ''}><summary>Original retained entries</summary>
+    <details class="original-log-entries" ${history.selected_issue || rawOpen ? 'open' : ''}><summary>Original retained entries</summary>
     <div id="historyLogBox" class="log-view">${logHistoryEntries(history.entries)}</div>
     <p id="historyLogCount" class="muted">${esc((history.entries || []).length)} of ${esc(history.total ?? 0)} entries shown</p>
     <button type="button" class="action" id="olderLogEntries" ${history.has_more ? "" : "hidden"}>Load older entries</button>
@@ -1090,12 +1090,13 @@ function logHistoryEntries(entries){
   return (entries || []).length ? entries.map(e => `<div class="log-line log-${e.level === "error" ? "error" : e.level === "warning" ? "warn" : "info"}"><time>${esc(new Date(e.timestamp * 1000).toLocaleString())}</time> ${esc(e.line)}</div>`).join("") : '<p class="muted">No retained entries in this filter.</p>';
 }
 async function kodiLogs(level="all", issue=''){
+  const rawOpen = !!document.querySelector('.original-log-entries')?.open;
   const request = (state.logHistoryRequest || 0) + 1;
   state.logHistoryRequest = request;
   const query = `level=${encodeURIComponent(level)}&issue=${encodeURIComponent(issue)}`;
   const h = await api(`/api/kodi/logs/history?${query}`);
   if (request !== state.logHistoryRequest) return;
-  out(logHistoryMarkup(h, level));
+  out(logHistoryMarkup(h, level, rawOpen));
   document.querySelectorAll("[data-history-level]").forEach(b => b.onclick = withErrors(() => kodiLogs(b.dataset.historyLevel, issue)));
   $("#refreshLogHistory").onclick = withErrors(() => kodiLogs(level, issue));
   const bindReviews = () => document.querySelectorAll('[data-review-issue]').forEach(b => b.onclick = withErrors(async () => {

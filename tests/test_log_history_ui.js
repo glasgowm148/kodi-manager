@@ -63,4 +63,5 @@ test('incomplete grouping and group pagination are shown without hiding original
   assert.doesNotMatch(html, /id="moreLogIssues" hidden/);
   assert.match(html, /Original retained entries/);
   assert.match(html, /fixture-version/);
+  assert.match(ui.logHistoryMarkup({}, 'all', true), /class="original-log-entries" open/);
 });
