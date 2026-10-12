@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.7.27 — 2026-10-12
+## 0.7.27 — 2026-10-12 (prerelease)
+
+This release includes the changes since 0.7.23: clearer add-on purposes/dependencies
+and removal guidance, persistent masked 24-hour log history with filters, metadata
+normalization and service shutdown fixes. Upgrade using the installable add-on ZIP;
+the wheel is the separate Python client library. Historical warnings remain until
+their 24-hour expiry. Household provider patches are not included.
 
 - Preserve the original Monitor's abort signal when shutdown begins during service
   startup. A callback monitor registered later can miss Kodi's earlier notification;
