@@ -4,9 +4,11 @@ Kodi Manager has a **TV service**, **browser dashboard** and **computer-side Pyt
 For live settings/dashboard access, install the service ZIP inside Kodi. Installing the library on
 your computer alone does not install or start the TV service.
 
-The current portable release is **0.7.15**, marked prerelease. See [compatibility](compatibility.md)
+The current portable release is **0.7.16**, marked prerelease. See [compatibility](compatibility.md)
 for remaining live checks. Back up an existing customized installation before upgrading: public
 releases deliberately omit household settings and separate third-party patch bundles.
+
+For **Apple TV**, follow [tvOS installation and recovery](apple-tv.md). Install from a Kodi-readable network source, enable LAN access, enter the token privately and keep Kodi active. Android transfer/forwarding instructions below do not apply.
 
 ## Before you start — on the TV
 
@@ -31,8 +33,8 @@ or JSON editing tasks. Ask only for missing connection information or unavoidabl
 
 1. Check for an existing Manager installation and inspect its version/profile before replacing it.
    Preserve local changes and create an appropriate private backup for an authorized upgrade.
-2. Download `service.kodi.addonadmin-0.7.15.zip` and `SHA256SUMS` from the release's **Assets** at
-   [v0.7.15](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.15). Verify the ZIP checksum.
+2. Download `service.kodi.addonadmin-0.7.16.zip` and `SHA256SUMS` from the release's **Assets** at
+   [v0.7.16](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.16). Verify the ZIP checksum.
    GitHub's **Source code** ZIP, Python wheel and tar.gz cannot be installed through Kodi.
    nvidia-MCP users can instead export the pinned bundle with `nvidia-mcp --export-manager DIRECTORY`.
 3. Transfer the verified ZIP to a Kodi-accessible folder using authorized ADB, a mounted share or

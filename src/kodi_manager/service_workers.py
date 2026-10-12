@@ -13,10 +13,12 @@ except ImportError:
     xbmc = None
 
 try:
+    from . import tvos_storage
     from .kodi_api import translate
     from .widget_cache import WidgetCache, jsonrpc_via, RELOAD_PROPERTY
     from .widget_refresher import Refresher
 except ImportError:
+    import tvos_storage
     from kodi_api import translate
     from widget_cache import WidgetCache, jsonrpc_via, RELOAD_PROPERTY
     from widget_refresher import Refresher
@@ -93,11 +95,10 @@ def start_widget_refresher(kodi):
     cache = WidgetCache(translate("special://profile/addon_data/service.kodi.addonadmin/widget_cache"))
     home = xbmcgui.Window(10000)
     player = xbmc.Player()
-    visible = xbmc.getCondVisibility
     refresher = Refresher(cache, jsonrpc_via(xbmc), player.isPlayingVideo,
                           lambda value: home.setProperty(RELOAD_PROPERTY, value), kodi.log,
                           external_reload=lambda: external_reload_token(home),
-                          is_busy=lambda: visible(BUSY_CONDITION))
+                          is_busy=tv_busy)
     refresher.stop = threading.Event()
     refresher.sleep = refresher.stop.wait
     health = WidgetHealth(cache, home.setProperty, lambda: xbmcgui.Dialog().notification(
@@ -120,6 +121,8 @@ def start_widget_refresher(kodi):
 
 def tv_busy():
     """True while the TV is in use (see BUSY_CONDITION); False outside Kodi."""
+    if tvos_storage.is_tvos() and tvos_storage.application_active() is not True:
+        return True
     if not xbmc:
         return False
     try:

@@ -20,10 +20,12 @@ from urllib.parse import urlsplit, parse_qs
 from typing import Literal, Optional, overload
 
 try:
+    from . import tvos_storage
     from .kodi_api import translate
     from .fsutil import atomic_write_bytes
     from .backup import prune_folder
 except ImportError:
+    import tvos_storage
     from kodi_api import translate
     from fsutil import atomic_write_bytes
     from backup import prune_folder
@@ -59,15 +61,11 @@ def _read(path: str, optional: Literal[False] = ...) -> bytes: ...
 @overload
 def _read(path: str, optional: bool) -> Optional[bytes]: ...
 def _read(path, optional=False):
-    if optional and not os.path.lexists(path):
-        return None
     if os.path.islink(path):
         raise ValueError("Shortcut files must not be symlinks")
-    with open(path, "rb") as handle:
-        data = handle.read(2_000_001)
-    if len(data) > 2_000_000:
-        raise ValueError("Shortcut file exceeds size limit")
-    return data
+    if optional and not tvos_storage.exists(path):
+        return None
+    return tvos_storage.read_bytes(path)
 
 
 def _child(node, tag):
@@ -253,7 +251,7 @@ def _sections(kodi, index, state, root, snapshots):
     # Snapshot every user DATA file: another open Kodi shortcut editor cannot
     # silently invalidate the revision while this dashboard stages changes.
     if root and os.path.isdir(root):
-        for name in os.listdir(root):
+        for name in tvos_storage.listdir(root):
             if re.fullmatch(r'skin\.bingie-[A-Za-z0-9_.-]+\.DATA\.xml', name) and name not in snapshots:
                 try:
                     snapshots[name] = _read(os.path.join(root, name))
@@ -718,6 +716,7 @@ def _check_snapshots(root, snapshots, staged=None):
 
 
 def apply_layout(kodi, index, body, write_enabled):
+    tvos_storage.require_active()
     if not write_enabled:
         raise ValueError("Kodi Manager writes are disabled")
     with _LOCK:
@@ -754,7 +753,7 @@ def apply_layout(kodi, index, body, write_enabled):
                 _check_snapshots(root, snapshots, staged)
                 raw = None if export.get('delete') else export["xml"].encode("utf-8")
                 if raw is None:
-                    os.unlink(os.path.join(root, name))
+                    tvos_storage.remove(os.path.join(root, name))
                 else:
                     _atomic(os.path.join(root, name), raw)
                 changed.append(name)
@@ -768,8 +767,8 @@ def apply_layout(kodi, index, body, write_enabled):
                     # them and retain the backup for an explicit recovery.
                     continue
                 if original is None:
-                    if os.path.exists(os.path.join(root, name)):
-                        os.unlink(os.path.join(root, name))
+                    if tvos_storage.exists(os.path.join(root, name)):
+                        tvos_storage.remove(os.path.join(root, name))
                 else:
                     _atomic(os.path.join(root, name), original)
             raise

@@ -1,5 +1,10 @@
 # Configuration recovery
 
+On Apple TV, recovery uses Kodi's virtual XML storage. Non-XML backup manifests/directories can
+be purged by tvOS; retain independent private copies. Raw POSIX/SMB copies may contain stale
+shadows instead of actual preferences. Keep Kodi active; force does not bypass unknown/inactive
+native focus. See [Apple TV recovery limits](apple-tv.md#storage-and-recovery).
+
 Backups belong to the active Kodi profile and can contain passwords and tokens. They are stored under
 `special://profile/addon_data/service.kodi.addonadmin/backups`, one folder per add-on plus `_stack`
 for checkpoints. Keep a separate private copy before replacing a customized installation.
@@ -23,7 +28,7 @@ for checkpoints. Keep a separate private copy before replacing a customized inst
   settings change. Checkpoints restore only the folders declared in their manifest; extra folders
   are ignored. Keep the original backup and use an intact private copy rather than editing its
   metadata to bypass the check. Older snapshots without manifests retain their legacy checks.
-- **Kodi Manager itself.** Restoring Kodi Manager's own folder keeps its current `settings.xml`
+- **Kodi Manager itself.** Restoring Kodi Manager's own folder keeps its current `settings.xml` and `device_identity.xml`
   (access token, LAN access, Enable writes); change those in Kodi.
 - **Nightly checkpoint.** Taken after 03:00 while the TV is idle. If something starts playing while it
   is copying, or Kodi quits or switches profile, it stops, deletes the partial copy and tries again

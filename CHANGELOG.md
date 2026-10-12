@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.16 — 2026-10-12 (prerelease)
+
+- Add experimental Apple TV handling for userdata XML stored in Kodi VFS/NSUserDefaults.
+  Read the virtual value, write it once, verify readback and roll back on failure. Layout edits,
+  add-on/checkpoint/pipeline backups, restore, undo and pruning use that storage explicitly.
+  Other platforms retain POSIX atomic writes; no global filesystem monkeypatching.
+- Add authenticated portable state and bounded active-profile/add-on text reads for clients
+  without ADB. Persist a Manager-instance identity, preserve it on self-restore, and reject
+  other profiles, traversal, symlinks and oversized reads.
+- Read native tvOS application state without UI actions. Inactive/unknown focus blocks action
+  requests, even body-free handlers and forced restores; checkpoint work stops if focus is lost.
+  Existing read-only/token defaults and layout source/version/revision gates remain.
+- Document experimental tvOS setup, disposable cache/backup-manifest limits and unavailable
+  Android recovery. No physical Apple TV validation or household TV changes performed.
+
 ## 0.7.15 — 2026-10-12 (prerelease)
 
 - Reject short, malformed or slowly streamed request bodies before any action, including handlers

@@ -30,12 +30,13 @@ try:
     from .widget_cache import TMDB_HELPERS, cache_url, strip_skin_reload, validate_source
     from .fsutil import atomic_write_bytes, atomic_write_text
     from .backup import prune_folder
-    from . import skin_layout
+    from . import skin_layout, tvos_storage
 except ImportError:
     from widget_cache import TMDB_HELPERS, cache_url, strip_skin_reload, validate_source
     from fsutil import atomic_write_bytes, atomic_write_text
     from backup import prune_folder
     import skin_layout
+    import tvos_storage
 
 WIDGET_FILES = re.compile(r"^skin\.[A-Za-z0-9_.-]+-(?:10000-1|[a-z]+hub)\.DATA\.xml$")
 PROPERTY_FILES = re.compile(r"^skin\.[A-Za-z0-9_.-]+\.properties$")
@@ -83,7 +84,10 @@ def _backup(folder, stamp, name, path):
         raise ValueError("Backup directory must not be a symlink")
     backup = os.path.join(root, "autocache-" + stamp)
     os.makedirs(backup, exist_ok=True)
-    shutil.copy2(path, os.path.join(backup, name), follow_symlinks=False)
+    if tvos_storage.virtual_xml(path):
+        atomic_write_bytes(os.path.join(backup, name), tvos_storage.read_bytes(path))
+    else:
+        shutil.copy2(path, os.path.join(backup, name), follow_symlinks=False)
 
 
 def _properties(folder, name, stamp, extra_addons):
@@ -116,12 +120,13 @@ def autocache(folder, now=None, extra_addons=()):
     ``autocache-*`` backups to the retention setting.
     """
     with skin_layout._LOCK:
+        tvos_storage.require_active()
         return _autocache(folder, now, extra_addons)
 
 
 def _autocache(folder, now, extra_addons):
     try:
-        listing = sorted(os.listdir(folder))
+        listing = sorted(tvos_storage.listdir(folder))
     except OSError:
         return {}
     extra_addons = tuple(a.strip() for a in extra_addons if a and a.strip().startswith("plugin.video."))

@@ -34,6 +34,22 @@ The dashboard is a static page plus this JSON API, served by the Kodi Manager se
 
 ## Status and discovery
 
+### Portable clients (0.7.16+)
+
+| Method | Route | Result |
+| --- | --- | --- |
+| GET | `/api/portable/state` | `platform` (`tvos` or `other`), native `active` (`true`/`false`/`null`), persistent `device_id`, current `profile` label and Kodi-relative `profile_root` |
+| GET | `/api/portable/file?path=userdata/guisettings.xml` | Active-profile/add-on text: `path`, `bytes`, `sha256`, `base64`; at most 600,000 bytes |
+
+Both require the existing bearer token. File reads allow simple ASCII paths under the **active**
+profile or `addons/`, with `.xml`, `.json`, `.properties`, `.txt` or `.po` extensions. Traversal,
+other profiles, symlinks and oversized files are refused. Responses contain raw private data;
+clients must redact model/display output and store backups privately. No arbitrary write endpoint
+is provided. Device identity is a Manager-instance UUID, preserved on self-restore, not hardware
+identity. On tvOS, every POST/PATCH also requires confirmed native active Kodi, even a forced
+restore or read-only preview; unknown/inactive state answers `400` before its handler. Other
+platforms retain their existing behavior. See [tvOS storage/recovery limits](apple-tv.md).
+
 | Method and path | Writes | Request | Response `data` |
 |---|---|---|---|
 | `GET /api/status` | – | – | `service_version`, `Kodi version`, `server` `{host, port}`, `write_enabled`, `allow_lan`, `active_skin`, `current_time`, `platform`, `stack` (detected skin, helpers, players, `warnings`) |

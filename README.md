@@ -27,7 +27,7 @@ from a phone or computer. Use it on its own or as the on-device companion to
 *Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
 > [!NOTE]
-> **Prerelease.** Current version: **0.7.15**. Service versions through 0.7.12 have been used on one
+> **Prerelease.** Current version: **0.7.16**. Service versions through 0.7.12 have been used on one
 > NVIDIA Shield with Kodi 22 beta 2 / RC1, including separate household extensions.
 > Other skins and devices are covered by automated tests rather than live use so far; see
 > [compatibility](docs/compatibility.md).
@@ -58,7 +58,7 @@ from a phone or computer. Use it on its own or as the on-device companion to
 ## Quick start
 
 1. **Download** `service.kodi.addonadmin-<version>.zip` from
-   [Releases](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.15), under **Assets**.
+   [Releases](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.16), under **Assets**.
    Choose the `service.kodi.addonadmin` ZIP; GitHub's **Source code** ZIP, wheel and tar.gz are not
    installable Kodi add-ons.
 2. **Install it.** In Kodi, choose **Add-ons → Install from zip file** and pick the ZIP. Allow
@@ -121,6 +121,12 @@ public Python API. ADB is optional for transferring files; the dashboard needs o
 Check [Amazon’s OS table](https://developer.amazon.com/docs/fire-tv/fire-os-overview.html): Vega OS
 Firesticks are outside this Android support. Fire OS/Google TV hardware testing is still pending;
 see [device setup and limits](docs/setup.md#android-tv-and-fire-tv).
+
+**Apple TV?** Experimental support is included from 0.7.16: the dashboard and reviewed skin,
+settings, widget and backup workflows use Kodi's tvOS virtual XML storage. Kodi must be active;
+unknown native focus blocks actions. Use direct LAN HTTP and install the ZIP through Kodi from
+a readable network source. No physical Apple TV validation yet; tvOS caches and backup manifests
+can be purged. See [Apple TV setup and recovery limits](docs/apple-tv.md).
 
 **Which Kodi versions?**
 Kodi 19 or newer; the optional row cache needs Kodi 20. Live use covers one Shield on Kodi 22 beta 2

@@ -171,6 +171,56 @@ def post_headers(length):
             "Content-Length: %d\r\n\r\n" % length).encode()
 
 
+@pytest.mark.parametrize("active", [False, None])
+def test_tvos_inactive_state_blocks_even_body_free_action(serve, monkeypatch, active):
+    from kodi_manager import tvos_storage
+    monkeypatch.setattr(tvos_storage, "is_tvos", lambda: True)
+    monkeypatch.setattr(tvos_storage, "application_active", lambda: active)
+    httpd, writes, _ = body_server(serve, consume_body=False)
+    conn = http.client.HTTPConnection(*httpd.server_address, timeout=3)
+    try:
+        conn.request("POST", "/api/probe", body="{}", headers={"Authorization": "Bearer tok"})
+        assert conn.getresponse().status == 400
+        assert writes == []
+    finally:
+        conn.close()
+
+
+def test_portable_endpoints_keep_auth_and_bound_file_reads(serve, tmp_path, monkeypatch):
+    import base64
+    import json
+    from kodi_manager import portable_api, tvos_storage
+    root = tmp_path / "userdata"
+    root.mkdir()
+    (root / "guisettings.xml").write_bytes(b"<settings/>")
+    mapping = {"special://masterprofile/": str(root), "special://profile/": str(root),
+               "special://masterprofile/addon_data/service.kodi.addonadmin/device_identity.xml":
+               str(root / "addon_data/service.kodi.addonadmin/device_identity.xml")}
+    monkeypatch.setattr(portable_api, "translate", mapping.__getitem__)
+    monkeypatch.setattr(tvos_storage, "application_active", lambda: True)
+    state = _state()
+    state.kodi.jsonrpc = lambda method: {"result": {"label": "Adults"}}
+    httpd = serve(server.ThreadingHTTPServer, server.make_handler(state))
+
+    def get(path, token="tok"):
+        conn = http.client.HTTPConnection(*httpd.server_address, timeout=3)
+        try:
+            conn.request("GET", path, headers={"Authorization": "Bearer " + token})
+            response = conn.getresponse()
+            return response.status, json.loads(response.read())
+        finally:
+            conn.close()
+
+    assert get("/api/portable/state", "wrong")[0] == 401
+    status, data = get("/api/portable/state")
+    assert status == 200 and len(data["data"]["device_id"]) == 32
+    status, data = get("/api/portable/file?path=userdata/guisettings.xml")
+    assert status == 200 and base64.b64decode(data["data"]["base64"]) == b"<settings/>"
+    assert get("/api/portable/file?path=userdata/../secret.xml")[0] == 400
+    (root / "guisettings.xml").write_bytes(b"x" * 600_001)
+    assert get("/api/portable/file?path=userdata/guisettings.xml")[0] == 400
+
+
 @pytest.mark.parametrize("consume_body", [True, False])
 def test_short_body_with_valid_json_never_performs_write(serve, consume_body):
     httpd, writes, _ = body_server(serve, consume_body)

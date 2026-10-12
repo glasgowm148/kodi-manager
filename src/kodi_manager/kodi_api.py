@@ -3,8 +3,10 @@ import os
 from typing import Any, Dict
 
 try:
+    from . import tvos_storage
     from .path_probe import translate_special, listdir_xbmcvfs, listdir_os, probe_all
 except ImportError:
+    import tvos_storage
     from path_probe import translate_special, listdir_xbmcvfs, listdir_os, probe_all
 
 try:
@@ -25,6 +27,8 @@ def _dir_path(path):
 
 
 def exists(path):
+    if tvos_storage.virtual_xml(translate(path)):
+        return tvos_storage.exists(translate(path))
     if xbmcvfs:
         try:
             return bool(xbmcvfs.exists(path) or xbmcvfs.exists(translate(path)))
@@ -44,6 +48,8 @@ def safe_listdir(path):
 
 
 def read_text(path):
+    if tvos_storage.virtual_xml(translate(path)):
+        return tvos_storage.read_bytes(translate(path)).decode("utf-8", "replace")
     if xbmcvfs:
         try:
             fh = xbmcvfs.File(path)

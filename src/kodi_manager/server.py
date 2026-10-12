@@ -25,6 +25,7 @@ try:
     from .api_addons import AddonRoutes
     from .api_status import StatusRoutes
     from .api_widgets import WidgetRoutes, _lock_layout  # noqa: F401
+    from .portable_api import PortableRoutes
 except ImportError:
     from version import VERSION  # noqa: F401
     from backup import BackupAborted, set_retention  # noqa: F401
@@ -41,12 +42,15 @@ except ImportError:
     from api_addons import AddonRoutes
     from api_status import StatusRoutes
     from api_widgets import WidgetRoutes, _lock_layout  # noqa: F401
+    from portable_api import PortableRoutes
 
 
 _ADDON = r"/api/addons/(?P<aid>[A-Za-z0-9._-]+)"
 
 # (method, path regex, handler method, needs Write Mode, error code for ValueError)
 ROUTES = [
+    ("GET", r"/api/portable/state", "portable_state", False, "bad_request"),
+    ("GET", r"/api/portable/file", "portable_file", False, "bad_request"),
     ("GET", r"/api/widget-cache/url", "widget_cache_url", False, "bad_request"),
     ("GET", r"/api/widget-cache/rows", "widget_rows_list", False, "bad_request"),
     ("POST", r"/api/widget-cache/rows", "widget_rows_add", True, "bad_request"),
@@ -110,7 +114,7 @@ ROUTE_TABLE = [(method, re.compile(pattern + r"\Z"), name, needs_write, value_co
 
 def make_handler(state):
     """A request handler class for ``state`` (an AdminState) answering ROUTES."""
-    class Handler(StatusRoutes, AddonRoutes, WidgetRoutes):
+    class Handler(StatusRoutes, AddonRoutes, WidgetRoutes, PortableRoutes):
         pass
     Handler.state = state
     Handler.route_table = tuple(ROUTE_TABLE)

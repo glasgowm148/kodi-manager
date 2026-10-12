@@ -9,7 +9,7 @@ try:
     from .kodi_api import read_text, translate
     from .account_evidence import credential_present, summarize_account, account_provider, is_auth_field
     from .backup import allocate_backup, finish_backup, discard_on_failure, create_file_backup, _copytree
-    from . import fenlight_db
+    from . import fenlight_db, tvos_storage
     from .fenlight_db import DB_EDITABLE_TYPES
     from .write_policy import check_writable
 except ImportError:
@@ -20,6 +20,7 @@ except ImportError:
     from account_evidence import credential_present, summarize_account, account_provider, is_auth_field
     from backup import allocate_backup, finish_backup, discard_on_failure, create_file_backup, _copytree
     import fenlight_db
+    import tvos_storage
     from fenlight_db import DB_EDITABLE_TYPES
     from write_policy import check_writable
 
@@ -179,14 +180,17 @@ def _scan_refs(root, addon_ids, limit=120):
     refs = []
     if not root or not os.path.isdir(root):
         return refs
-    for base, _dirs, files in os.walk(root):
+    for base, _dirs, files in tvos_storage.walk(root):
         for name in files:
             if not name.lower().endswith(TEXT_EXTS):
                 continue
             path = os.path.join(base, name)
             try:
-                with open(path, "r", encoding="utf-8", errors="replace") as fh:
-                    text = fh.read(200000)
+                if tvos_storage.virtual_xml(path):
+                    text = tvos_storage.read_bytes(path).decode("utf-8", "replace")[:200000]
+                else:
+                    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                        text = fh.read(200000)
             except Exception:
                 continue
             low = text.lower()
@@ -204,8 +208,8 @@ def _player_files(helper):
     files = []
     refs = _scan_refs(root, PLAYER_IDS)
     if os.path.isdir(root):
-        for name in sorted(os.listdir(root)):
-            if os.path.isfile(os.path.join(root, name)):
+        for name in sorted(tvos_storage.listdir(root)):
+            if tvos_storage.is_file(os.path.join(root, name)):
                 files.append({"filename": name, "path": os.path.join(root, name)})
     return {"folder": root, "files": files, "refs": refs}
 

@@ -269,6 +269,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                 raise PermissionError("Write Mode is disabled")
             if method in ("POST", "PATCH"):
                 self.body()  # Validate framing before even handlers that take no body fields.
+                try:
+                    from .tvos_storage import require_active
+                except ImportError:
+                    from tvos_storage import require_active
+                require_active()
             result = getattr(self, "api_" + name.replace("-", "_"))(**match.groupdict())
             self.ok(result)
         except ApiError as exc:
@@ -347,6 +352,11 @@ class RequestHandler(BaseHTTPRequestHandler):
         return (parse_qs(urlsplit(self.path).query).get(name) or [default])[0]
 
     def _require_idle(self, message, status=400):
+        try:
+            from .tvos_storage import require_active
+        except ImportError:
+            from tvos_storage import require_active
+        require_active()
         players = self.state.kodi.jsonrpc("Player.GetActivePlayers")
         if not isinstance(players, dict) or "error" in players or players.get("result") != []:
             # Code playback_active. Restores answer 409 because {"force": true} overrides them;
@@ -363,6 +373,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                 last["at"] = now
                 players = self.state.kodi.jsonrpc("Player.GetActivePlayers")
                 last["playing"] = not isinstance(players, dict) or "error" in players or players.get("result") != []
+                try:
+                    from . import tvos_storage
+                except ImportError:
+                    import tvos_storage
+                if tvos_storage.is_tvos() and tvos_storage.application_active() is not True:
+                    last["playing"] = True
             return last["playing"]
         return playing
 

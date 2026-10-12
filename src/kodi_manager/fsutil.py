@@ -8,6 +8,11 @@ import tempfile
 import threading
 import time
 
+try:
+    from . import tvos_storage
+except ImportError:
+    import tvos_storage
+
 _LOCKS = {}
 _LOCKS_GUARD = threading.Lock()
 
@@ -28,6 +33,10 @@ def atomic_write_bytes(path, data, fsync=True):
     Readers see either the old or the new file, never a partial one. Unlike a
     ``<path>.<pid>.tmp`` name, ``mkstemp`` cannot collide between threads.
     """
+    if tvos_storage.virtual_xml(path):
+        with path_lock(path):
+            tvos_storage.write_xml(path, data)
+        return
     directory = os.path.dirname(os.path.abspath(path))
     os.makedirs(directory, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix="." + os.path.basename(path) + ".", suffix=".tmp", dir=directory)

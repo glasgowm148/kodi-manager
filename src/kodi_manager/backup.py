@@ -9,9 +9,11 @@ import re
 import uuid
 
 try:
+    from . import tvos_storage
     from .kodi_api import translate
     from .fsutil import atomic_write_bytes, atomic_write_json
 except ImportError:
+    import tvos_storage
     from kodi_api import translate
     from fsutil import atomic_write_bytes, atomic_write_json
 
@@ -30,7 +32,7 @@ SELF_ID = "service.kodi.addonadmin"
 # Kodi Manager's access token and LAN/write switches are only changed in Kodi:
 # restoring an old copy of its own folder keeps the live settings.xml, so a
 # replaced token or a LAN switch turned off cannot come back from a backup.
-SELF_KEEP = ("settings.xml",)
+SELF_KEEP = ("settings.xml", "device_identity.xml")
 
 
 def set_retention(count):
@@ -58,7 +60,7 @@ def prune_folder(folder, prefix, keep=(), limit=None):
     names.sort(key=lambda n: os.path.getmtime(os.path.join(folder, n)), reverse=True)
     removed = []
     for name in names[max(0, limit - len(keep)):]:
-        shutil.rmtree(os.path.join(folder, name), ignore_errors=True)
+        tvos_storage.rmtree(os.path.join(folder, name), ignore_errors=True)
         removed.append(name)
     return removed
 
@@ -91,20 +93,23 @@ def _backup_path(*parts):
 def _source_files(src, skip_top=()):
     """Relative paths of the regular files under src, never following symlinks."""
     files = []
-    for root, dirs, names in os.walk(src):
+    for root, dirs, names in tvos_storage.walk(src):
         rel = os.path.relpath(root, src)
         if rel == ".":
             dirs[:] = [d for d in dirs if d not in skip_top]
         dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(root, d))]
         for name in names:
             path = os.path.join(root, name)
-            if not os.path.islink(path) and os.path.isfile(path):
+            if not os.path.islink(path) and tvos_storage.is_file(path):
                 files.append(os.path.relpath(path, src))
     return files
 
 
 def _copy_file(src, dst):
     """Copy one file via a temporary sibling, so ``dst`` is never left half-written."""
+    if tvos_storage.virtual_xml(src) or tvos_storage.virtual_xml(dst):
+        atomic_write_bytes(dst, tvos_storage.read_bytes(src))
+        return
     fd, tmp = tempfile.mkstemp(prefix="." + os.path.basename(dst) + ".", suffix=".km-tmp",
                                dir=os.path.dirname(dst))
     os.close(fd)
@@ -157,7 +162,7 @@ def discard_on_failure(dest):
     try:
         yield
     except BaseException:
-        shutil.rmtree(dest, ignore_errors=True)
+        tvos_storage.rmtree(dest, ignore_errors=True)
         raise
 
 
@@ -192,7 +197,7 @@ def prune(scope, keep=None):
     for name in names[_retention:]:
         if name in keep:
             continue
-        shutil.rmtree(os.path.join(root, name), ignore_errors=True)
+        tvos_storage.rmtree(os.path.join(root, name), ignore_errors=True)
         removed.append(name)
     return removed
 
@@ -213,15 +218,15 @@ def _replace_tree(src, dst, skip_top=(), expected_files=None):
     if expected_files is None and count == 0:
         raise ValueError("Backup is empty; nothing was restored")
     wanted = set(_copytree(src, dst, skip_top))
-    for root, _dirs, names in os.walk(dst, topdown=False):
+    for root, _dirs, names in tvos_storage.walk(dst, topdown=False):
         rel = os.path.relpath(root, dst)
         if rel.split(os.sep)[0] in skip_top:
             continue
         for name in names:
             path = os.path.join(root, name)
             if os.path.relpath(path, dst) not in wanted:
-                os.remove(path)
-        if root != dst and not os.path.islink(root) and not os.listdir(root):
+                tvos_storage.remove(path)
+        if root != dst and not os.path.islink(root) and not tvos_storage.listdir(root):
             os.rmdir(root)
 
 
@@ -231,9 +236,8 @@ def _restore_folder(aid, src, dest, skip, expected):
     if aid == SELF_ID:
         for name in SELF_KEEP:
             path = os.path.join(dest, name)
-            if os.path.isfile(path) and not os.path.islink(path):
-                with open(path, "rb") as handle:
-                    kept[name] = handle.read()
+            if tvos_storage.exists(path) and not os.path.islink(path):
+                kept[name] = tvos_storage.read_bytes(path)
             else:
                 kept[name] = None
     _replace_tree(src, dest, skip, expected_files=expected)
@@ -241,8 +245,8 @@ def _restore_folder(aid, src, dest, skip, expected):
         path = os.path.join(dest, name)
         if data is not None:
             atomic_write_bytes(path, data)
-        elif os.path.isfile(path) and not os.path.islink(path):
-            os.remove(path)
+        elif tvos_storage.exists(path) and not os.path.islink(path):
+            tvos_storage.remove(path)
 
 
 def _write_manifest(dest, manifest):
@@ -298,9 +302,9 @@ def create_file_backup(scope, files, kodi_version="", note=""):
     with discard_on_failure(dest):
         for rel, path in sorted(files.items()):
             target = _backup_path(scope, backup_id, *rel.split("/"))
-            if path and os.path.isfile(path) and not os.path.islink(path):
+            if path and tvos_storage.is_file(path) and not os.path.islink(path):
                 os.makedirs(os.path.dirname(target), exist_ok=True)
-                shutil.copy2(path, target, follow_symlinks=False)
+                _copy_file(path, target)
                 copied.append(rel)
             else:
                 missing.append(rel)
@@ -383,7 +387,7 @@ def create_stack_backup(addons, kodi_version="", note="", should_stop=None):
                 counts[addon["addon_id"]] = len(files)
                 for rel in files:
                     try:
-                        total_bytes += os.path.getsize(os.path.join(root, addon["addon_id"], rel))
+                        total_bytes += tvos_storage.size(os.path.join(root, addon["addon_id"], rel))
                     except OSError:
                         pass
                 included.append(addon["addon_id"])
@@ -398,7 +402,7 @@ def create_stack_backup(addons, kodi_version="", note="", should_stop=None):
 def delete_stack_backup(backup_id):
     root = _backup_path("_stack", backup_id)
     if os.path.isdir(root) and not os.path.islink(root):
-        shutil.rmtree(root)
+        tvos_storage.rmtree(root)
         return True
     return False
 
