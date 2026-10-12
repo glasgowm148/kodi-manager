@@ -26,6 +26,23 @@ For **Apple TV**, follow [tvOS installation and recovery](apple-tv.md). Install 
 Kodi's separate HTTP control service is needed for nvidia-MCP's Kodi RPC tools, but is not required
 for the Manager dashboard alone.
 
+## Let an AI agent handle the computer side
+
+You handle the TV and Kodi's installer; the agent downloads, verifies and transfers the ZIP and
+connects to the dashboard. For Android TV or Fire OS, complete nvidia-MCP's
+[device debugging preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md) first.
+
+```text
+Set up https://github.com/glasgowm148/kodi-manager for my Kodi device.
+Read docs/setup.md and handle the computer steps automatically.
+Kodi IP: YOUR_KODI_IP
+Check for an existing installation and preserve customizations.
+Download and verify the companion ZIP, transfer it using authorized access,
+and tell me where to select it in Kodi's native installer.
+Retrieve the Manager token privately and verify read-only dashboard/API access.
+Keep Enable writes off. Do not interrupt playback.
+```
+
 ## Prepare the release — agent/computer
 
 An agent with terminal/file access should perform these steps rather than handing the user commands

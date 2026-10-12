@@ -8,6 +8,10 @@ Keep `src/kodi_manager` and `web` canonical. Preserve auth/read-only/profile/ver
 the affected behavior and meaningful validation in PRs. Real TV tests need authorization and known
 playback/foreground state; CI must never contact a household TV.
 
+Use a virtual environment with Python 3.9+. Run these checks from the repository root.
+The archive globs below use a POSIX shell; in PowerShell, pass the actual archive filenames.
+Keep only the current build in `dist/` (move older artifacts elsewhere before building).
+
 ```sh
 python -m pip install -e '.[dev]'
 pytest -q
@@ -28,3 +32,5 @@ against `version.py`, rebuilds the ZIP to confirm identical bytes and publishes 
 Inspect release archives, verify deterministic ZIP bytes and publish `SHA256SUMS`. Keep releases marked
 prerelease until the documented live-install/recovery checks pass. Checksums detect changed bytes;
 they are not an independent publisher signature. Inspect GitHub CI results before announcing support.
+
+See the [documentation index](docs/README.md) for user and integration guides.

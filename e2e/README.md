@@ -15,12 +15,12 @@ Every test also fails on a browser console error or an uncaught exception.
 
 ## Run
 
-Needs Node 20+, Python 3.8+ (`python3`, or set `PYTHON`) and Playwright's Chromium.
+Needs Node 20+, Python 3.8+ (`python3` on macOS/Linux, `python` on Windows, or set `PYTHON`) and Playwright's Chromium.
 
 ```sh
 cd e2e
 npm ci
-npx playwright install chromium   # skip if Chromium for Playwright 1.63 (chromium-1243) is already installed
+npx playwright install chromium   # installs the version pinned by package-lock.json
 npx playwright test
 npx playwright show-report        # after a failure
 ```
@@ -29,8 +29,8 @@ npx playwright show-report        # after a failure
 
 Baselines live in `tests/__screenshots__/`, one per page, project and platform
 (`overview-desktop-darwin.png`, `overview-phone-linux.png`, …): fonts differ between macOS and Linux.
-A screenshot test **skips** while its baseline is missing, so a fresh checkout and CI stay green until
-baselines are committed. Write or refresh them, check the images, then commit them:
+A screenshot test **skips** while its platform baseline is missing; a green run with skips does
+not verify appearance on that platform. Behavioral tests still run. Write or refresh them, check the images, then commit them:
 
 ```sh
 npx playwright test --update-snapshots
@@ -42,9 +42,11 @@ exactly: run the **Test and package** workflow by hand with `update_snapshots` t
 `linux-screenshots` artifact and commit the `*-linux.png` files:
 
 ```sh
-gh workflow run ci.yml -f update_snapshots=true
-gh run download <run id> -n linux-screenshots -D tests/__screenshots__
+gh workflow run ci.yml --repo glasgowm148/kodi-manager -f update_snapshots=true
+gh run download <run-id> --repo glasgowm148/kodi-manager -n linux-screenshots -D tests/__screenshots__
 git add tests/__screenshots__/*/*-linux.png
 ```
 
 The comparison tolerates anti-aliasing (`threshold: 0.2`) and at most 1 % of differing pixels.
+
+See [Contributing](../CONTRIBUTING.md) for the full checks and [documentation](../docs/README.md) for user guides.

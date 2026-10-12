@@ -4,6 +4,9 @@ The dashboard is a static page plus this JSON API, served by the Kodi Manager se
 (default port 8765). This list follows `ROUTES` in `src/kodi_manager/server.py`; the handlers are in
 `api_status.py`, `api_addons.py` and `api_widgets.py` next to it.
 
+For a computer-side Python client and offline parsing, see the [library guide](library.md).
+For service installation and profile tokens, use [setup](setup.md).
+
 ## Conventions
 
 - **Auth.** Every `/api/` request needs `Authorization: Bearer TOKEN`. The only exception is
