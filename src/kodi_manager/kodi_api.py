@@ -134,7 +134,7 @@ class KodiAPI:
         return self.jsonrpc("Application.GetProperties", {"properties": ["version", "name"]}).get("result", {})
 
     def list_addons(self):
-        props = ["name", "version", "enabled", "path", "dependencies"]
+        props = ["name", "version", "enabled", "path", "dependencies", "summary", "description"]
         res = self.jsonrpc("Addons.GetAddons", {"properties": props, "enabled": "all"})
         addons = res.get("result", {}).get("addons", [])
         out = []
@@ -146,7 +146,7 @@ class KodiAPI:
         return out
 
     def get_addon_details(self, addon_id):
-        props = ["name", "version", "enabled", "path", "dependencies"]
+        props = ["name", "version", "enabled", "path", "dependencies", "summary", "description"]
         res = self.jsonrpc("Addons.GetAddonDetails", {"addonid": addon_id, "properties": props})
         item = res.get("result", {}).get("addon", {})
         if not item:

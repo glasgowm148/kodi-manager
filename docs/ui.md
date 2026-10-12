@@ -22,6 +22,19 @@ header: a title, one sentence saying what the page is for, and the other pages i
 Settings search stays in the header on every page; an add-on's settings open at `#/addon/ID`.
 Old routes keep working.
 
+**All add-ons** explains each entry's purpose and separates Kodi components, skins, shared
+libraries, update repositories, resource packs, video add-ons and services. Search also matches
+purposes and dependent add-ons. Type and review filters find disabled entries, background services,
+declared dependents and saved configuration. An add-on's settings page repeats its explanation.
+
+Removal hints are advisory: **Keep** marks Kodi components, this dashboard and the active skin;
+**Check dependents** lists installed add-ons that import it; **Review disabled** identifies disabled
+entries with no declared dependents. Check every profile and any widget, skin-action or player
+selection before uninstalling. Installed files may be shared, and a player can select a scraper
+without declaring an import. A background-service label describes the manifest, not proof that
+the service is running. Removing disabled add-ons mainly saves storage; enabled background
+services can also consume RAM. Removal still happens through Kodi's own add-on manager.
+
 ### Navigation
 
 - **Phone (under 900 px):** a bottom bar with Status, Home screen, Add-ons, Backups and More. More

@@ -50,6 +50,29 @@ class _Kodi:
         return {}
 
 
+def test_updated_builtin_uses_home_manifest_and_reverse_dependencies(kodi_fs):
+    _, roots = kodi_fs
+    _write(roots["special://home/"] / "addons/script.module.shared/addon.xml",
+           b'<addon id="script.module.shared" name="New library" version="2"><requires/>\n'
+           b'<extension point="xbmc.python.module"/></addon>')
+    _write(roots["special://xbmc/"] / "addons/script.module.shared/addon.xml",
+           b'<addon id="script.module.shared" name="Old library" version="1"><requires>'
+           b'<import addon="script.module.obsolete"/></requires></addon>')
+    _write(roots["special://home/"] / "addons/skin.example/addon.xml",
+           b'<addon id="skin.example" name="Example" version="1"><requires>'
+           b'<import addon="script.module.shared"/></requires><extension point="xbmc.gui.skin"/></addon>')
+    kodi = _Kodi()
+    kodi.get_active_skin = lambda: {"addon_id": "skin.example"}
+    index = addon_index.AddonIndex(kodi)
+    shared = index.get("script.module.shared")
+    assert shared["version"] == "2"
+    assert shared["name"] == "New library"
+    assert shared["dependencies"] == []
+    assert shared["role"] == "system"
+    assert shared["required_by"][0]["addon_id"] == "skin.example"
+    assert index.get("skin.example")["cleanup"]["label"] == "Keep active skin"
+
+
 def _write(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)

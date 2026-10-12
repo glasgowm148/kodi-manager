@@ -128,6 +128,27 @@ pre{white-space:pre-wrap;overflow:auto;background:var(--surface-2);border:1px so
 .addon-table{width:100%;border-collapse:collapse;font-size:14px}
 .addon-table th,.addon-table td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left;vertical-align:middle}
 .addon-table th{color:var(--muted);font-weight:600;font-size:13px}
+.addon-filters{display:flex;flex-wrap:wrap;gap:12px}
+.addon-filters label{flex:1 1 180px;min-width:0}
+.addon-filters input,.addon-filters select{width:100%}
+.addon-catalog{min-width:900px}
+.addon-catalog td{vertical-align:top}
+.addon-name{min-width:200px}
+.addon-name>*{display:block;margin-bottom:5px}
+.addon-name code{font-size:12px;overflow-wrap:anywhere}
+.addon-purpose,.addon-cleanup{min-width:200px;max-width:340px}
+.addon-cleanup p{margin:6px 0 0}
+.addon-dependents{padding-left:18px;margin:0;min-width:130px}
+.addon-dependents li{margin-bottom:6px}
+.addon-service{font-size:12px;color:var(--muted)}
+@media(max-width:900px){
+  .addon-catalog,.addon-catalog tbody,.addon-catalog tr,.addon-catalog td{display:block;min-width:0;width:100%;max-width:none}
+  .addon-catalog thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .addon-catalog tr{padding:12px 0;border-bottom:1px solid var(--line)}
+  .addon-catalog td{border:0;padding:8px 0}
+  .addon-catalog td[data-label]::before{content:attr(data-label);display:block;font-weight:600;color:var(--muted);margin-bottom:5px}
+  .addon-catalog .addon-dependents{min-width:0}
+}
 .table .row{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:10px 0}
 .pipe-node{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:14px}.pipe-node h3{font-size:15px}
 .settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}

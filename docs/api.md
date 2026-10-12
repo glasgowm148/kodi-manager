@@ -81,6 +81,16 @@ notice without a known harmless original remains actionable.
 
 ## Add-on settings and backups
 
+`GET /api/addons` returns the existing inventory plus `purpose`, `role`, `role_label`,
+`has_service` (true/false when a manifest was read, otherwise null), `active_skin`,
+`required_by[{addon_id, name, enabled, optional}]` and `cleanup{code, label, detail}`.
+`GET /api/addons/ID/settings` includes these explanations in `addon_info`.
+Bundled-folder evidence and core framework IDs identify Kodi components; an official repository
+alone does not make an add-on a system component. Reverse dependencies include disabled installed
+add-ons and optional imports. They exclude saved-config-only entries. Hints cover the current
+profile and do not detect integrations selected in settings, skin actions or widgets. A missing
+dependent is never proof that uninstalling is safe. This API does not uninstall or disable add-ons.
+
 | Method and path | Writes | Request | Response `data` |
 |---|---|---|---|
 | `GET /api/addons/ID/settings` | – | – | `{addon_id, name, adapter, groups[{label, settings[]}], warnings[], editable, read_only_reason}`. Each setting has `id`, `label`, `type`, `value`, `default`, `options`, `editable`, `masked`, `description`, `warning`. When `editable` is `false`, show the settings read-only with `read_only_reason`. |

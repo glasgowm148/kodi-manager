@@ -138,6 +138,8 @@ class AddonRoutes(RequestHandler):
         parsed.update({"addon_id": aid, "name": addon.get("name"), "adapter": adapter.name,
                        "warnings": parsed.get("warnings", []) + adapter.get_warnings(addon),
                        "editable": reason is None, "read_only_reason": reason})
+        parsed["addon_info"] = {key: addon.get(key) for key in
+                                ("purpose", "role_label", "has_service", "required_by", "cleanup", "description")}
         return parsed
 
     def api_addon_settings_patch(self, aid):

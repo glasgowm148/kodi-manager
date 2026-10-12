@@ -1049,14 +1049,45 @@ function renderLogs(title, lines){
 }
 async function logs(){ const l=await api("/api/logs"); renderLogs("Service log", l.lines || []); }
 async function kodiLogs(){ const l=await api("/api/kodi/logs"); renderLogs("Kodi log", l.lines || []); }
+function addonUsageMarkup(addon){
+  const used = addon.required_by || [];
+  if (!used.length) return '<span class="muted">No declared dependents found</span>';
+  return `<ul class="addon-dependents">${used.map(a => `<li><a href="#/addon/${esc(encodeURIComponent(a.addon_id))}">${esc(a.name || a.addon_id)}</a>${a.enabled === false ? ' <span class="muted">(disabled)</span>' : a.enabled !== true ? ' <span class="muted">(state unknown)</span>' : ''}${a.optional ? ' <span class="muted">(optional)</span>' : ''}</li>`).join('')}</ul>`;
+}
+function addonExplanationMarkup(info){
+  if (!info?.purpose) return '';
+  return `<section class="panel addon-explanation"><h3>What this add-on does</h3><p>${esc(info.purpose)}</p><p class="muted">${esc(info.role_label || 'Type unconfirmed')}${info.has_service === true ? ' · Has a background service when enabled' : ''}</p><h4>Before removing it</h4><p><b>${esc(info.cleanup?.label || 'Check usage')}</b> — ${esc(info.cleanup?.detail || 'Check integrations and other profiles.')}</p>${addonUsageMarkup(info)}${info.description && info.description !== info.purpose ? `<details><summary>Add-on description</summary><p>${esc(info.description)}</p></details>` : ''}</section>`;
+}
+function filteredAddons(addons, query='', role='all', review='all'){
+  const q = query.trim().toLowerCase();
+  return addons.filter(a => {
+    const text = [a.addon_id, a.name, a.purpose, a.summary, a.role_label, ...(a.required_by || []).map(d => `${d.addon_id} ${d.name}`)].join(' ').toLowerCase();
+    if (!text.includes(q) || (role !== 'all' && a.role !== role)) return false;
+    return review === 'all' || (review === 'disabled' && a.enabled === false)
+      || (review === 'service' && a.has_service === true)
+      || (review === 'dependency' && (a.required_by || []).length > 0)
+      || a.cleanup?.code === review;
+  }).sort((a,b) => String(a.name || a.addon_id).localeCompare(String(b.name || b.addon_id)));
+}
+function addonRowMarkup(a){
+  const status = a.installed !== true ? 'Installation unconfirmed' : a.enabled === true ? 'Enabled' : a.enabled === false ? 'Disabled' : 'Enabled state unknown';
+  return `<tr><td class="addon-name"><b>${esc(a.name || a.addon_id)}</b><code>${esc(a.addon_id)}</code><span class="muted">${esc(a.version || 'Version unknown')} · ${status}</span><span>${esc(a.role_label || 'Type unconfirmed')}</span>${a.has_service === true ? '<span class="addon-service">Background service when enabled</span>' : ''}</td><td class="addon-purpose" data-label="What it does">${esc(a.purpose || a.summary || 'Description unavailable; open the add-on for details.')}</td><td data-label="Declared dependents">${addonUsageMarkup(a)}</td><td class="addon-cleanup" data-label="Removal guidance"><b>${esc(a.cleanup?.label || 'Check usage')}</b><p class="muted">${esc(a.cleanup?.detail || 'Check other profiles, widgets and player settings before removing.')}</p></td><td><a class="action" href="#/addon/${esc(encodeURIComponent(a.addon_id))}">Open</a></td></tr>`;
+}
 async function allAddons(){
   const addons = await api("/api/addons");
-  out(`${pageHead("All add-ons", `Every add-on Kodi reports: ${addons.length} in total.`)}<div class="panel"><label for="filter" class="sr-only">Filter add-ons</label><input id="filter" type="search" placeholder="Filter add-ons"><div id="addonList" class="table-scroll"></div></div>`);
+  const system = addons.filter(a => a.role === 'system').length;
+  out(`${pageHead("All add-ons", `${addons.length} entries, including ${system} Kodi components. Libraries and resource packs support other add-ons.`)}
+    <div class="panel addon-guide"><p><b>Review disabled</b> highlights possible cleanup candidates. <b>Check dependents</b> means another installed add-on declares a dependency. Keep Kodi components and your active skin.</p><details><summary>Before uninstalling</summary><p class="muted">This view checks the current profile. Installed files may be shared across profiles. Undeclared uses in widgets, skin actions and player settings are not detected. Removing disabled add-ons mainly frees storage; enabled background services may also use RAM.</p></details></div>
+    <div class="panel"><div class="addon-filters"><label>Search<input id="filter" type="search" placeholder="Name, purpose or dependent"></label><label>Type<select id="addonRole"><option value="all">All types</option>${[['system','Kodi components'],['skin','Skins'],['library','Shared libraries'],['repository','Update repositories'],['resource','Resource packs'],['video','Video add-ons'],['service','Services'],['other','Other add-ons']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></label><label>Review<select id="addonReview"><option value="all">All entries</option><option value="review_disabled">Review disabled</option><option value="disabled">All disabled</option><option value="service">Background services</option><option value="dependency">Declared dependents</option><option value="config_only">Saved config only</option></select></label></div><p id="addonMatches" class="muted" role="status"></p><div id="addonList" class="table-scroll" tabindex="0" role="region" aria-label="Add-on descriptions and dependencies"></div></div>`);
   const render = () => {
-    const q = ($("#filter").value || "").toLowerCase();
-    $("#addonList").innerHTML = `<table class="addon-table"><thead><tr><th>Name</th><th>ID</th><th>Version</th><th>Enabled</th><th>Config</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>${addons.filter(a => `${a.addon_id} ${a.name}`.toLowerCase().includes(q)).map(a => `<tr><td>${esc(a.name || a.addon_id)}</td><td>${esc(a.addon_id)}</td><td>${esc(a.version || "")}</td><td>${badge(a.enabled)}</td><td>${badge(a.config_present)}</td><td><a class="action" href="#/addon/${esc(encodeURIComponent(a.addon_id))}">Open</a></td></tr>`).join("")}</tbody></table>`;
+    const rows = filteredAddons(addons, $("#filter").value, $("#addonRole").value, $("#addonReview").value);
+    $("#addonMatches").textContent = `${rows.length} of ${addons.length} entries`;
+    $("#addonList").innerHTML = `<table class="addon-table addon-catalog"><thead><tr><th scope="col">Add-on</th><th scope="col">What it does</th><th scope="col">Declared dependents</th><th scope="col">Removal guidance</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>${rows.map(addonRowMarkup).join('') || '<tr><td colspan="5">No add-ons match these filters.</td></tr>'}</tbody></table>`;
   };
-  $("#filter").oninput = render; render();
+  $("#filter").oninput = render;
+  $("#addonRole").onchange = render;
+  $("#addonReview").onchange = render;
+  render();
 }
 async function installAddonView(){
   out(`${pageHead("Install an add-on", "Opens Kodi’s own Install from zip file dialog on the TV. Choose the ZIP there with the remote.")}<div class="panel"><p>Kodi has no way to install a ZIP from a path, so this opens the dialog on the TV, and Kodi applies its normal unknown-sources check. Nothing opens while something is playing.</p><button class="primary" id="installZip" ${writeAttrs()}>Open “Install from zip file” on the TV</button><p id="installOut" role="status"></p></div>`);

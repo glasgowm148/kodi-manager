@@ -1,5 +1,17 @@
 # Frequently asked questions
 
+## Which add-ons can I remove?
+
+Start with **All add-ons → Review → Review disabled**. Read the purpose and removal guidance,
+then check other profiles, widgets, skin actions and player settings. **Declared dependents** links
+to add-ons that import the entry; disabled and optional dependents still count. No listed dependent
+does not establish that an entry is unused. Keep Kodi components, the active skin and dependencies
+of features you use. Repositories supply future updates even when they have no declared dependents.
+
+Uninstall confirmed unused entries through Kodi. Removing disabled add-ons usually frees storage;
+stopping enabled background services can save RAM. The dashboard does not estimate savings or
+remove add-ons automatically.
+
 ## Do I need a particular skin or add-on?
 
 General inspection works across skins. Settings depend on the add-on's supported schema/adapter;

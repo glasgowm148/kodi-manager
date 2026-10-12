@@ -7,10 +7,12 @@ try:
     from .kodi_api import translate, safe_listdir, exists, read_text
     from .path_probe import probe_all
     from .adapters import adapter_for
+    from .addon_catalog import annotate_addons, plain_text
 except ImportError:
     from kodi_api import translate, safe_listdir, exists, read_text
     from path_probe import probe_all
     from adapters import adapter_for
+    from addon_catalog import annotate_addons, plain_text
 
 STACK_IDS = {
     "plugin.video.themoviedb.helper", "plugin.video.tmdb.bingie.helper",
@@ -38,7 +40,21 @@ def addon_xml_meta(folder):
         return {}
     try:
         root = ET.fromstring(read_text(xml_path))
-        return {"addon_id": root.get("id", ""), "name": root.get("name", ""), "version": root.get("version", ""), "addon_xml_present": True}
+        metadata = root.find("extension[@point='xbmc.addon.metadata']")
+        def localized(tag):
+            nodes = metadata.findall(tag) if metadata is not None else []
+            preferred = next((node for node in nodes if (node.get("lang") or "en").lower().startswith("en")), None)
+            node = preferred if preferred is not None else (nodes[0] if nodes else None)
+            return plain_text(node.text if node is not None else "")
+        extensions = [e.get("point", "") for e in root.findall("extension")
+                      if e.get("point") != "xbmc.addon.metadata"]
+        return {"addon_id": root.get("id", ""), "name": plain_text(root.get("name", "")),
+                "version": root.get("version", ""), "addon_xml_present": True, "metadata_available": True,
+                "summary": localized("summary"), "description": localized("description"),
+                "extensions": extensions, "type": extensions[0] if extensions else "",
+                "dependencies": [{"addonid": node.get("addon", ""), "minversion": node.get("version", ""),
+                                  "optional": node.get("optional", "false").lower() == "true"}
+                                 for node in root.findall("requires/import")]}
     except Exception:
         return {"addon_xml_present": True}
 
@@ -134,7 +150,7 @@ class AddonIndex:
             meta = addon_xml_meta(folder)
             aid = meta.get("addon_id") or aid
             base = addons.get(aid, {"addon_id": aid})
-            base.update({k: v for k, v in meta.items() if v})
+            base.update(meta)
             base["path"] = base.get("path") or folder
             base["home_addons_present"] = True
             base["home_addon_path"] = folder
@@ -145,7 +161,9 @@ class AddonIndex:
             meta = addon_xml_meta(folder)
             aid = meta.get("addon_id") or aid
             base = addons.get(aid, {"addon_id": aid})
-            base.update({k: v for k, v in meta.items() if v})
+            # A user-installed update takes precedence over Kodi's bundled copy.
+            if not base.get("home_addons_present"):
+                base.update(meta)
             base["path"] = base.get("path") or folder
             base["builtin_addons_present"] = True
             base["builtin_addon_path"] = folder
@@ -160,7 +178,11 @@ class AddonIndex:
             base["addon_data_present"] = True
             base["addon_data_path_override"] = os.path.join(live_root, aid)
             addons[aid] = enrich_addon(base, self.kodi, addons)
-        return addons, probe
+        try:
+            active_skin = self.kodi.get_active_skin().get("addon_id", "")
+        except Exception:
+            active_skin = ""
+        return annotate_addons(addons, active_skin), probe
 
     def get(self, addon_id):
         addons = self.addons
@@ -169,8 +191,10 @@ class AddonIndex:
             if details:
                 details["jsonrpc_present"] = True
                 with self._lock:
-                    self.addons = dict(self.addons)
-                    self.addons[addon_id] = enrich_addon(details, self.kodi, self.addons)
+                    snapshot = {aid: dict(addon) for aid, addon in self.addons.items()}
+                    snapshot[addon_id] = enrich_addon(details, self.kodi, snapshot)
+                    active_skin = next((aid for aid, addon in snapshot.items() if addon.get("active_skin")), "")
+                    self.addons = annotate_addons(snapshot, active_skin)
                     addons = self.addons
         return addons.get(addon_id)
 

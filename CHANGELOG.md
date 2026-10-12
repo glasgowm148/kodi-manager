@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.7.24 — 2026-10-12 (prerelease)
+
+- Explain add-on purposes, Kodi components, shared libraries, update repositories, resource packs and background services. Link declared dependents, including disabled and optional imports; add type/review filters and conservative removal guidance for the current profile. Repeat explanations on settings pages. No automatic removal or device mutations are added.
+- Prefer updated user-installed manifests over bundled copies, so versions and dependency relationships remain accurate.
 
 - Clarify clean Python-library installation, checksum verification, current Connection navigation, token storage/authentication and storage-blocked sign-in. Correct provider-cache and add-on editing support claims.
 - Shorten the main README and add linked documentation indexes, FAQ and Python library examples. Clarify add-on editing limits, background activity and screenshot-test skips; runtime is unchanged.

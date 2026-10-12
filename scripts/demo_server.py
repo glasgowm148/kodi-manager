@@ -19,12 +19,15 @@ import calendar
 import json
 import math
 import random
+import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote_plus, unquote, urlsplit
 
 WEB = Path(__file__).resolve().parents[1] / "web"
+sys.path.insert(0, str(WEB.parent / "src"))
+from kodi_manager.addon_catalog import annotate_addons  # noqa: E402
 TOKEN = "demo-token-0000"
 VERSION = "0.7.11-demo"
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
@@ -215,12 +218,21 @@ class Demo:
                 "recent_errors": [], "recent_warnings": ["warning <general>: Skin has invalid include: DemoInclude", "warning <general>: Texture not found: demo.png", "warning <general>: Slow directory listing (2.1 s)"]}
 
     def addons(self):
-        return [{"addon_id": aid, "name": name, "version": ver, "installed": True, "enabled": aid != "plugin.video.youtube",
-                 "config_present": aid not in ("script.module.requests",)} for aid, name, ver in ADDONS]
+        # Use the same classification logic as Kodi, with synthetic manifests and dependencies.
+        addons = {aid: {"addon_id": aid, "name": name, "version": ver, "installed": True,
+                       "enabled": aid != "plugin.video.youtube", "config_present": aid != "script.module.requests",
+                       "metadata_available": True, "extensions": [], "dependencies": []} for aid, name, ver in ADDONS}
+        addons["skin.bingie"]["dependencies"] = [{"addonid": "script.skinshortcuts"}, {"addonid": "plugin.video.themoviedb.helper"}]
+        addons["plugin.video.pov"]["dependencies"] = [{"addonid": "script.module.requests"}]
+        for aid in ("script.module.cocoscrapers", "script.trakt", "service.kodi.addonadmin"):
+            addons[aid]["extensions"] = ["xbmc.service"]
+        return list(annotate_addons(addons, "skin.bingie").values())
 
     def settings(self, aid):
         name = dict((a, n) for a, n, _ in ADDONS).get(aid, aid)
+        info = next((a for a in self.addons() if a["addon_id"] == aid), {})
         return {"addon_id": aid, "name": name, "adapter": "generic", "editable": True, "read_only_reason": "", "warnings": [],
+                "addon_info": info,
                 "groups": [{"label": "Playback", "settings": [
                     {"id": "auto_play", "label": "Play the first source automatically", "type": "bool", "value": "true", "default": "false", "default_known": True, "options": [], "editable": True, "masked": False, "description": "Start playing without showing the source list."},
                     {"id": "results.quality", "label": "Highest quality", "type": "select", "value": "1080p", "default": "4K", "default_known": True, "options": [{"value": "4K", "label": "4K"}, {"value": "1080p", "label": "1080p"}, {"value": "720p", "label": "720p"}], "editable": True, "masked": False, "description": "Sources above this quality are hidden."},
