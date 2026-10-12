@@ -371,3 +371,4 @@ a.tile--warn:hover{background:var(--warning-soft);border-color:var(--warning)}a.
 .log-issue{border-top:1px solid var(--line);padding:16px 0}.log-issue-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}.log-issue h3{margin:0}.log-issue pre{white-space:pre-wrap;overflow-wrap:anywhere}.log-issue .actions{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:12px}
 
 .log-issue a{overflow-wrap:anywhere}.log-issue .facts{margin:8px 0}
+.original-log-entries [hidden],#moreLogIssues[hidden]{display:none}
