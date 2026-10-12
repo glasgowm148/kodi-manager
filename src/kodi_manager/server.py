@@ -89,6 +89,7 @@ ROUTES = [
     ("GET", r"/api/search/config", "search_config", False, "bad_request"),
     ("GET", r"/api/logs", "logs", False, "bad_request"),
     ("GET", r"/api/kodi/logs/history", "kodi_log_history", False, "bad_request"),
+    ("POST", r"/api/kodi/logs/review", "kodi_log_review", True, "bad_request"),
     ("GET", r"/api/kodi/logs", "kodi_logs", False, "bad_request"),
     ("POST", r"/api/addons/install", "addons_install", True, "bad_request"),
     ("POST", r"/api/stack/backup", "stack_backup", True, "bad_request"),

@@ -432,6 +432,7 @@ async function route(){
   clearInterval(state.dashboardTimer);
   clearInterval(state.overviewTimer);
   state.overviewRequest = (state.overviewRequest || 0) + 1;
+  state.logHistoryRequest = (state.logHistoryRequest || 0) + 1;
   state.dashboardController?.abort();
   state.dashboardRequest = (state.dashboardRequest || 0) + 1;
   state.dashboardLoading = false;
@@ -442,6 +443,10 @@ async function route(){
     out(pageSkeleton());
     const r = location.hash.replace(/^#\/?/, "") || "dashboard";
     if (r.startsWith("search")) await searchView(new URLSearchParams(r.split("?")[1] || "").get("q") || "");
+    else if (r.split('?')[0] === 'kodi-logs') {
+      const params = new URLSearchParams(r.split('?')[1] || '');
+      await kodiLogs(params.get('level') || 'all', params.get('issue') || '');
+    }
     else if (r.startsWith("addon/")) await addonSettings(decodeURIComponent(r.slice(6)));
     else await (ROUTES[r] || ROUTES.dashboard)();
     focusHeading();
@@ -662,6 +667,7 @@ async function healthView(){
   <section class="verdict verdict--${tone}" aria-label="Summary">${dashboardIcon(tone === "ok" ? "check" : "alert")}<div><h3>${esc(verdict)}</h3><p>${esc(attention.length ? "The checks that need a look are listed first." : "Nothing needs doing right now.")}</p></div></section>
   <ul class="checklist">${[...attention, ...checks.filter(c => c.status === "ok")].map(c => `<li class="check check--${healthTone(c.status)}"><span class="check-icon">${dashboardIcon(c.status === "ok" ? "check" : "alert")}</span><div class="check-body"><div class="check-head"><b>${esc(c.label)}</b>${dashboardPill(healthTone(c.status), HEALTH_WORDS[c.status] || c.status, c.status === "ok" ? "check" : "alert")}</div><p class="muted">${esc(c.detail)}</p>${healthAction(c)}${HEALTH_LINKS[c.id] && c.status !== "ok" ? `<a class="check-link" href="${HEALTH_LINKS[c.id][0]}">${esc(HEALTH_LINKS[c.id][1])}</a>` : ""}</div></li>`).join("")}</ul>
   <section class="panel"><h3>At a glance</h3><dl class="facts-grid">${Object.entries(h.stats || {}).map(([k,v]) => `<div><dt>${esc(HEALTH_STATS[k] || k.replace(/_/g," "))}</dt><dd>${esc(statValue(k, v))}</dd></div>`).join("")}</dl></section>
+  ${(h.log_issues || []).length ? `<section class="panel"><h3>Recorded issue groups</h3>${logIssueCards(h.log_issues, 'all', true)}</section>` : ''}
   <details class="panel log-problems"><summary>Latest recorded problems from the past 24 hours</summary><h4>Errors</h4><pre>${esc(logBlock(h.recent_errors))}</pre><h4>Warnings</h4><pre>${esc(logBlock(h.recent_warnings))}</pre><a href="#/kodi-logs">See all retained warnings and errors</a></details>`);
   bindHealthActions();
 }
@@ -1048,33 +1054,79 @@ function renderLogs(title, lines){
   draw("all");
 }
 async function logs(){ const l=await api("/api/logs"); renderLogs("Service log", l.lines || []); }
+function logIssueRecurrence(issue){
+  if (issue.since_baseline === null || issue.since_baseline === undefined) return 'Comparison point not yet recorded';
+  if (issue.reviewed_at) return issue.since_baseline ? `${issue.since_baseline} new entries since review` : 'No new entries since review';
+  return issue.since_baseline ? `${issue.since_baseline} entries since this Manager version began recording` : 'Retained entries from before this recording baseline';
+}
+function logIssueCards(issues, level='all', compact=false){
+  return (issues || []).map(issue => {
+    const owner = issue.owner || {}, href = `#/kodi-logs?issue=${encodeURIComponent(issue.id)}&level=${encodeURIComponent(level)}`;
+    const source = owner.addon_id ? `<a href="#/addon/${esc(encodeURIComponent(owner.addon_id))}">${esc(owner.label || owner.addon_id)}</a>` : esc(owner.label || 'Source unconfirmed');
+    return `<article class="log-issue"><div class="log-issue-head"><h3>${esc(issue.title)}</h3><span class="muted">${esc(issue.count)} recorded entries · ${esc(issue.level)}</span></div>
+      <p>Source: ${source}</p><p class="muted">${esc(logIssueRecurrence(issue))}</p>
+      ${compact ? '' : `<dl class="facts"><dt>First seen</dt><dd>${esc(new Date(issue.first_seen * 1000).toLocaleString())}</dd><dt>Last seen</dt><dd>${esc(new Date(issue.last_seen * 1000).toLocaleString())}</dd>${issue.baseline_at ? `<dt>Compared from</dt><dd>${esc(new Date(issue.baseline_at * 1000).toLocaleString())}</dd>` : ''}</dl><details><summary>What this means and next steps</summary><p>${esc(issue.explanation)}</p><p><b>Suggested next step:</b> ${esc(issue.next_step)}</p></details><details><summary>Latest recorded entry</summary><pre>${esc(issue.sample)}</pre></details>`}
+      <div class="actions"><a href="${esc(href)}">View this issue’s entries</a>${compact ? '' : `<button type="button" class="action" data-review-issue="${esc(issue.id)}" ${state.writeEnabled ? '' : 'disabled'}>Mark reviewed</button>`}</div></article>`;
+  }).join('');
+}
 function logHistoryMarkup(history, level){
   const c = history.counts || {};
   const note = !history.available ? "Collection is unavailable. Saved entries are shown below." : history.catching_up ? "Importing the available log files. Counts may still increase." : "New entries are collected in the background. Entries expire after 24 hours.";
   return `${pageHead("Kodi log", "Warnings and errors from the past 24 hours, retained across Kodi restarts and profile changes. Tokens and keys are masked.")}
     <div class="panel"><p>${esc(c.errors ?? 0)} errors · ${esc(c.warnings ?? 0)} warnings · ${esc(c.notices ?? 0)} known notices</p><p class="muted" role="status">${esc(note)}</p>
-    <p class="muted">History started ${esc(history.tracking_started_at ? new Date(history.tracking_started_at * 1000).toLocaleString() : "collecting just now")}. Earlier entries are recovered from the log files still available.</p>
+    <details><summary>History and comparison points</summary><p class="muted">History started ${esc(history.tracking_started_at ? new Date(history.tracking_started_at * 1000).toLocaleString() : "collecting just now")}. Earlier entries are recovered from the log files still available.</p>
+    <p class="muted">${history.recording_version ? `Comparison baseline: Manager ${esc(history.recording_version.version)} began recording at ${esc(new Date(history.recording_version.at * 1000).toLocaleString())}.` : 'No Manager-version comparison baseline has been recorded yet.'} A review point lets you check for recurrence after checking or fixing an issue.</p></details>
     <div class="tabs" role="group" aria-label="Filter retained log entries">${[["all","All"],["error","Errors"],["warning","Warnings"],["notice","Known notices"]].map(([key,label]) => `<button type="button" data-history-level="${key}" aria-pressed="${String(key === level)}" class="${key === level ? "active" : ""}">${label}</button>`).join("")}</div>
+    ${history.selected_issue ? '<p><a href="#/kodi-logs">Back to all issues</a></p>' : ''}
+    <section aria-label="Issue groups"><h3>${esc(history.issue_total ?? 0)} issue groups</h3>${history.issues_ready === false ? '<p class="muted" role="status">Grouping older retained entries. Group counts may still increase.</p>' : ''}<div id="logIssueGroups">${logIssueCards(history.issues, level)}</div><button type="button" class="action" id="moreLogIssues" ${history.groups_has_more ? '' : 'hidden'}>Load more issue groups</button><p class="muted">Review points preserve the original entries and counts.${state.writeEnabled ? ' Mark an issue reviewed after checking or fixing it.' : ' Enable writes in Connection to record a review point.'}</p></section>
+    <details class="original-log-entries" ${history.selected_issue ? 'open' : ''}><summary>Original retained entries</summary>
     <div id="historyLogBox" class="log-view">${logHistoryEntries(history.entries)}</div>
     <p id="historyLogCount" class="muted">${esc((history.entries || []).length)} of ${esc(history.total ?? 0)} entries shown</p>
-    <button type="button" id="olderLogEntries" ${history.has_more ? "" : "hidden"}>Load older entries</button>
-    <button type="button" id="refreshLogHistory">Refresh history</button></div>
+    <button type="button" class="action" id="olderLogEntries" ${history.has_more ? "" : "hidden"}>Load older entries</button>
+    </details><button type="button" class="action" id="refreshLogHistory">Refresh history</button></div>
     <details class="panel"><summary>Current raw log tail</summary><p class="muted">The newest 500 lines, including info messages. The warning/error history above is retained separately.</p><button type="button" id="loadRawKodiLog">Load current tail</button><pre id="rawKodiLog"></pre></details>`;
 }
 function logHistoryEntries(entries){
   return (entries || []).length ? entries.map(e => `<div class="log-line log-${e.level === "error" ? "error" : e.level === "warning" ? "warn" : "info"}"><time>${esc(new Date(e.timestamp * 1000).toLocaleString())}</time> ${esc(e.line)}</div>`).join("") : '<p class="muted">No retained entries in this filter.</p>';
 }
-async function kodiLogs(level="all"){
-  const h = await api(`/api/kodi/logs/history?level=${encodeURIComponent(level)}`);
+async function kodiLogs(level="all", issue=''){
+  const request = (state.logHistoryRequest || 0) + 1;
+  state.logHistoryRequest = request;
+  const query = `level=${encodeURIComponent(level)}&issue=${encodeURIComponent(issue)}`;
+  const h = await api(`/api/kodi/logs/history?${query}`);
+  if (request !== state.logHistoryRequest) return;
   out(logHistoryMarkup(h, level));
-  document.querySelectorAll("[data-history-level]").forEach(b => b.onclick = withErrors(() => kodiLogs(b.dataset.historyLevel)));
-  $("#refreshLogHistory").onclick = withErrors(() => kodiLogs(level));
+  document.querySelectorAll("[data-history-level]").forEach(b => b.onclick = withErrors(() => kodiLogs(b.dataset.historyLevel, issue)));
+  $("#refreshLogHistory").onclick = withErrors(() => kodiLogs(level, issue));
+  const bindReviews = () => document.querySelectorAll('[data-review-issue]').forEach(b => b.onclick = withErrors(async () => {
+    b.disabled = true;
+    try {
+      await api('/api/kodi/logs/review', {issue:b.dataset.reviewIssue});
+      if (b.isConnected) await kodiLogs(level, issue);
+    } finally { if (b.isConnected) b.disabled = !state.writeEnabled; }
+  }));
+  bindReviews();
+  let groupOffset = (h.group_offset || 0) + (h.issues || []).length;
+  const seenGroups = new Set((h.issues || []).map(g => g.id));
+  $('#moreLogIssues').onclick = withErrors(async () => {
+    const button = $('#moreLogIssues'), box = $('#logIssueGroups');
+    button.disabled = true;
+    try {
+      const more = await api(`/api/kodi/logs/history?${query}&group_offset=${groupOffset}&limit=1`);
+      if (!box.isConnected) return;
+      box.insertAdjacentHTML('beforeend', logIssueCards((more.issues || []).filter(g => !seenGroups.has(g.id)), level));
+      (more.issues || []).forEach(g => seenGroups.add(g.id));
+      groupOffset += (more.issues || []).length;
+      button.hidden = !more.groups_has_more;
+      bindReviews();
+    } finally { button.disabled = false; }
+  });
   let before = h.next_before, shown = (h.entries || []).length;
   $("#olderLogEntries").onclick = withErrors(async () => {
     const button = $("#olderLogEntries"), box = $("#historyLogBox");
     button.disabled = true;
     try {
-      const older = await api(`/api/kodi/logs/history?level=${encodeURIComponent(level)}&before=${encodeURIComponent(before)}`);
+      const older = await api(`/api/kodi/logs/history?${query}&before=${encodeURIComponent(before)}`);
       if (!box.isConnected) return;
       box.insertAdjacentHTML("beforeend", (older.entries || []).length ? logHistoryEntries(older.entries) : "");
       shown += (older.entries || []).length; before = older.next_before;

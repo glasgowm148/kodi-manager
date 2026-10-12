@@ -223,19 +223,22 @@ class KodiAPI:
         if self._log_history is None:
             try:
                 from .log_history import LogHistory, HISTORY_FILE
+                from .version import VERSION
             except ImportError:
                 from log_history import LogHistory, HISTORY_FILE
-            self._log_history = LogHistory(translate(HISTORY_FILE), translate("special://logpath/"))
+                from version import VERSION
+            self._log_history = LogHistory(translate(HISTORY_FILE), translate("special://logpath/"), version=VERSION)
         return self._log_history
 
-    def get_log_history(self, level="all", limit=100, before=0):
+    def get_log_history(self, level="all", limit=100, before=0, issue="", group_offset=0):
         try:
-            return self.log_history().snapshot(level, limit, before)
+            return self.log_history().snapshot(level, limit, before, issue, group_offset)
         except (OSError, sqlite3.Error):
             # A storage failure must never look like a clean log.
             return {"available": False, "catching_up": False, "retention_hours": 24,
                     "counts": {"errors": 0, "warnings": 0, "notices": 0, "warning_lines": 0},
-                    "entries": [], "total": 0, "has_more": False, "next_before": None}
+                    "entries": [], "total": 0, "has_more": False, "next_before": None,
+                    "issues": [], "issue_total": 0, "issues_ready": False, "groups_has_more": False}
 
     def open_install_from_zip(self):
         """Open Kodi's own Install from zip file dialog on the TV.

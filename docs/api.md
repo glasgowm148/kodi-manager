@@ -70,6 +70,8 @@ platforms retain their existing behavior. See [tvOS storage/recovery limits](app
 | `GET /api/logs` | – | – | `{lines[]}`: the service's last 200 log lines |
 | `GET /api/kodi/logs` | – | – | `{lines[]}`: the last 500 lines of Kodi's log, with tokens, keys and bearer headers masked |
 | `GET /api/kodi/logs/history?level=all&limit=100&before=ID` | – | – | Masked 24-hour history: `entries[{id,timestamp,level,line}]`, `counts{errors,warnings,notices,warning_lines}`, `total`, `has_more`, `next_before`, `retention_hours`, `since`, `now`, `tracking_started_at`, `last_scan_at`, `available`, `catching_up`. `level`: all/error/warning/notice; limit 1–500; use `next_before` for the next page. Invalid filters answer 400. |
+| `GET /api/kodi/logs/history?issue=ID&group_offset=0` | – | – | Adds `issues`, `issue_total`, `issues_ready`, `groups_has_more`, `group_offset`, `selected_issue`, `recording_version`. Each issue has an ID, title, source evidence, explanation/next step, counts, first/last seen, masked latest sample and comparison fields. Optional `issue` is a 32-character lowercase hex ID and filters the original entries; `group_offset` is 0–1,000,000, with 25 groups per page. Groups cover the full retained filter, independently of raw-entry paging. Incomplete migration is indicated by `issues_ready=false`. |
+| `POST /api/kodi/logs/review` | ✓ | – | Body `{issue: ID}` records a per-issue comparison point in the shared history database and returns `{issue, reviewed_at}`. Authentication and write mode are required. Original entries, IDs, timestamps and counts stay intact. Unknown/expired issue IDs answer 400. |
 | `GET /api/debug/paths` | – | – | Kodi version, platform and resolved profile paths |
 | `GET /api/debug/stack-raw` | – | – | Raw add-on probes, merged records and the classified stack |
 
@@ -82,6 +84,14 @@ notice without a known harmless original remains actionable.
 
 Fixing a cause does not remove its previous entries; each expires after 24 hours. Entries
 keep the classification recorded when collected, including after a compatibility update.
+
+Issue counts describe recorded lines, not the total messages suppressed by Kodi. `since_baseline`
+counts entries whose IDs and timestamps follow the review point, or the Manager-version
+recording point when no review exists. A late import of older events cannot appear as recurrence.
+An automatic point marks first collection by that Manager version, not a verified add-on fix or
+an exact installation time. `null` means no comparison point exists. Review annotations persist
+across profile changes/restarts, without changing Health severity or creating a Kodi configuration
+backup. `/api/health` adds `log_issues` (up to five groups) and grouping/recording metadata.
 
 The collector runs every two seconds, including during playback, without Kodi calls from its worker.
 It incrementally reads `kodi.log` and `kodi.old.log`, stores masked entries and file cursors in

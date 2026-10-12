@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.29 — 2026-10-13 (prerelease)
+
+- Group retained diagnostics by cause, with recorded-entry counts, first/last seen, source evidence and suggested next steps. Keep every original event and its pagination available.
+- Record per-issue review points when writes are enabled; later events show recurrence without clearing counts. Automatic comparison points record when each Manager version first starts collecting.
+- Migrate older retained entries in bounded batches. Issue groups have level filters, pagination and links to their original entries; Health shows a concise issue overview.
+
 ## 0.7.28 — 2026-10-12 (prerelease)
 
 - Mask signed BBC/Akamai, CloudFront and cloud-storage URL credentials in log diagnostics.

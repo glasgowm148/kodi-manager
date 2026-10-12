@@ -181,3 +181,28 @@ def test_history_route_validates_pages_and_returns_masked_entries(dashboard, tmp
     for query in ("level=debug", "limit=501", "before=-1", "limit=no"):
         status, body = dashboard.call("GET", "/api/kodi/logs/history?" + query)
         assert status == 400 and body["code"] == "bad_request"
+
+
+def test_issue_review_requires_auth_and_writes_and_keeps_original_history(dashboard, tmp_path):
+    from log_history import LogHistory
+    import time
+    logs = tmp_path / 'logs'
+    logs.mkdir()
+    (logs / 'kodi.log').write_text('error <general>: fixture failure\n')
+    history = LogHistory(tmp_path / 'history.db', logs, time.time)
+    history.collect()
+    dashboard.state.kodi.log_history = lambda: history
+    dashboard.state.kodi.get_log_history = history.snapshot
+    before = history.snapshot()
+    issue = before['issues'][0]['id']
+    path = '/api/kodi/logs/review'
+    assert dashboard.call('POST', path, {'issue': issue}, token=None)[0] == 401
+    dashboard.state.config['write_enabled'] = False
+    assert dashboard.call('POST', path, {'issue': issue})[0] == 403
+    dashboard.state.config['write_enabled'] = True
+    assert dashboard.call('POST', path, {'issue': issue})[0] == 200
+    after = history.snapshot()
+    assert after['counts'] == before['counts'] and after['entries'] == before['entries']
+    assert after['issues'][0]['reviewed_at'] is not None
+    for query in ('issue=invalid', 'group_offset=-1'):
+        assert dashboard.call('GET', '/api/kodi/logs/history?' + query)[0] == 400

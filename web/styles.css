@@ -368,3 +368,6 @@ a.tile--warn:hover{background:var(--warning-soft);border-color:var(--warning)}a.
 @media (max-width:420px){.tiles{grid-template-columns:1fr}.tile{min-height:0}.row-facts{grid-template-columns:1fr 1fr}.page-actions{width:100%}}
 @media (prefers-reduced-motion:no-preference){button,a,.tile{transition:background-color .15s,border-color .15s,color .15s}}
 @media (forced-colors:active){.dash-status,.tile,.chart,.panel{border:1px solid CanvasText}.spark-line,.chart-canvas .line{stroke:CanvasText}}
+.log-issue{border-top:1px solid var(--line);padding:16px 0}.log-issue-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}.log-issue h3{margin:0}.log-issue pre{white-space:pre-wrap;overflow-wrap:anywhere}.log-issue .actions{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:12px}
+
+.log-issue a{overflow-wrap:anywhere}.log-issue .facts{margin:8px 0}

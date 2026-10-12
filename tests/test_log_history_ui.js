@@ -36,3 +36,31 @@ test('catch-up and complete history are distinguished and older pages stay acces
   assert.match(ui.logHistoryMarkup(h, 'all'), /expire after 24 hours/);
   assert.match(ui.logHistoryMarkup(h, 'all'), /id="olderLogEntries" hidden/);
 });
+
+test('issue cards escape advice, link the source, and distinguish review recurrence', () => {
+  const g = {id:'a'.repeat(32), title:'<script>bad</script>', count:42, level:'warning', first_seen:1800000000,
+    last_seen:1800000010, sample:'<img onerror="bad">', explanation:'A missing value', next_step:'Update <add-on>',
+    owner:{addon_id:'plugin.video.fixture', label:'Fixture'}, reviewed_at:1800000001, baseline_at:1800000001, since_baseline:2};
+  const html = ui.logIssueCards([g]);
+  assert.doesNotMatch(html, /<script>|<img/);
+  assert.match(html, /42 recorded entries/);
+  assert.match(html, /First seen/); assert.match(html, /Last seen/);
+  assert.match(html, /2 new entries since review/);
+  assert.match(html, /#\/addon\/plugin.video.fixture/);
+  assert.match(html, /issue=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/);
+  assert.match(html, /data-review-issue="[a-f0-9]+" disabled/);
+  g.since_baseline = 0;
+  assert.match(ui.logIssueCards([g]), /No new entries since review/);
+  delete g.reviewed_at;
+  assert.match(ui.logIssueCards([g]), /before this recording baseline/);
+});
+
+test('incomplete grouping and group pagination are shown without hiding original entries', () => {
+  const html = ui.logHistoryMarkup({issues_ready:false, issues:[], issue_total:50, groups_has_more:true,
+    available:true, entries:[], recording_version:{version:'fixture-version', at:1800000000}}, 'all');
+  assert.match(html, /Grouping older retained entries/);
+  assert.match(html, /50 issue groups/);
+  assert.doesNotMatch(html, /id="moreLogIssues" hidden/);
+  assert.match(html, /Original retained entries/);
+  assert.match(html, /fixture-version/);
+});

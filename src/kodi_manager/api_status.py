@@ -134,7 +134,11 @@ class StatusRoutes(RequestHandler):
         return {"lines": redact(self.state.kodi.get_log_lines(500))}
 
     def api_kodi_log_history(self):
-        return self.state.kodi.get_log_history(self.query("level", "all"), self.query("limit", "100"), self.query("before", "0"))
+        return self.state.kodi.get_log_history(self.query("level", "all"), self.query("limit", "100"), self.query("before", "0"),
+                                              issue=self.query('issue', ''), group_offset=self.query('group_offset', '0'))
+
+    def api_kodi_log_review(self):
+        return self.state.kodi.log_history().record_review(self.body().get('issue', ''))
 
     # --- Kodi windows --------------------------------------------------------------
 

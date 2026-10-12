@@ -182,6 +182,8 @@ def health_summary(kodi, index, config):
     counts = history["counts"]
     log_status = "error" if counts["errors"] else ("warning" if counts["warnings"] or not history["available"] or history["catching_up"] else "ok")
     log_detail = "%s errors · %s warnings%s in the past 24 hours" % (counts["errors"], counts["warnings"], " · %s known notices" % counts["notices"] if counts["notices"] else "")
+    if history.get('issues_ready'):
+        log_detail += ' · %s issue groups' % history.get('issue_total', 0)
     if not history["available"]:
         log_detail += " · collection unavailable"
     elif history["catching_up"]:
@@ -222,7 +224,8 @@ def health_summary(kodi, index, config):
         # Log lines can carry tokens and keys (URLs, headers): mask them like API errors.
         "recent_errors": redact([e["line"] for e in history["entries"] if e["level"] == "error"]),
         "recent_warnings": redact([e["line"] for e in history["entries"] if e["level"] != "error"]),
-        "log_history": {k: history.get(k) for k in ("retention_hours", "since", "tracking_started_at", "last_scan_at", "available", "catching_up")},
+        "log_history": {k: history.get(k) for k in ("retention_hours", "since", "tracking_started_at", "last_scan_at", "available", "catching_up", "issues_ready", "issue_total", "recording_version")},
+        "log_issues": history.get('issues', [])[:5],
     }
 
 

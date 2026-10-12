@@ -130,3 +130,18 @@ Entries survive Kodi restarts and profile changes, are masked before storage, an
 24 hours. **Current raw log tail** separately shows the newest 500 lines, including info messages.
 Initial importing and collection failures are shown. Earlier problems can only be recovered from
 log files still available when collection starts; missing old logs cannot be reconstructed.
+
+Issue groups show recorded-entry counts, first/last seen, source evidence and suggested
+next steps. Open a group's entries to inspect every occurrence, or expand **Original retained
+entries** for the complete list. Groups have their own **Load more issue groups** button.
+Counts describe saved lines; Kodi's suppressed-duplicate summaries remain separate when their
+original cause cannot be established. Source labels distinguish an identified script, a referenced
+add-on, a native Kodi component and an unconfirmed source.
+
+With writes enabled, **Mark reviewed** records a comparison point after checking or fixing an
+issue. Later entries show recurrence; earlier entries and Health's totals stay intact until expiry.
+Review points are shared across profiles along with the history. Automatic comparison points
+record when a Manager version first begins collecting, which can be later than installation or
+Kodi startup; they do not prove that an add-on fix succeeded. Health keeps its original severity
+and shows a short issue overview. Older histories are grouped in bounded batches with progress
+shown while summaries are incomplete.
