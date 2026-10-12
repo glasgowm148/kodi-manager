@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.14 — 2026-10-12 (prerelease)
+
+- Explain Android TV / Google TV / Fire OS installation, optional ADB, separate pairing ports,
+  restricted storage and small-device cache limits; distinguish Vega OS Firesticks.
+- Network notifications use device-neutral advice. Add regression coverage that the opt-in
+  NVIDIA exit workaround stays disabled on other Android devices.
+
 ## 0.7.13 — 2026-10-12 (prerelease)
 
 - Dashboard requests time out after 60 seconds, including a stalled response body, and release

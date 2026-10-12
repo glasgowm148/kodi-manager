@@ -4,7 +4,7 @@ Kodi Manager has a **TV service**, **browser dashboard** and **computer-side Pyt
 For live settings/dashboard access, install the service ZIP inside Kodi. Installing the library on
 your computer alone does not install or start the TV service.
 
-The current portable release is **0.7.13**, marked prerelease. See [compatibility](compatibility.md)
+The current portable release is **0.7.14**, marked prerelease. See [compatibility](compatibility.md)
 for remaining live checks. Back up an existing customized installation before upgrading: public
 releases deliberately omit household settings and separate third-party patch bundles.
 
@@ -12,10 +12,12 @@ releases deliberately omit household settings and separate third-party patch bun
 
 1. Open Kodi on the device you want to manage. The TV and computer should be on the same home network.
 2. Find its local IPv4 address. On a Shield: **Home → Settings gear → Device Preferences → About →
-   Status → IP address**. Older firmware may put About directly under Settings.
-3. If an agent will transfer files or read the token through ADB, enable **Network debugging**.
-   Follow [Shield TV preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md)
-   for the seven presses on Build and exact developer-options menus. Approve the debugging prompt
+   Status → IP address**. Older firmware may put About directly under Settings. On Fire OS use **Settings → My Fire TV →
+   About → Network**; on Google TV use the connected **Network & Internet** entry or About/Status.
+3. If an agent will transfer files or read the token through ADB, enable the device’s **Network
+   debugging**, **ADB Debugging** (Fire OS), or paired **Wireless debugging** (Google TV).
+   Follow [Android TV / Fire TV preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md)
+   for device-specific menus and pairing/connection ports. Approve the debugging prompt
    when the agent connects. A mounted/local Kodi storage path is another option.
 4. Confirm viewing has finished before TV navigation, installation or restarting Kodi.
 
@@ -29,8 +31,8 @@ or JSON editing tasks. Ask only for missing connection information or unavoidabl
 
 1. Check for an existing Manager installation and inspect its version/profile before replacing it.
    Preserve local changes and create an appropriate private backup for an authorized upgrade.
-2. Download `service.kodi.addonadmin-0.7.13.zip` and `SHA256SUMS` from the release's **Assets** at
-   [v0.7.13](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.13). Verify the ZIP checksum.
+2. Download `service.kodi.addonadmin-0.7.14.zip` and `SHA256SUMS` from the release's **Assets** at
+   [v0.7.14](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.14). Verify the ZIP checksum.
    GitHub's **Source code** ZIP, Python wheel and tar.gz cannot be installed through Kodi.
    nvidia-MCP users can instead export the pinned bundle with `nvidia-mcp --export-manager DIRECTORY`.
 3. Transfer the verified ZIP to a Kodi-accessible folder using authorized ADB, a mounted share or
@@ -103,3 +105,26 @@ unknown forks do not get it.
 For backups/restores and safe upgrades, see [recovery](recovery.md). For clients, see [API](api.md).
 For download mistakes, network isolation, missing features and updates, see
 [troubleshooting](troubleshooting.md).
+
+## Android TV and Fire TV
+
+The same service ZIP runs inside official Kodi 19+ on Android TV, Google TV and Android-based
+**Fire OS**. It uses Kodi’s public Python API and resolved `special://` storage paths; there is no
+NVIDIA-specific connector. The dashboard alone does not require ADB or Kodi HTTP control.
+
+Check [Amazon’s device/OS table](https://developer.amazon.com/docs/fire-tv/fire-os-overview.html):
+**Vega OS** Firesticks use different tooling and are outside this Android support. No Vega port
+or live Firestick/Google TV validation is claimed. [Compatibility](compatibility.md) separates
+protocol/fixture evidence from the single Shield used live.
+
+For agent file transfer, follow nvidia-MCP’s [Android TV / Fire OS guide](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/android-tv.md).
+A Fire OS network-debugging port is normally 5555; Google TV Wireless debugging can require a
+six-digit code and different pairing/connection ports. The Manager token, Kodi HTTP credentials
+and temporary ADB pairing code are separate. Install ZIPs through Kodi’s native installer even
+when Android restricts direct access to `Android/data`. If needed, transfer to Download and select
+that folder in Kodi instead; do not bypass Android permissions.
+
+On lower-memory boxes/sticks, start with a few cached rows/pages and manual refresh. The cache
+still runs providers during refresh, so it cannot remove their CPU/network cost. Performance on
+these devices is unverified. The opt-in Shield exit workaround checks NVIDIA’s driver and stays
+disabled on Fire OS and generic Android boxes, including when that option was copied from a Shield.

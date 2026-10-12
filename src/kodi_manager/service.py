@@ -193,6 +193,14 @@ def stop_extension(kodi, private):
             kodi.log("Private extension stop failed: %s" % type(error).__name__)
 
 
+def shield_exit_supported(config):
+    """This opt-in workaround is specific to reviewed NVIDIA builds, not Android generally."""
+    return bool(xbmc and config['shield_exit_workaround']
+                and xbmc.getCondVisibility('System.Platform.Android')
+                and supported_build(xbmc.getInfoLabel('System.BuildVersion'))
+                and os.path.isfile('/vendor/lib64/libnvglsi.so'))
+
+
 def main():
     # A coordinated profile switch may already be cancelling this generation.
     startup_monitor = profile_transition.Monitor() if xbmc else None
@@ -221,10 +229,7 @@ def main():
     running = {"server": start_server(kodi, config, web_root, announce=announce, lan_ip=lan_address),
                "config": config}
     write_session(session_path, dict(session, started_at=time.time()))
-    supported = bool(xbmc and config['shield_exit_workaround']
-                     and xbmc.getCondVisibility('System.Platform.Android')
-                     and supported_build(xbmc.getInfoLabel('System.BuildVersion'))
-                     and os.path.isfile('/vendor/lib64/libnvglsi.so'))
+    supported = shield_exit_supported(config)
     guard = ShieldExitGuard(supported, translate('special://logpath/kodi.log'),
                             os.path.join(os.path.dirname(__file__), 'shield_exit_guard.sh'),
                             translate('special://temp/shield-exit-result.json'))

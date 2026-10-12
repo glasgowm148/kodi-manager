@@ -110,7 +110,7 @@ class Watchdog:
             self.next_check = now + self.RECHECK_EVERY
             if self.failures >= 2:
                 self._notify_once("internet", "Internet connection stuck",
-                                  "%s not answering. Restart the Shield if streams fail." % ", ".join(result["failed"]))
+                                  "%s not answering. Check the device's network if streams fail." % ", ".join(result["failed"]))
         else:
             self.failures = 0
             self.next_check = now + self.CHECK_EVERY

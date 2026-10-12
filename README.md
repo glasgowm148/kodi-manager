@@ -27,7 +27,7 @@ from a phone or computer. Use it on its own or as the on-device companion to
 *Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
 > [!NOTE]
-> **Prerelease.** Current version: **0.7.13**. Service versions through 0.7.12 have been used on one
+> **Prerelease.** Current version: **0.7.14**. Service versions through 0.7.12 have been used on one
 > NVIDIA Shield with Kodi 22 beta 2 / RC1, including separate household extensions.
 > Other skins and devices are covered by automated tests rather than live use so far; see
 > [compatibility](docs/compatibility.md).
@@ -58,7 +58,7 @@ from a phone or computer. Use it on its own or as the on-device companion to
 ## Quick start
 
 1. **Download** `service.kodi.addonadmin-<version>.zip` from
-   [Releases](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.13), under **Assets**.
+   [Releases](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.14), under **Assets**.
    Choose the `service.kodi.addonadmin` ZIP; GitHub's **Source code** ZIP, wheel and tar.gz are not
    installable Kodi add-ons.
 2. **Install it.** In Kodi, choose **Add-ons → Install from zip file** and pick the ZIP. Allow
@@ -79,8 +79,8 @@ The dashboard works without an AI agent, MCP, Python on your computer or ADB.
 <summary><strong>Let an AI agent do the computer side</strong></summary>
 
 You handle the TV and Kodi's installer; the agent downloads, verifies and transfers the ZIP and
-connects to the dashboard. On a Shield, complete nvidia-MCP's
-[network-debugging preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md) first.
+connects to the dashboard. For Android TV or Fire OS, complete nvidia-MCP's
+[device debugging preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md) first.
 
 ```text
 Set up https://github.com/glasgowm148/kodi-manager for my Kodi device.
@@ -114,6 +114,13 @@ add-ons. Only the Home layout editor needs a skin version Kodi Manager has revie
 No. **Enable writes** starts off, so the dashboard can only look until you turn it on in the add-on's
 settings. Settings and layout changes take a backup first, and installs and menu rebuilds refuse to
 run while something is playing. The optional row cache only switches rows over if you turn that on.
+
+**Android boxes and Firestick?**
+Yes, the service targets Kodi 19+ on Android TV, Google TV and Android-based Fire OS using Kodi’s
+public Python API. ADB is optional for transferring files; the dashboard needs only a browser.
+Check [Amazon’s OS table](https://developer.amazon.com/docs/fire-tv/fire-os-overview.html): Vega OS
+Firesticks are outside this Android support. Fire OS/Google TV hardware testing is still pending;
+see [device setup and limits](docs/setup.md#android-tv-and-fire-tv).
 
 **Which Kodi versions?**
 Kodi 19 or newer; the optional row cache needs Kodi 20. Live use covers one Shield on Kodi 22 beta 2
