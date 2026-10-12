@@ -35,6 +35,7 @@ MAX_HANDLERS = 16
 # timeout only bounds each read, so a client sending one header line every few seconds
 # could otherwise hold a handler slot for many minutes.
 HEADER_DEADLINE = 5.0
+BODY_DEADLINE = 20.0
 # Handler slots one (non-loopback) client address may hold at once; browsers open at most 6.
 MAX_HANDLERS_PER_CLIENT = 8
 
@@ -89,6 +90,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         timer.start()
         try:
             BaseHTTPRequestHandler.handle_one_request(self)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True  # Disconnected clients cannot receive an error envelope.
         finally:
             timer.cancel()
 
@@ -264,6 +267,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         try:
             if needs_write and not self.state.config.get("write_enabled"):
                 raise PermissionError("Write Mode is disabled")
+            if method in ("POST", "PATCH"):
+                self.body()  # Validate framing before even handlers that take no body fields.
             result = getattr(self, "api_" + name.replace("-", "_"))(**match.groupdict())
             self.ok(result)
         except ApiError as exc:
@@ -306,7 +311,33 @@ class RequestHandler(BaseHTTPRequestHandler):
             raise ValueError("Invalid Content-Length") from None
         if length < 0 or length > 1000000 or self.headers.get("Transfer-Encoding"):
             raise ValueError("Request body must be at most 1 MB with a fixed length")
-        data = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+        raw = b""
+        if length:
+            lock, expired = threading.Lock(), threading.Event()
+            finished = False
+
+            def deadline():
+                with lock:
+                    if finished:
+                        return
+                    expired.set()
+                try:
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+            timer = threading.Timer(getattr(self.server, "body_deadline", BODY_DEADLINE), deadline)
+            timer.daemon = True
+            timer.start()
+            try:
+                raw = self.rfile.read(length)
+            finally:
+                with lock:
+                    finished = True
+                timer.cancel()
+            if expired.is_set() or len(raw) != length:
+                raise ValueError("Request body is incomplete or timed out; no action performed")
+        data = json.loads(raw.decode("utf-8")) if length else {}
         if not isinstance(data, dict):
             raise ValueError("Expected a JSON object.")
         self._body = data

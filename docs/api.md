@@ -27,7 +27,10 @@ The dashboard is a static page plus this JSON API, served by the Kodi Manager se
   re-applying protected settings answer `409` and cannot be forced; a checkpoint also stops, and is
   discarded, if playback starts while it copies. Add-on and stack restores answer `409`; resend the
   same body with `"force": true` to restore anyway.
-- Bodies are JSON objects of at most 1 MB. `ID` is a Kodi add-on id, URL-encoded.
+- Bodies are JSON objects of at most 1 MB with a fixed `Content-Length` and no transfer encoding.
+  The complete body must arrive within 20 seconds; incomplete or malformed bodies never reach
+  the action handler, including actions with no body fields. Header receipt has a separate
+  five-second deadline. `ID` is a Kodi add-on id, URL-encoded.
 
 ## Status and discovery
 

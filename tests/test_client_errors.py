@@ -8,6 +8,7 @@ import pytest
 from kodi_manager.client import ManagerClient, ManagerError
 
 REPLIES = {
+    "/api/secret": (400, {"error": {"code": "tok", "message": "Rejected Bearer tok"}}),
     "/api/write": (403, {"ok": False, "code": "write_disabled",
                          "error": {"code": "write_disabled", "message": "Writes disabled in service settings"}}),
     "/api/busy": (400, {"ok": False, "code": "playback_active",
@@ -21,6 +22,13 @@ REPLIES = {
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/api/broken-chunk":
+            self.send_response(200)
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            self.wfile.write(b'40\r\n{"ok": true, "data": "tok"}')
+            self.close_connection = True
+            return
         status, body = REPLIES[self.path]
         data = (json.dumps(body) if isinstance(body, dict) else body).encode()
         self.send_response(status)
@@ -57,3 +65,16 @@ def test_errors_carry_the_service_code(client, path, status, code, words, unsupp
     assert words in str(error)
     if code:
         assert code in str(error)
+
+
+def test_incomplete_chunked_response_is_a_safe_client_error(client):
+    with pytest.raises(ManagerError) as caught:
+        client.request("/api/broken-chunk")
+    assert "tok" not in str(caught.value)
+
+
+def test_service_errors_cannot_echo_client_token(client):
+    with pytest.raises(ManagerError) as caught:
+        client.request("/api/secret")
+    assert "tok" not in str(caught.value)
+    assert caught.value.code is None

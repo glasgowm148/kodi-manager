@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+import shutil
 
 import pytest
 
@@ -233,3 +234,58 @@ def test_restoring_kodi_managers_own_folder_keeps_its_live_access_settings(stora
         backup.restore_backup(me, snap["backup_id"])
     assert (live / "baseline.json").read_bytes() == b"old"
     assert b"replaced" in (live / "settings.xml").read_bytes()
+
+
+def test_stack_missing_component_cannot_partially_restore_others(storage, tmp_path):
+    root, settings, info = storage
+    other_live = tmp_path / "other"
+    other_live.mkdir()
+    other = {"addon_id": "plugin.video.fenlight", "addon_data_path": str(other_live)}
+    other_settings = other_live / "settings.xml"
+    settings.write_text("original POV")
+    other_settings.write_text("original Fen")
+    snapshot = backup.create_stack_backup([info, other])
+    settings.write_text("current POV")
+    other_settings.write_text("current Fen")
+    shutil.rmtree(root / "_stack" / snapshot["backup_id"] / info["addon_id"])
+    index = SimpleNamespace(get={info["addon_id"]: info, other["addon_id"]: other}.get)
+    with pytest.raises(ValueError, match="incomplete"):
+        backup.restore_stack_backup(index, snapshot["backup_id"])
+    assert settings.read_text() == "current POV"
+    assert other_settings.read_text() == "current Fen"
+    assert backup.list_backups(other["addon_id"]) == []
+
+
+@pytest.mark.parametrize("stack", [False, True])
+@pytest.mark.parametrize("metadata", ["{", "[]"])
+def test_corrupt_restore_manifest_is_not_treated_as_legacy(storage, stack, metadata):
+    root, settings, info = storage
+    settings.write_text("original")
+    snapshot = backup.create_stack_backup([info]) if stack else backup.create_backup(info)
+    scope = "_stack" if stack else info["addon_id"]
+    (root / scope / snapshot["backup_id"] / "manifest.json").write_text(metadata)
+    settings.write_text("current")
+    with pytest.raises(ValueError, match="metadata"):
+        if stack:
+            backup.restore_stack_backup(SimpleNamespace(get={info["addon_id"]: info}.get), snapshot["backup_id"])
+        else:
+            backup.restore_backup(info, snapshot["backup_id"])
+    assert settings.read_text() == "current"
+
+
+def test_stack_does_not_restore_folders_absent_from_manifest(storage, tmp_path):
+    root, settings, info = storage
+    settings.write_text("original")
+    snapshot = backup.create_stack_backup([info])
+    extra_live = tmp_path / "extra"
+    extra_live.mkdir()
+    extra = {"addon_id": "plugin.video.extra", "addon_data_path": str(extra_live)}
+    (extra_live / "settings.xml").write_text("current extra")
+    unexpected = root / "_stack" / snapshot["backup_id"] / extra["addon_id"]
+    unexpected.mkdir()
+    (unexpected / "settings.xml").write_text("unexpected old extra")
+    settings.write_text("current")
+    index = SimpleNamespace(get={info["addon_id"]: info, extra["addon_id"]: extra}.get)
+    result = backup.restore_stack_backup(index, snapshot["backup_id"])
+    assert result["restored"] == [info["addon_id"]]
+    assert (extra_live / "settings.xml").read_text() == "current extra"

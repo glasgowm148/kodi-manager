@@ -249,12 +249,18 @@ def _write_manifest(dest, manifest):
     atomic_write_json(os.path.join(dest, "manifest.json"), manifest, indent=2)
 
 
-def _read_manifest(dest):
+def _read_manifest(dest, strict=False):
     try:
         with open(os.path.join(dest, "manifest.json"), "r", encoding="utf-8") as fh:
             data = json.load(fh)
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            raise ValueError("Expected backup metadata object")
+        return data
+    except FileNotFoundError:
+        return {}  # Older snapshots may have no manifest.
     except (OSError, ValueError):
+        if strict:
+            raise ValueError("Backup metadata is unreadable or invalid; nothing was restored") from None
         return {}
 
 
@@ -324,7 +330,7 @@ def restore_backup(addon_info, backup_id):
     src = os.path.join(snapshot, "addon_data")
     if not os.path.isdir(src):
         raise ValueError("Backup not found")
-    manifest = _read_manifest(snapshot)
+    manifest = _read_manifest(snapshot, strict=True)
     expected = manifest.get("files_copied") if isinstance(manifest.get("files_copied"), int) else None
     skip = ("backups",) if aid == SELF_ID else ()
     # Check before taking the undo snapshot, whose prune must not remove this one.
@@ -401,10 +407,23 @@ def restore_stack_backup(index, backup_id):
     root = _backup_path("_stack", backup_id)
     if not os.path.isdir(root):
         raise ValueError("Stack backup not found")
-    counts = _read_manifest(root).get("file_counts") or {}
+    manifest = _read_manifest(root, strict=True)
+    counts = manifest.get("file_counts") or {}
+    if not isinstance(counts, dict):
+        raise ValueError("Stack backup metadata is invalid; nothing was restored")
+    folders = os.listdir(root)
+    if "included_folders" in manifest:
+        folders = manifest["included_folders"]
+        if (not isinstance(folders, list) or any(not isinstance(aid, str) for aid in folders)
+                or len(folders) != len(set(folders))):
+            raise ValueError("Stack backup metadata is invalid; nothing was restored")
+        for aid in folders:
+            src = _backup_path("_stack", backup_id, aid)
+            if not os.path.isdir(src) or os.path.islink(src):
+                raise ValueError("Stack backup is incomplete; nothing was restored")
     restored, skipped, undo_backups = [], [], {}
     plan = []
-    for aid in sorted(os.listdir(root)):
+    for aid in sorted(folders):
         src = os.path.join(root, aid)
         if aid == "manifest.json" or not os.path.isdir(src) or os.path.islink(src):
             continue

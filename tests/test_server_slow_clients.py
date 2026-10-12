@@ -3,6 +3,7 @@ import http.client
 import socket
 import threading
 import time
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -20,8 +21,8 @@ def _state():
 def serve():
     servers = []
 
-    def start(server_class):
-        httpd = server_class(("127.0.0.1", 0), server.make_handler(_state()))
+    def start(server_class, handler=None):
+        httpd = server_class(("127.0.0.1", 0), handler or server.make_handler(_state()))
         thread = threading.Thread(target=httpd.serve_forever, args=(0.05,), daemon=True)
         thread.start()
         servers.append((httpd, thread))
@@ -136,3 +137,83 @@ def test_one_client_cannot_take_every_slot(serve):
             except OSError:
                 pass
             sock.close()
+
+
+def body_server(serve, consume_body=True):
+    state = _state()
+    state.config["write_enabled"] = True
+    writes, entered = [], threading.Event()
+    handler = server.make_handler(state)
+    handler.route_table += (("POST", re.compile(r"^/api/probe$"), "probe", True, "bad_request"),)
+    original_body = handler.body
+
+    def read_body(self):
+        entered.set()
+        return original_body(self)
+
+    handler.body = read_body
+
+    def probe(self):
+        data = self.body() if consume_body else {}
+        writes.append(data)
+        return data
+
+    handler.api_probe = probe
+
+    class BodyDeadline(QuickDeadline):
+        body_deadline = 0.6
+
+    return serve(BodyDeadline, handler), writes, entered
+
+
+def post_headers(length):
+    return ("POST /api/probe HTTP/1.0\r\nHost: 127.0.0.1\r\nAuthorization: Bearer tok\r\n"
+            "Content-Length: %d\r\n\r\n" % length).encode()
+
+
+@pytest.mark.parametrize("consume_body", [True, False])
+def test_short_body_with_valid_json_never_performs_write(serve, consume_body):
+    httpd, writes, _ = body_server(serve, consume_body)
+    body = b'{"enabled":true}'
+    with socket.create_connection(httpd.server_address, timeout=5) as sock:
+        sock.sendall(post_headers(len(body) + 1) + body)
+        sock.shutdown(socket.SHUT_WR)
+        assert b"400" in sock.recv(4096)
+    assert writes == []
+
+
+def test_complete_body_can_perform_authorized_write(serve):
+    httpd, writes, _ = body_server(serve)
+    conn = http.client.HTTPConnection(*httpd.server_address, timeout=5)
+    conn.request("POST", "/api/probe", body=b'{"enabled":true}', headers={"Authorization": "Bearer tok"})
+    assert conn.getresponse().status == 200
+    conn.close()
+    assert writes == [{"enabled": True}]
+
+
+def test_dripping_body_is_closed_and_frees_handler(serve):
+    httpd, writes, entered = body_server(serve)
+    stop = threading.Event()
+    with socket.create_connection(httpd.server_address, timeout=3) as sock:
+        sock.sendall(post_headers(1000) + b'{')
+        assert entered.wait(5)
+
+        def drip():
+            while not stop.wait(0.1):
+                try:
+                    sock.sendall(b' ')
+                except OSError:
+                    return
+
+        thread = threading.Thread(target=drip, daemon=True)
+        thread.start()
+        try:
+            try:
+                assert sock.recv(4096) == b""
+            except ConnectionResetError:
+                pass  # Windows may reset instead of returning EOF.
+        finally:
+            stop.set()
+            thread.join()
+    assert writes == []
+    assert _get(httpd.server_address)[0] == 200

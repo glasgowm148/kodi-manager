@@ -1,6 +1,7 @@
 """Dependency-free client for one explicitly configured Kodi Manager service."""
 import json
 import re
+from http.client import HTTPException
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -31,17 +32,21 @@ class ManagerError(RuntimeError):
         return self.status == 404
 
 
-def _error_details(raw):
+def _error_details(raw, token=""):
     """(code, message) from a service error envelope, or (None, None)."""
     try:
         body = json.loads(raw)
     except (ValueError, UnicodeDecodeError):
         return None, None
     error = body.get("error") if isinstance(body, dict) else None
-    if not isinstance(error, dict):
-        return (body.get("code") if isinstance(body, dict) and isinstance(body.get("code"), str) else None), None
-    code = error.get("code") if isinstance(error.get("code"), str) else None
-    message = error.get("message") if isinstance(error.get("message"), str) else None
+    source = error if isinstance(error, dict) else body if isinstance(body, dict) else {}
+    code = source.get("code")
+    if (not isinstance(code, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", code)
+            or (token and token in code)):
+        code = None
+    message = error.get("message") if isinstance(error, dict) and isinstance(error.get("message"), str) else None
+    if message and token:
+        message = message.replace(token, "[redacted]")
     return code, (message[:300] if message else None)
 
 
@@ -95,17 +100,17 @@ class ManagerClient:
             result = json.loads(raw)
         except HTTPError as exc:
             try:
-                code, message = _error_details(exc.read(65536))
-            except (OSError, ValueError):
+                code, message = _error_details(exc.read(65536), self._token)
+            except (HTTPException, OSError, ValueError):
                 code, message = None, None
             finally:
                 exc.close()
             text = "Manager HTTP request failed (%s%s)" % (exc.code, " " + code if code else "")
             raise ManagerError(text + (": " + message if message else ""), exc.code, code) from None
-        except (URLError, OSError, ValueError):
+        except (HTTPException, URLError, OSError, ValueError):
             raise ManagerError("Manager connection or JSON response failed") from None
         if not isinstance(result, dict) or result.get("ok") is not True or "data" not in result:
-            code, message = _error_details(raw)
+            code, message = _error_details(raw, self._token)
             raise ManagerError("Manager returned an invalid or unsuccessful response"
                                + (": " + message if message else ""), 200, code)
         return result["data"]

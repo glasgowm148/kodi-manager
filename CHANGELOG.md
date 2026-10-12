@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.15 — 2026-10-12 (prerelease)
+
+- Reject short, malformed or slowly streamed request bodies before any action, including handlers
+  that take no body fields. Enforce a 20-second total body deadline so dripping clients cannot
+  retain handler slots indefinitely; handle client disconnects without traceback noise.
+- Preflight every declared checkpoint folder before restoring. Missing components and corrupt
+  metadata cannot trigger partial restores; undeclared extra folders are ignored. Legacy snapshots
+  without metadata retain their existing checks.
+- Normalize malformed/truncated HTTP responses into library `ManagerError` failures. Restrict
+  error codes and redact the configured bearer token from upstream error messages.
+
 ## 0.7.14 — 2026-10-12 (prerelease)
 
 - Explain Android TV / Google TV / Fire OS installation, optional ADB, separate pairing ports,

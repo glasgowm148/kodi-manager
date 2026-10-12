@@ -19,6 +19,10 @@ for checkpoints. Keep a separate private copy before replacing a customized inst
   and accepts `"force": true`). Restoring while an add-on runs can be overwritten when it next saves.
 - **Failed restores.** If a restore fails part way, every folder it changed is put back from its undo
   backup before the error is shown. If that also fails, the error names the undo backups to restore.
+- **Damaged backups.** Invalid metadata or a missing checkpoint component is refused before any
+  settings change. Checkpoints restore only the folders declared in their manifest; extra folders
+  are ignored. Keep the original backup and use an intact private copy rather than editing its
+  metadata to bypass the check. Older snapshots without manifests retain their legacy checks.
 - **Kodi Manager itself.** Restoring Kodi Manager's own folder keeps its current `settings.xml`
   (access token, LAN access, Enable writes); change those in Kodi.
 - **Nightly checkpoint.** Taken after 03:00 while the TV is idle. If something starts playing while it
