@@ -22,7 +22,9 @@ def main():
     result = run_bounded([sys.executable, "-u", "-m", "pytest", "-vv", *sys.argv[1:]], log,
                          timeout=int(os.environ.get("CI_PYTEST_TIMEOUT", "180")))
     lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
-    print("\n".join(lines[-80:] if result else lines[-5:]))
+    tail = lines[-80:] if result else lines[-5:]
+    print("\n".join(line[:2000] + (" [truncated; full line in pytest.log]" if len(line) > 2000 else "")
+                    for line in tail))
     return result
 
 

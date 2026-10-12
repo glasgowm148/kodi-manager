@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Give the oversized virtual-write fixture a short test ID instead of embedding its two-megabyte buffer in CI output. Bound test processes and console lines, retain full logs as artifacts, and cancel superseded runs. These changes affect tests and CI; add-on runtime bytes are unchanged.
+
 ## 0.7.23 — 2026-10-12 (prerelease)
 
 - Recheck bearer authorization, write mode, service retirement and active profile after receiving action bodies. Stopped service generations refuse queued actions; profile changes during reads suppress their results. Errors require reconnecting and inspecting before retrying.

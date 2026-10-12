@@ -399,7 +399,7 @@ def test_silent_partial_vfs_read_is_not_backed_up(tvos, monkeypatch):
     assert not list((root / "backups").rglob("manifest.json"))
 
 
-@pytest.mark.parametrize("candidate", [b"", b"x" * 2_000_001])
+@pytest.mark.parametrize("candidate", [b"", b"x" * 2_000_001], ids=["empty", "oversized"])
 def test_invalid_virtual_write_is_refused_before_mutation(tvos, candidate):
     root, values, _fail = tvos
     path = str(root / "settings.xml")
