@@ -12,7 +12,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: test-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  group: test-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   test:
@@ -63,6 +63,26 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install -e ".[dev]"
+      - name: Verify the Windows test watchdog
+        run: python scripts/ci_pytest.py tests/test_ci_pytest.py
+        env:
+          CI_PYTEST_TIMEOUT: '20'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: pytest-windows-watchdog
+          path: pytest.log
+          retention-days: 7
+      - name: Verify Windows virtual-storage fixture
+        run: python scripts/ci_pytest.py tests/test_tvos_storage.py -k virtual_settings_win_over_stale_physical_shadow
+        env:
+          CI_PYTEST_TIMEOUT: '20'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: pytest-windows-vfs-smoke
+          path: pytest.log
+          retention-days: 7
       - run: python scripts/ci_pytest.py tests/test_tvos_storage.py tests/test_server_slow_clients.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
