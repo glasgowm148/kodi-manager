@@ -88,20 +88,22 @@ class WidgetHealth:
 
 def start_widget_refresher(kodi):
     """Refresh cached widget rows one at a time in the background."""
-    if not xbmc:
+    runtime = xbmc
+    if runtime is None:
         return None
     import threading
     import xbmcgui
     cache = WidgetCache(translate("special://profile/addon_data/service.kodi.addonadmin/widget_cache"))
-    home = xbmcgui.Window(10000)
-    player = xbmc.Player()
-    refresher = Refresher(cache, jsonrpc_via(xbmc), player.isPlayingVideo,
-                          lambda value: home.setProperty(RELOAD_PROPERTY, value), kodi.log,
-                          external_reload=lambda: external_reload_token(home),
+    # Do not retain native Player/Window objects in this long-lived worker.
+    # Kodi checks for unreleased add-on classes when its interpreter shuts down.
+    set_property = lambda name, value: xbmcgui.Window(10000).setProperty(name, value)
+    refresher = Refresher(cache, jsonrpc_via(runtime), lambda: runtime.Player().isPlayingVideo(),
+                          lambda value: set_property(RELOAD_PROPERTY, value), kodi.log,
+                          external_reload=lambda: external_reload_token(xbmcgui.Window(10000)),
                           is_busy=tv_busy)
     refresher.stop = threading.Event()
     refresher.sleep = refresher.stop.wait
-    health = WidgetHealth(cache, home.setProperty, lambda: xbmcgui.Dialog().notification(
+    health = WidgetHealth(cache, set_property, lambda: xbmcgui.Dialog().notification(
         "TV rows", "Some rows are unavailable. Cached results are being kept.",
         xbmcgui.NOTIFICATION_INFO, 4000, False))
 

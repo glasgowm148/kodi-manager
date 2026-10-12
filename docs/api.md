@@ -76,9 +76,12 @@ platforms retain their existing behavior. See [tvOS storage/recovery limits](app
 Since 0.7.25, Health's log check uses a persisted rolling 24-hour history and each line's log level. Its `kodi_log_warnings` statistic counts actionable
 warning lines; `kodi_log_notices` counts evidenced startup/compatibility notices and
 `kodi_log_warning_lines` counts all raw warning lines. `recent_warnings` retains raw warnings,
-including notices. The focus-button exception applies only to active `skin.bingie` version
-2.0.2.3; other skins, versions and unsupported controls still raise warnings. A duplicate-message
+including notices. The focus-button exception applies only to active `skin.bingie` versions
+2.0.2.3 and 2.0.2.5: their intentional focus controls are unchanged. Other skins, versions and unsupported controls still raise warnings. A duplicate-message
 notice without a known harmless original remains actionable.
+
+Fixing a cause does not remove its previous entries; each expires after 24 hours. Entries
+keep the classification recorded when collected, including after a compatibility update.
 
 The collector runs every two seconds, including during playback, without Kodi calls from its worker.
 It incrementally reads `kodi.log` and `kodi.old.log`, stores masked entries and file cursors in

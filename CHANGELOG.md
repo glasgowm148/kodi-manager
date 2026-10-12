@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.26 — 2026-10-12
+
+- Skip absent video metadata and normalize missing cast strings before calling Kodi's
+  native APIs, which warn when passed `None`. Keep zero values and valid metadata.
+- Avoid retaining native player/window objects in the widget refresher across shutdown.
+- Recognize the unchanged intentional focus controls in Bingie 2.0.2.5 as known notices.
+  Retained history still includes every original warning; previous entries expire normally.
+
 ## 0.7.25 — 2026-10-12
 
 - Health counts warnings, errors and known notices over the past 24 hours. A background

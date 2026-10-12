@@ -30,7 +30,9 @@ def test_unresolved_schema_and_unknown_controls_still_warn():
 
 def test_focus_notice_is_limited_to_reviewed_active_skin_version():
     lines = [log("warning", "Trying to add unsupported control type 7")]
-    for skin in ({}, dict(SKIN, active=False), dict(SKIN, version="2.0.2.4"), dict(SKIN, addon_id="skin.other")):
+    assert scan_log_lines(lines, dict(SKIN, version="2.0.2.5"))[2] == lines
+    for skin in ({}, dict(SKIN, active=False), dict(SKIN, version="2.0.2.4"),
+                 dict(SKIN, version="2.0.2.6"), dict(SKIN, addon_id="skin.other")):
         assert scan_log_lines(lines, skin)[1] == lines
 
 

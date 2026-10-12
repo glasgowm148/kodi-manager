@@ -48,6 +48,8 @@ def set_video_info(li, info, resume=None, unique_ids=None, default_id="", rating
     tag = video_tag(li)
     fallback = {}
     for key, value in (info or {}).items():
+        if value is None:
+            continue  # Missing provider metadata is not a Kodi string or number.
         name = SIMPLE_SETTERS.get(key) or LIST_SETTERS.get(key)
         setter = _setter(tag, name) if name else None
         if setter is None:
@@ -96,11 +98,11 @@ def set_video_info(li, info, resume=None, unique_ids=None, default_id="", rating
         setter = _setter(tag, "setCast")
         try:
             if setter is not None and actor is not None:
-                setter([actor(c.get("name", ""), c.get("role", ""), int(c.get("order", i)), c.get("thumbnail", ""))
+                setter([actor(c.get("name") or "", c.get("role") or "", int(c.get("order", i)), c.get("thumbnail") or "")
                         for i, c in enumerate(cast)])
             elif hasattr(li, "setCast"):
-                li.setCast([{"name": c.get("name", ""), "role": c.get("role", ""),
-                             "order": int(c.get("order", i)), "thumbnail": c.get("thumbnail", "")}
+                li.setCast([{"name": c.get("name") or "", "role": c.get("role") or "",
+                             "order": int(c.get("order", i)), "thumbnail": c.get("thumbnail") or ""}
                             for i, c in enumerate(cast)])
         except (TypeError, ValueError):
             pass
