@@ -151,6 +151,7 @@ class ServerThread(threading.Thread):
     def stop(self):
         # Profile changes stop scripts while Kodi's UI thread is unavailable.
         # Never wait on a server thread that might be blocked in a Kodi call.
+        self.state.retired = True
         self.stopping.set()
         # Close the listening socket only. The server loop closes its own
         # request state; service shutdown never joins HTTP handlers here.

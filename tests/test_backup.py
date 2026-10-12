@@ -38,6 +38,51 @@ def test_same_second_snapshots_and_restore_keep_original_and_undo(storage):
     assert settings.read_bytes() == b"before restore"
 
 
+@pytest.mark.parametrize("operation", ["backup", "files", "stack", "pipeline", "restore", "stack_restore"])
+def test_profile_switch_keeps_pruning_and_rollback_in_original_root(storage, tmp_path, monkeypatch, operation):
+    import json
+    root, settings, info = storage
+    other = tmp_path / "other-profile-backups"
+    preserved = []
+    scope = {"files": "selected", "stack": "_stack", "pipeline": "pipeline"}.get(operation, info["addon_id"])
+    index = SimpleNamespace(get=lambda aid: info if aid == info["addon_id"] else None)
+    for name in ("20250101-120000-a", "20250102-120000-b"):
+        folder = other / scope / name
+        folder.mkdir(parents=True)
+        (folder / "manifest.json").write_text(json.dumps({"backup_id": name}))
+        preserved.append(folder)
+    settings.write_bytes(b"snapshot")
+    snapshot = backup.create_stack_backup([info]) if operation == "stack_restore" else backup.create_backup(info)
+    settings.write_bytes(b"current")
+    current = {"root": str(root), "switched": False}
+    monkeypatch.setattr(backup, "backup_root", lambda: current["root"])
+    monkeypatch.setattr(backup, "_retention", 1)
+    original = backup._copy_file
+
+    def switching(src, dst):
+        original(src, dst)
+        if not current["switched"] and (operation not in ("restore", "stack_restore") or dst == str(settings)):
+            current.update(root=str(other), switched=True)
+            if operation in ("restore", "stack_restore"):
+                raise OSError("synthetic profile-switch failure")
+
+    monkeypatch.setattr(backup, "_copy_file", switching)
+    if operation in ("restore", "stack_restore"):
+        with pytest.raises(OSError, match="profile-switch failure"):
+            if operation == "restore":
+                backup.restore_backup(info, snapshot["backup_id"])
+            else:
+                backup.restore_stack_backup(index, snapshot["backup_id"])
+    else:
+        {"backup": lambda: backup.create_backup(info),
+         "files": lambda: backup.create_file_backup("selected", {"settings.xml": str(settings)}),
+         "stack": lambda: backup.create_stack_backup([info]),
+         "pipeline": lambda: pipeline_backup(index)}[operation]()
+    assert current["switched"] and settings.read_bytes() == b"current"
+    assert all(folder.exists() for folder in preserved)
+    assert Path(backup._backup_path(scope)).parent == other  # A later request uses its own profile.
+
+
 def test_stack_and_pipeline_snapshots_are_distinct_and_recoverable(storage):
     root, settings, info = storage
     index = SimpleNamespace(get=lambda aid: info if aid == info["addon_id"] else None)

@@ -63,6 +63,18 @@ selected text files, but cannot restore those snapshots offline on tvOS. APK/IPA
 app-container backup, signing renewal, shell access and hung-process force-stop are outside
 Manager. Do not uninstall Kodi to fix a settings problem without independent recovery data.
 
+From 0.7.23, canonical userdata paths used by layout inspection also map back to Kodi's
+translated VFS keys. Aliases share write locks and cannot read stale physical XML shadows.
+Failed per-file readback preserves a distinct native editor value/deletion rather than
+blindly rolling it back; unknown ownership retains the backup for inspection. Finish native
+editing before a full configuration restore, which replaces the requested folder.
+
+From 0.7.23, request handlers stay bound to their service profile. A stopped generation or
+changed profile returns a conflict; delayed action bodies recheck the current token and write
+switch. Backup, undo, rollback and retention keep the root captured for that operation, even
+if a profile switch happens. Reconnect and inspect before retrying: work already dispatched
+to Kodi may have completed. These checks do not lock Kodi's native profile UI.
+
 ## Portable read API
 
 Authenticated `/api/portable/state` reports platform, native active state, active profile/path and

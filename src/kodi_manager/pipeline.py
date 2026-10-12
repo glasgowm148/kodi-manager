@@ -8,7 +8,7 @@ try:
     from .validation import setting_editable, coerce_setting, redact
     from .kodi_api import read_text, translate
     from .account_evidence import credential_present, summarize_account, account_provider, is_auth_field
-    from .backup import allocate_backup, finish_backup, discard_on_failure, create_file_backup, _copytree
+    from .backup import allocate_backup, finish_backup, discard_on_failure, create_file_backup, _copytree, _with_backup_root
     from . import fenlight_db, tvos_storage
     from .fenlight_db import DB_EDITABLE_TYPES
     from .write_policy import check_writable
@@ -18,7 +18,7 @@ except ImportError:
     from validation import setting_editable, coerce_setting, redact
     from kodi_api import read_text, translate
     from account_evidence import credential_present, summarize_account, account_provider, is_auth_field
-    from backup import allocate_backup, finish_backup, discard_on_failure, create_file_backup, _copytree
+    from backup import allocate_backup, finish_backup, discard_on_failure, create_file_backup, _copytree, _with_backup_root
     import fenlight_db
     import tvos_storage
     from fenlight_db import DB_EDITABLE_TYPES
@@ -429,6 +429,7 @@ def build_pipeline(kodi, index):
     }
 
 
+@_with_backup_root
 def pipeline_backup(index, kodi_version="", pipeline_obj=None):
     ts, backup_id, dest = allocate_backup("pipeline")
     with discard_on_failure(dest):

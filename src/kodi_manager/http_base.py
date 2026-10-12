@@ -22,6 +22,8 @@ try:
     from .write_policy import WriteRefused
     from .netconfig import host_allowed, is_loopback
     from .addon_index import AddonIndex
+    from .kodi_api import translate
+    from .backup import root_scope
 except ImportError:
     from version import VERSION
     from auth import authorized
@@ -29,6 +31,8 @@ except ImportError:
     from write_policy import WriteRefused
     from netconfig import host_allowed, is_loopback
     from addon_index import AddonIndex
+    from kodi_api import translate
+    from backup import root_scope
 
 MAX_HANDLERS = 16
 # A request line and headers must arrive within this many seconds in total. The handler
@@ -40,10 +44,18 @@ BODY_DEADLINE = 20.0
 MAX_HANDLERS_PER_CLIENT = 8
 
 
+def profile_path():
+    return os.path.normcase(os.path.realpath(translate("special://profile/")))
+
+
 class AdminState:
     def __init__(self, kodi, config, web_root):
         self.kodi = kodi
         self.config = config
+        self.profile_path = profile_path()
+        self.retired = False
+        data_dir = config.get("addon_data_dir")
+        self.backup_directory = os.path.join(data_dir, "backups") if data_dir else None
         self.web_root = web_root
         self.index = AddonIndex(kodi)
         self.logs = []
@@ -265,16 +277,29 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         match, name, needs_write, value_code = found
         try:
+            self._check_context()
             if needs_write and not self.state.config.get("write_enabled"):
                 raise PermissionError("Write Mode is disabled")
             if method in ("POST", "PATCH"):
                 self.body()  # Validate framing before even handlers that take no body fields.
+                self._check_context()
+                if not self._auth(path):
+                    return
+                if needs_write and not self.state.config.get("write_enabled"):
+                    raise PermissionError("Write Mode is disabled")
                 try:
                     from .tvos_storage import require_active
                 except ImportError:
                     from tvos_storage import require_active
                 require_active()
-            result = getattr(self, "api_" + name.replace("-", "_"))(**match.groupdict())
+            handler = getattr(self, "api_" + name.replace("-", "_"))
+            backup_directory = getattr(self.state, "backup_directory", None)
+            if backup_directory:
+                with root_scope(backup_directory):
+                    result = handler(**match.groupdict())
+            else:
+                result = handler(**match.groupdict())
+            self._check_context()
             self.ok(result)
         except ApiError as exc:
             self.err(exc.status, exc.code, str(exc), exc.details)
@@ -289,6 +314,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.err(404, "not_found", exc.args[0] if exc.args and isinstance(exc.args[0], str) else "Not found")
         except Exception as exc:
             self.err(500, "server_error", str(exc))
+
+    def _check_context(self):
+        if getattr(self.state, "retired", False):
+            raise ApiError(409, "server_retired", "Manager service stopped; reconnect and inspect before retrying")
+        expected = getattr(self.state, "profile_path", None)
+        if expected is not None and profile_path() != expected:
+            raise ApiError(409, "profile_changed", "Kodi profile changed; reconnect and inspect before retrying")
 
     def static(self, path):
         path = unquote(path)
@@ -358,6 +390,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             from tvos_storage import require_active
         require_active()
         players = self.state.kodi.jsonrpc("Player.GetActivePlayers")
+        self._check_context()
         if not isinstance(players, dict) or "error" in players or players.get("result") != []:
             # Code playback_active. Restores answer 409 because {"force": true} overrides them;
             # actions that cannot be forced keep their historic 400.
@@ -392,6 +425,7 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _addon(self, aid):
         self.state.index.refresh()
         addon = self.state.index.get(aid)
+        self._check_context()
         if not addon:
             raise LookupError("Add-on not found")
         return addon

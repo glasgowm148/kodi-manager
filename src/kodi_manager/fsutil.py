@@ -19,7 +19,7 @@ _LOCKS_GUARD = threading.Lock()
 
 def path_lock(path):
     """One re-entrant lock per absolute path, shared by every thread in this process."""
-    key = os.path.abspath(path)
+    key = os.path.normcase(os.path.realpath(path))
     with _LOCKS_GUARD:
         lock = _LOCKS.get(key)
         if lock is None:

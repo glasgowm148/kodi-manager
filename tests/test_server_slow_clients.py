@@ -171,6 +171,110 @@ def post_headers(length):
             "Content-Length: %d\r\n\r\n" % length).encode()
 
 
+@pytest.mark.parametrize("change,status", [("auth_token", 401), ("write_enabled", 403), ("retired", 409), ("profile", 409)])
+def test_delayed_body_cannot_outlive_access_or_profile(serve, monkeypatch, change, status):
+    from kodi_manager import http_base
+    current = {"profile": "profile-a"}
+    monkeypatch.setattr(http_base, "profile_path", lambda: current["profile"], raising=False)
+    httpd, writes, entered = body_server(serve)
+    httpd.body_deadline = 5
+    state = httpd.RequestHandlerClass.state
+    state.profile_path = "profile-a"
+    body = b'{"enabled":true}'
+    with socket.create_connection(httpd.server_address, timeout=5) as sock:
+        sock.sendall(post_headers(len(body)))
+        assert entered.wait(5)
+        if change == "retired":
+            state.retired = True
+        elif change == "profile":
+            current["profile"] = "profile-b"
+        else:
+            state.config[change] = "replacement-token" if change == "auth_token" else False
+        sock.sendall(body)
+        assert str(status).encode() in sock.recv(4096)
+    assert writes == []
+
+
+def test_profile_change_during_read_cannot_return_profile_data(serve, monkeypatch):
+    from kodi_manager import http_base
+    current = {"profile": "profile-a"}
+    monkeypatch.setattr(http_base, "profile_path", lambda: current["profile"])
+    state = _state()
+    state.profile_path = "profile-a"
+    handler = server.make_handler(state)
+    handler.route_table += (("GET", re.compile(r"^/api/profile-probe$"), "probe", False, "bad_request"),)
+
+    def probe(self):
+        current["profile"] = "profile-b"
+        return {"value": "synthetic-private-profile-data"}
+
+    handler.api_probe = probe
+    httpd = serve(QuickDeadline, handler)
+    conn = http.client.HTTPConnection(*httpd.server_address, timeout=5)
+    try:
+        conn.request("GET", "/api/profile-probe", headers={"Authorization": "Bearer tok"})
+        response = conn.getresponse()
+        assert response.status == 409 and b"synthetic-private" not in response.read()
+    finally:
+        conn.close()
+
+
+def test_profile_change_during_addon_lookup_blocks_mutation(serve, monkeypatch):
+    from kodi_manager import http_base
+    current, writes = {"profile": "profile-a"}, []
+    monkeypatch.setattr(http_base, "profile_path", lambda: current["profile"])
+    state = _state()
+    state.profile_path = "profile-a"
+    state.config["write_enabled"] = True
+    state.index = SimpleNamespace(refresh=lambda: None, get=lambda aid: current.update(profile="profile-b") or {"addon_id": aid})
+    handler = server.make_handler(state)
+    handler.route_table += (("POST", re.compile(r"^/api/profile-probe$"), "probe", True, "bad_request"),)
+
+    def probe(self):
+        writes.append(self._addon("plugin.video.example"))
+        return {"changed": True}
+
+    handler.api_probe = probe
+    httpd = serve(QuickDeadline, handler)
+    conn = http.client.HTTPConnection(*httpd.server_address, timeout=5)
+    try:
+        conn.request("POST", "/api/profile-probe", body="{}", headers={"Authorization": "Bearer tok"})
+        assert conn.getresponse().status == 409 and writes == []
+    finally:
+        conn.close()
+
+
+def test_request_backup_root_stays_with_service_generation(serve, monkeypatch, tmp_path):
+    from kodi_manager import http_base, backup
+    current = {"profile": "profile-a"}
+    monkeypatch.setattr(http_base, "profile_path", lambda: current["profile"])
+    other = tmp_path / "profile-b-backups"
+    monkeypatch.setattr(backup, "backup_root", lambda: str(other))
+    live = tmp_path / "profile-a-data"
+    live.mkdir()
+    (live / "settings.xml").write_bytes(b"synthetic-profile-a-setting")
+    state = _state()
+    state.profile_path = "profile-a"
+    state.backup_directory = str(tmp_path / "profile-a-backups")
+    state.config["write_enabled"] = True
+    handler = server.make_handler(state)
+    handler.route_table += (("POST", re.compile(r"^/api/profile-probe$"), "probe", True, "bad_request"),)
+
+    def probe(self):
+        current["profile"] = "profile-b"
+        return backup.create_backup({"addon_id": "plugin.video.example", "addon_data_path": str(live)})
+
+    handler.api_probe = probe
+    httpd = serve(QuickDeadline, handler)
+    conn = http.client.HTTPConnection(*httpd.server_address, timeout=5)
+    try:
+        conn.request("POST", "/api/profile-probe", body="{}", headers={"Authorization": "Bearer tok"})
+        assert conn.getresponse().status == 409
+        assert list((tmp_path / "profile-a-backups").rglob("settings.xml")) and not other.exists()
+    finally:
+        conn.close()
+
+
 @pytest.mark.parametrize("active", [False, None])
 def test_tvos_inactive_state_blocks_even_body_free_action(serve, monkeypatch, active):
     from kodi_manager import tvos_storage

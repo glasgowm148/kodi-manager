@@ -72,7 +72,10 @@ class AddonRoutes(RequestHandler):
         # refuse while something plays and stop (discarding it) if playback starts.
         self._require_idle("Stop playback before taking a checkpoint", status=409)
         try:
-            return create_stack_backup(stack_backup_addons(self.state.kodi, self.state.index), self.state.kodi.get_kodi_version(),
+            addons = stack_backup_addons(self.state.kodi, self.state.index)
+            version = self.state.kodi.get_kodi_version()
+            self._check_context()
+            return create_stack_backup(addons, version,
                                        should_stop=self._playback_started())
         except BackupAborted:
             raise ApiError(409, "playback_active", "Playback started, so the checkpoint was stopped and discarded") from None
@@ -173,6 +176,7 @@ class AddonRoutes(RequestHandler):
         # Rolls back the settings already written if any write in the batch fails.
         # Previous values stay out of the response and the adapter's after_write hook.
         writes = [(aid, ch["id"], ch["value"], ch.pop("previous")) for ch in clean]
+        self._check_context()
         write_settings(self.state.kodi, writes, [(addon, db_clean)] if db_clean else [])
         clean += [{"id": sid, "value": value, "source": "settings.db"} for sid, value in db_clean]
         return {"changed_count": len(clean), "backup_id": backup["backup_id"], "warnings": adapter.after_write(aid, clean)}
@@ -186,7 +190,9 @@ class AddonRoutes(RequestHandler):
     def api_addon_backup(self, aid):
         addon = self._addon(aid)
         adapter = adapter_for(addon, self.state.kodi, self.state.index.addons)
-        return create_backup(addon, self.state.kodi.get_kodi_version(), adapter.name)
+        version = self.state.kodi.get_kodi_version()
+        self._check_context()
+        return create_backup(addon, version, adapter.name)
 
     def api_addon_backups(self, aid):
         self._addon(aid)

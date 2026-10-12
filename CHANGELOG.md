@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.23 — 2026-10-12 (prerelease)
+
+- Recheck bearer authorization, write mode, service retirement and active profile after receiving action bodies. Stopped service generations refuse queued actions; profile changes during reads suppress their results. Errors require reconnecting and inspecting before retrying.
+- Pin backup roots to configured service generations and per operation/thread, including nested undo creation, rollback and retention. A profile switch cannot redirect pruning or make rollback look in another profile. Cover add-on, selected-file, stack and pipeline snapshots.
+- Preserve distinct native XML edits/deletions detected during failed write readback; unreadable ownership refuses blind rollback. Retain the backup for explicit recovery.
+- Map canonical tvOS userdata paths back to Kodi's translated VFS keys, including layout reads/writes/listing/deletion. Canonical and alias paths share write locks; physical shadows cannot replace actual XML preferences.
+- Add delayed-body access/profile regressions, cross-profile read/lookup refusal, canonical layout storage and six backup-root transition cases. Preserve live access settings, VFS aliases and existing layout gates. No live TV changes.
+
 ## 0.7.22 — 2026-10-12 (prerelease)
 
 - Preserve live Manager access settings and device identity during failed add-on/checkpoint restore rollback, just as during successful restore. A token changed after the undo snapshot must not be resurrected from that snapshot.

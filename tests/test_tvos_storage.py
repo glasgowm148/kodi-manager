@@ -72,6 +72,27 @@ def test_virtual_settings_win_over_stale_physical_shadow(tvos):
     assert not path.exists() and str(path) not in values
 
 
+def test_canonical_layout_path_uses_translated_virtual_key_and_lock(tvos, monkeypatch):
+    root, values, _fail = tvos
+    alias = root.parent / "userdata-alias"
+    try:
+        alias.symlink_to(root, target_is_directory=True)
+    except OSError:
+        pytest.skip("Directory symlinks unavailable")
+    monkeypatch.setattr(storage.xbmcvfs, "translatePath", lambda _: str(alias))
+    path = root / "settings.xml"
+    translated = alias / "settings.xml"
+    path.write_bytes(b"physical shadow")
+    values[str(translated)] = b"actual layout"
+    assert skin_layout._read(str(path)) == b"actual layout"
+    assert fsutil.path_lock(path) is fsutil.path_lock(translated)
+    fsutil.atomic_write_bytes(str(path), b"updated layout")
+    assert values[str(translated)] == b"updated layout" and path.read_bytes() == b"physical shadow"
+    assert "settings.xml" in storage.listdir(root)
+    storage.remove(path)
+    assert not path.exists() and str(translated) not in values
+
+
 def test_failed_virtual_write_rolls_back_original(tvos):
     root, values, fail = tvos
     path = root / "settings.xml"
@@ -80,6 +101,29 @@ def test_failed_virtual_write_rolls_back_original(tvos):
     with pytest.raises(OSError, match="write failed"):
         fsutil.atomic_write_bytes(str(path), b"candidate")
     assert values[str(path)] == b"original"
+
+
+@pytest.mark.parametrize("replacement", [b"native editor change", None])
+def test_virtual_readback_conflict_does_not_undo_native_editor(tvos, monkeypatch, replacement):
+    root, values, _fail = tvos
+    path = str(root / "layout.xml")
+    values[path] = b"original"
+    original = storage.xbmcvfs.File
+
+    class Edited(original):
+        def write(self, data):
+            result = super().write(data)
+            if bytes(data) == b"candidate":
+                if replacement is None:
+                    values.pop(self.path, None)
+                else:
+                    values[self.path] = replacement
+            return result
+
+    monkeypatch.setattr(storage.xbmcvfs, "File", Edited)
+    with pytest.raises(OSError):
+        fsutil.atomic_write_bytes(path, b"candidate")
+    assert values.get(path) == replacement
 
 
 @pytest.mark.parametrize("name", ["customcontroller.SiriRemote.xml", "CustomController.SIRIREMOTE.alt.xml"])

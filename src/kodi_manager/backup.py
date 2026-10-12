@@ -7,6 +7,8 @@ import time
 from pathlib import Path
 import re
 import uuid
+import threading
+from functools import wraps
 
 try:
     from . import tvos_storage
@@ -33,6 +35,38 @@ SELF_ID = "service.kodi.addonadmin"
 # restoring an old copy of its own folder keeps the live settings.xml, so a
 # replaced token or a LAN switch turned off cannot come back from a backup.
 SELF_KEEP = ("settings.xml", "device_identity.xml")
+_ROOT = threading.local()
+
+
+def _with_backup_root(function):
+    """Pin one profile's backup root through nested copies, pruning and rollback."""
+    @wraps(function)
+    def run(*args, **kwargs):
+        if getattr(_ROOT, "path", None) is not None:
+            return function(*args, **kwargs)
+        _ROOT.path = backup_root()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            del _ROOT.path
+    return run
+
+
+def _active_root():
+    return getattr(_ROOT, "path", None) or backup_root()
+
+
+@contextlib.contextmanager
+def root_scope(root):
+    previous = getattr(_ROOT, "path", None)
+    _ROOT.path = root
+    try:
+        yield
+    finally:
+        if previous is None:
+            del _ROOT.path
+        else:
+            _ROOT.path = previous
 
 
 def set_retention(count):
@@ -85,7 +119,7 @@ def _backup_path(*parts):
         raise ValueError('Invalid backup identifier')
     # Preserve Kodi's translated spelling for tvOS VFS keys. Resolve only the
     # confinement check; directory aliases must not change the storage backend.
-    root = Path(os.path.abspath(backup_root()))
+    root = Path(os.path.abspath(_active_root()))
     target = root.joinpath(*parts)
     if root.resolve() not in target.resolve().parents:
         raise ValueError('Backup path leaves its directory')
@@ -269,6 +303,7 @@ def finish_backup(scope, dest, manifest, protect=()):
     prune(scope, keep=set(protect) | {manifest["backup_id"]})
 
 
+@_with_backup_root
 def create_backup(addon_info, kodi_version="", adapter="", protect=()):
     aid = addon_info["addon_id"]
     ts, backup_id, dest = allocate_backup(aid, protect)
@@ -290,6 +325,7 @@ def create_backup(addon_info, kodi_version="", adapter="", protect=()):
     return manifest
 
 
+@_with_backup_root
 def create_file_backup(scope, files, kodi_version="", note=""):
     """Snapshot only the given files: {relative name: absolute path}. Missing files are recorded."""
     ts, backup_id, dest = allocate_backup(scope)
@@ -311,7 +347,7 @@ def create_file_backup(scope, files, kodi_version="", note=""):
 
 
 def list_backups(addon_id=None, stack=False):
-    root = _backup_path("_stack" if stack else addon_id) if stack or addon_id else backup_root()
+    root = _backup_path("_stack" if stack else addon_id) if stack or addon_id else _active_root()
     if not os.path.isdir(root):
         return []
     out = []
@@ -323,6 +359,7 @@ def list_backups(addon_id=None, stack=False):
     return out
 
 
+@_with_backup_root
 def restore_backup(addon_info, backup_id):
     aid = addon_info["addon_id"]
     snapshot = _backup_path(aid, backup_id)
@@ -365,6 +402,7 @@ def _roll_back(done, error):
                            "backups" % (type(error).__name__, ", ".join(failed))) from error
 
 
+@_with_backup_root
 def create_stack_backup(addons, kodi_version="", note="", should_stop=None):
     """Snapshot several add-ons' addon_data. ``should_stop`` (optional) aborts and discards it."""
     ts, backup_id, root = allocate_backup("_stack")
@@ -402,6 +440,7 @@ def delete_stack_backup(backup_id):
     return False
 
 
+@_with_backup_root
 def restore_stack_backup(index, backup_id):
     root = _backup_path("_stack", backup_id)
     if not os.path.isdir(root):

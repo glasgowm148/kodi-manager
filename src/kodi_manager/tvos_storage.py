@@ -20,9 +20,17 @@ def is_tvos():
 def userdata(path):
     if not is_tvos() or not xbmcvfs:
         return False
-    root = os.path.abspath(xbmcvfs.translatePath("special://masterprofile/"))
-    target = os.path.abspath(os.fspath(path))
+    root = os.path.realpath(xbmcvfs.translatePath("special://masterprofile/"))
+    target = os.path.realpath(os.fspath(path))
     return os.path.commonpath([root, target]) == root
+
+
+def _vfs_path(path):
+    """Map canonical aliases back to Kodi's translated preference-key spelling."""
+    assert xbmcvfs is not None
+    root = os.path.abspath(xbmcvfs.translatePath("special://masterprofile/"))
+    relative = os.path.relpath(os.path.realpath(path), os.path.realpath(root))
+    return os.path.join(root, relative) if relative != "." else root
 
 
 def virtual_xml(path):
@@ -32,7 +40,7 @@ def virtual_xml(path):
 
 
 def exists(path):
-    return bool(xbmcvfs.exists(str(path))) if virtual_xml(path) and xbmcvfs else os.path.exists(path)
+    return bool(xbmcvfs.exists(_vfs_path(path))) if virtual_xml(path) and xbmcvfs else os.path.exists(path)
 
 
 def is_file(path):
@@ -47,8 +55,8 @@ def read_bytes(path, limit=2_000_000):
     if virtual_xml(path) and xbmcvfs:
         if not exists(path):
             raise FileNotFoundError("Kodi virtual file does not exist")
-        declared = xbmcvfs.Stat(str(path)).st_size()
-        handle = xbmcvfs.File(str(path))
+        declared = xbmcvfs.Stat(_vfs_path(path)).st_size()
+        handle = xbmcvfs.File(_vfs_path(path))
         try:
             expected = handle.size()
             if type(expected) is not int or expected < 0 or expected != declared:
@@ -70,7 +78,7 @@ def read_bytes(path, limit=2_000_000):
 
 def remove(path):
     if virtual_xml(path) and xbmcvfs:
-        if exists(path) and not xbmcvfs.delete(str(path)):
+        if exists(path) and not xbmcvfs.delete(_vfs_path(path)):
             raise OSError("Kodi virtual file could not be removed")
         if os.path.lexists(path):
             os.remove(path)  # Remove a legacy POSIX shadow too; it must not reappear.
@@ -80,7 +88,7 @@ def remove(path):
 
 def listdir(path):
     if userdata(path) and xbmcvfs:
-        dirs, files = xbmcvfs.listdir(str(path).rstrip("/\\") + "/")
+        dirs, files = xbmcvfs.listdir(_vfs_path(path).rstrip("/\\") + "/")
         return sorted(set(dirs + files))
     return os.listdir(path)
 
@@ -89,7 +97,7 @@ def walk(path, topdown=True):
     if not userdata(path) or not xbmcvfs:
         yield from os.walk(path, topdown=topdown)
         return
-    dirs, files = xbmcvfs.listdir(str(path).rstrip("/\\") + "/")
+    dirs, files = xbmcvfs.listdir(_vfs_path(path).rstrip("/\\") + "/")
     dirs, files = sorted(set(dirs)), sorted(set(files))
     if topdown:
         yield str(path), dirs, files
@@ -129,7 +137,7 @@ def write_xml(path, data):
         raise ValueError("Virtual XML must be nonempty and within the size limit")
 
     def save(value):
-        handle = vfs.File(str(path), "w")
+        handle = vfs.File(_vfs_path(path), "w")
         try:
             if not handle.write(bytearray(value)):
                 raise OSError("Kodi virtual file write failed")
@@ -141,6 +149,14 @@ def write_xml(path, data):
         if read_bytes(path) != data:
             raise OSError("Kodi virtual file readback differs")
     except BaseException:
+        try:
+            current = read_bytes(path) if exists(path) else None
+        except Exception:
+            raise OSError("Virtual file ownership is unreadable; inspect the retained backup") from None
+        if current not in (data, old):
+            raise OSError("Virtual file changed concurrently; inspect the retained backup") from None
+        if current == old:
+            raise
         try:
             remove(path) if old is None else save(old)
             if (old is None and exists(path)) or (old is not None and read_bytes(path) != old):
