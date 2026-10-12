@@ -201,6 +201,23 @@ def shield_exit_supported(config):
                 and os.path.isfile('/vendor/lib64/libnvglsi.so'))
 
 
+def wait_for_shutdown(monitor, startup_monitor=None):
+    """Keep the original abort signal if shutdown began during service startup.
+
+    Kodi notifies each registered Monitor separately. A callback monitor created
+    after that notification can still report False while the startup monitor
+    already reports True.
+    """
+    while True:
+        if ((startup_monitor is not None and startup_monitor.abortRequested())
+                or (monitor is not None and monitor.abortRequested())):
+            return
+        if monitor is not None:
+            monitor.waitForAbort(1)
+        else:
+            time.sleep(1)
+
+
 def main():
     # A coordinated profile switch may already be cancelling this generation.
     startup_monitor = profile_transition.Monitor() if xbmc else None
@@ -302,13 +319,7 @@ def main():
     else:
         monitor = None
     try:
-        while True:
-            if monitor and monitor.abortRequested():
-                break
-            if monitor:
-                monitor.waitForAbort(1)
-            else:
-                time.sleep(1)
+        wait_for_shutdown(monitor, startup_monitor)
     finally:
         if log_collector:
             log_collector.set()

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.27 — 2026-10-12
+
+- Preserve the original Monitor's abort signal when shutdown begins during service
+  startup. A callback monitor registered later can miss Kodi's earlier notification;
+  the service now exits instead of waiting for Kodi to kill it after five seconds.
+
 ## 0.7.26 — 2026-10-12
 
 - Skip absent video metadata and normalize missing cast strings before calling Kodi's
