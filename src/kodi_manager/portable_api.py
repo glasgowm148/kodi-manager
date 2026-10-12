@@ -47,7 +47,7 @@ def file_path(relative, active=None):
             or any(part in ("", ".", "..") for part in relative.split("/"))):
         raise ValueError("Invalid Kodi-relative file path")
     active = profile_root() if active is None else active
-    if active == "userdata" and relative.startswith("userdata/profiles/"):
+    if active == "userdata" and relative.casefold().startswith("userdata/profiles/"):
         raise ValueError("Only the active Kodi profile can be read")
     if active == "userdata":
         master = translate("special://masterprofile/")
@@ -61,9 +61,9 @@ def file_path(relative, active=None):
                 target = os.path.realpath(os.path.join(master, directory))
                 if target != os.path.realpath(master) and os.path.commonpath([os.path.realpath(master), target]) == os.path.realpath(master):
                     prefix = "userdata/" + os.path.relpath(target, os.path.realpath(master)).replace(os.sep, "/") + "/"
-                    if relative.startswith(prefix):
+                    if relative.casefold().startswith(prefix.casefold()):
                         raise ValueError("Only the active Kodi profile can be read")
-    if relative.startswith(active + "/"):
+    if relative.casefold().startswith((active + "/").casefold()):
         # Resolve from the captured profile, rather than a second mutable
         # special://profile lookup that could select a different profile.
         root = os.path.join(translate("special://masterprofile/"), *active.split("/")[1:])

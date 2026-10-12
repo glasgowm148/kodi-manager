@@ -365,3 +365,12 @@ def test_parent_traversal_cannot_loop_above_missing_boundary(tmp_path):
     from itertools import islice
     with pytest.raises(ValueError, match='leaves its directory'):
         list(islice(portable_api._parents(str(tmp_path / 'settings.xml'), str(tmp_path / 'unrelated')), 100))
+
+
+@pytest.mark.parametrize('directory,requested', [('profiles/Kids', 'userdata/Profiles/Kids/settings.json'), ('Kids', 'userdata/kIDS/guisettings.xml')])
+def test_other_profile_directory_case_alias_is_refused(tvos, monkeypatch, directory, requested):
+    root, values, _fail = tvos
+    values[str(root / 'profiles.xml')] = ('<profiles><profile><directory>%s</directory></profile></profiles>' % directory).encode()
+    monkeypatch.setattr(portable_api, 'translate', lambda _: str(root))
+    with pytest.raises(ValueError, match='active Kodi profile'):
+        portable_api.file_path(requested)
