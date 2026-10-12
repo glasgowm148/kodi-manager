@@ -5,7 +5,7 @@ Python installation. Use the [setup guide](setup.md) first; nvidia-MCP is option
 
 | Symptom | Likely cause and next step |
 | --- | --- |
-| Kodi says the ZIP has an invalid structure or dependencies fail | Under release **Assets**, select `service.kodi.addonadmin-0.7.20.zip`, not **Source code**, a wheel or tar.gz. Kodi 19+ is required. Enable Unknown sources if Kodi asks. |
+| Kodi says the ZIP has an invalid structure or dependencies fail | Under release **Assets**, select `service.kodi.addonadmin-0.7.21.zip`, not **Source code**, a wheel or tar.gz. Kodi 19+ is required. Enable Unknown sources if Kodi asks. |
 | No dashboard opens from the TV | Use **Video add-ons → Kodi Manager → Open the dashboard on another device**. This shows an address/token for your phone or computer; it is not a TV browser. |
 | Browser cannot connect | Keep Kodi open, check the device's current IP/port and turn on **Allow LAN access** in Manager's service settings. Use the displayed `http://` address; the service does not provide HTTPS. |
 | Same Wi-Fi name, but no connection | Guest Wi-Fi/client isolation can block devices from each other. Use a network that permits LAN access. Check VPN LAN settings, firewall rules and the browser/app's OS Local Network permission. Ethernet and Wi-Fi can work together on the same LAN. |

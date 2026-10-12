@@ -73,7 +73,8 @@ def file_path(relative, active=None):
 
 def _check_profile_boundaries(target, active_root):
     """Exclude configured descendants, while allowing the current profile's ancestors."""
-    master = os.path.realpath(translate("special://masterprofile/"))
+    # Keep Kodi's translated spelling for VFS keys; canonicalize only comparisons.
+    master = translate("special://masterprofile/")
     profiles = os.path.join(master, "profiles.xml")
     if not tvos_storage.exists(profiles):
         return

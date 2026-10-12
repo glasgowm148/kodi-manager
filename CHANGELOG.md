@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.21 — 2026-10-12 (prerelease)
+
+- Preserve Kodi's translated path spelling when reading virtual `profiles.xml`; resolve canonical paths only for confinement comparisons. An alias such as `/var` → `/private/var` must not bypass the nested-profile check. Add a synthetic directory-alias regression.
+- Retain 0.7.20's nested-profile and physical Siri Remote XML fixes. Prefer this release over 0.7.20 for tvOS profile reads.
+
 ## 0.7.20 — 2026-10-12 (prerelease)
 
 - Confine portable file reads when a configured profile is nested inside the active profile. Allow the active nested profile itself while refusing parent/sibling configuration.

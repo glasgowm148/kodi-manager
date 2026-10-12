@@ -337,6 +337,22 @@ def test_nested_profiles_cannot_read_each_other(tvos, monkeypatch, active):
         portable_api.file_path("userdata/" + other + "/settings.json")
 
 
+def test_profile_boundaries_keep_translated_vfs_path_alias(tvos, monkeypatch):
+    root, values, _fail = tvos
+    alias = root.parent / "userdata-alias"
+    try:
+        alias.symlink_to(root, target_is_directory=True)
+    except OSError:
+        pytest.skip("Directory symlinks unavailable")
+    (root / "Adults/Kids").mkdir(parents=True)
+    values[str(alias / "profiles.xml")] = b"<profiles><profile><directory>Adults/Kids/</directory></profile></profiles>"
+    mapping = {"special://masterprofile/": str(alias), "special://profile/": str(alias / "Adults")}
+    monkeypatch.setattr(portable_api, "translate", mapping.__getitem__)
+    monkeypatch.setattr(storage.xbmcvfs, "translatePath", lambda _: str(alias))
+    with pytest.raises(ValueError, match="active Kodi profile"):
+        portable_api.file_path("userdata/Adults/Kids/settings.json")
+
+
 def test_file_path_uses_captured_profile_when_special_path_changes(tvos, monkeypatch):
     root, _values, _fail = tvos
     first, second = root / "profiles/A", root / "profiles/B"

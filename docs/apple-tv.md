@@ -61,7 +61,8 @@ Manager. Do not uninstall Kodi to fix a settings problem without independent rec
 
 Authenticated `/api/portable/state` reports platform, native active state, active profile/path and
 a persistent Manager-instance ID. `/api/portable/file?path=…` reads active-profile or installed
-add-on text, bounded to 600 KB, with byte count/base64/SHA-256. Version 0.7.17 adds device/profile ownership to the response and optional expected ownership query fields. From 0.7.20, this also excludes configured profiles nested beneath the active profile. It rejects other profiles, traversal,
+add-on text, bounded to 600 KB, with byte count/base64/SHA-256. Version 0.7.17 adds device/profile ownership to the response and optional expected ownership query fields. From 0.7.20, this also excludes configured profiles nested beneath the active profile.
+Version 0.7.21 preserves translated VFS key paths when master userdata uses a directory alias. It rejects other profiles, traversal,
 symlinks and non-text extensions. The bearer token can read private configuration through this
 API; never expose it or attach snapshots to bug reports. There is no arbitrary file-write API.
 The ID identifies this Manager installation, not the Apple TV hardware; deletion/cloning of
