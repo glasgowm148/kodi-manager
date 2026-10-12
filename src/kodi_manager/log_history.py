@@ -145,7 +145,8 @@ class LogHistory:
         status = json.loads(metadata.get("scan", "{}"))
         if now - status.get("last_scan_at", 0) > 30:
             status["available"] = False
-        entries = [{"id": r[0], "timestamp": r[1], "level": r[2], "line": r[3]} for r in rows[:limit]]
+        # Apply current rules to entries collected by an older version, too.
+        entries = [{"id": r[0], "timestamp": r[1], "level": r[2], "line": redact(r[3])} for r in rows[:limit]]
         return dict(status, retention_hours=24, since=now - RETENTION, now=now,
                     tracking_started_at=float(metadata["started"]) if "started" in metadata else None,
                     available=status.get("available", False), catching_up=status.get("catching_up", True),

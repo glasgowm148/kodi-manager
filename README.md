@@ -25,7 +25,7 @@ computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-
 *Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
 > [!NOTE]
-> **0.7.27 prerelease.** Targets Kodi 19+; cached rows need Kodi 20+. Live use is on one customized
+> **0.7.28 prerelease.** Targets Kodi 19+; cached rows need Kodi 20+. Live use is on one customized
 > NVIDIA Shield. The current public ZIP and other hardware still need live validation;
 > see [compatibility](docs/compatibility.md).
 
@@ -51,7 +51,7 @@ computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-
 ## Quick start
 
 1. **Download** `service.kodi.addonadmin-<version>.zip` from
-   [Releases](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.27), under **Assets**.
+   [Releases](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.28), under **Assets**.
    Choose the `service.kodi.addonadmin` ZIP; GitHub's **Source code** ZIP, wheel and tar.gz are not
    installable Kodi add-ons.
 2. **Install it.** In Kodi, choose **Add-ons → Install from zip file** and pick the ZIP. Allow

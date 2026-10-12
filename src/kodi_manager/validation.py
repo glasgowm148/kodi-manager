@@ -23,7 +23,10 @@ def mask_value(value):
     return "••••••••" if value not in (None, "") else ""
 
 
-_QUERY_SECRET = re.compile(r"([?&;](?:token|access_token|auth_token|refresh_token|api_key|apikey|key)=)[^&#\s\"']*", re.I)
+_QUERY_SECRET = re.compile(
+    r"([?&;](?:token|access_token|auth_token|refresh_token|api_key|apikey|key"
+    r"|__gda__|hdnea|hdnts|signature|policy|key-pair-id|x-amz-signature|x-goog-signature)=)"
+    r"[^&#\s<>\"']*", re.I)
 _BEARER = re.compile(r"\b(Bearer)\s+[A-Za-z0-9._~+/=-]+", re.I)
 _ASSIGNED_SECRET = re.compile(
     r"\b((?:access_|refresh_|auth_|client_|api_)?(?:token|secret|password|passwd|api_?key|apikey|key))"
@@ -32,7 +35,7 @@ MASK = "••••••••"
 
 
 def mask_query_secrets(text):
-    """Mask token/key query values in a URL or request line (``?token=abc`` -> ``?token=***``)."""
+    """Mask credentials and signed CDN query values, keeping the URL useful for diagnostics."""
     return _QUERY_SECRET.sub(lambda m: m.group(1) + "***", str(text))
 
 

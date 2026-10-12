@@ -1,6 +1,6 @@
 # Python library
 
-Download the Python wheel from [release assets](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.27)
+Download the Python wheel from [release assets](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.28)
 and [verify it against `SHA256SUMS`](setup.md#verify-the-download). Create a **Python 3.9+** virtual
 environment before installing; reuse an existing suitable one instead of replacing it.
 
@@ -8,14 +8,14 @@ On macOS/Linux, from the download folder:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install ./kodi_manager-0.7.27-py3-none-any.whl
+.venv/bin/python -m pip install ./kodi_manager-0.7.28-py3-none-any.whl
 ```
 
 On Windows (PowerShell):
 
 ```powershell
 py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install .\kodi_manager-0.7.27-py3-none-any.whl
+.\.venv\Scripts\python.exe -m pip install .\kodi_manager-0.7.28-py3-none-any.whl
 ```
 
 Run the Python examples below with that environment's interpreter (`.venv/bin/python` or
@@ -43,7 +43,7 @@ preview/apply; writes need `allow_writes=True`. The [API guide](api.md) lists ev
 ## Install from source and parse settings offline
 
 ```sh
-git clone --branch v0.7.27 https://github.com/glasgowm148/kodi-manager.git
+git clone --branch v0.7.28 https://github.com/glasgowm148/kodi-manager.git
 cd kodi-manager
 python3 -m venv .venv
 .venv/bin/python -m pip install .

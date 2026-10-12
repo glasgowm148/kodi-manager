@@ -34,6 +34,23 @@ def test_busy_log_keeps_problems_after_thousands_of_info_lines_and_restart(histo
     assert restarted.snapshot()["tracking_started_at"] == clock[0]
 
 
+def test_signed_cdn_credentials_are_masked_on_disk_and_in_older_retained_entries(history):
+    h, logs, clock = history
+    raw = line(clock[0], "error", "CCurlFile::Stat <https://cdn.example.invalid/manifest.mpd?__gda__=fixture-signature&mimetype=dash>")
+    (logs / "kodi.log").write_text(raw)
+    h.collect()
+    with sqlite3.connect(h.path) as db:
+        assert 'fixture-signature' not in db.execute('SELECT line FROM events').fetchone()[0]
+        # Simulate a retained entry written before these signed-token rules existed.
+        db.execute('UPDATE events SET line=?', (raw,))
+    before = h.snapshot()
+    assert 'fixture-signature' not in before['entries'][0]['line']
+    assert '?__gda__=***&mimetype=dash>' in before['entries'][0]['line']
+    assert before['counts']['errors'] == 1 and before['tracking_started_at'] == clock[0]
+    h.collect()
+    assert h.snapshot()['entries'][0]['id'] == before['entries'][0]['id']
+
+
 def test_rotation_preserves_warnings_without_double_counting_old_log(history):
     h, logs, clock = history
     current = logs / "kodi.log"

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.28 — 2026-10-12 (prerelease)
+
+- Mask signed BBC/Akamai, CloudFront and cloud-storage URL credentials in log diagnostics.
+  Retained entries from older versions also receive the current masking rules when read;
+  warning/error counts, IDs and the original history tracking start are preserved.
+
 ## 0.7.27 — 2026-10-12 (prerelease)
 
 This release includes the changes since 0.7.23: clearer add-on purposes/dependencies
