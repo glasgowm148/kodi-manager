@@ -43,15 +43,18 @@ def size(path):
 
 def read_bytes(path, limit=2_000_000):
     if virtual_xml(path) and xbmcvfs:
+        if not exists(path):
+            raise FileNotFoundError("Kodi virtual file does not exist")
+        declared = xbmcvfs.Stat(str(path)).st_size()
         handle = xbmcvfs.File(str(path))
         try:
             expected = handle.size()
-            if type(expected) is not int or expected < 0:
+            if type(expected) is not int or expected < 0 or expected != declared:
                 raise OSError("Kodi virtual file length is unreadable")
             if expected > limit:
                 raise ValueError("File exceeds the size limit")
             data = bytes(handle.readBytes(limit + 1))
-            if len(data) != expected or handle.size() != expected:
+            if len(data) != expected or handle.size() != expected or not exists(path):
                 raise OSError("Kodi virtual file read was incomplete or changed")
         finally:
             handle.close()

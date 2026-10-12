@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.18 — 2026-10-12 (prerelease)
+
+- Check virtual existence/stat as well as handle length: Kodi's Python File constructor ignores failed native opens, which can otherwise look like a successful zero-byte read. Refuse missing/disappearing files and preserve the original on open failure.
+- Add synthetic failed-open/missing-key regressions; retain the ownership and backup safeguards from 0.7.17. No live TV changes or physical Apple TV validation.
+
 ## 0.7.17 — 2026-10-12 (prerelease)
 
 - Check virtual file length before/after reading: Kodi can return partial data without an exception. Refuse empty/oversized virtual writes before mutation and retain the old value.

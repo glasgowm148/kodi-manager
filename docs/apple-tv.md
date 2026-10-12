@@ -43,7 +43,7 @@ Kodi's tvOS userdata XML lives in VFS/NSUserDefaults, as shown in
 Manager explicitly reads that virtual value, writes XML in one call, checks readback and restores
 the previous value on failure. Backups, undo, pipeline snapshots and pruning use virtual XML;
 stale physical shadows cannot replace it after a failed VFS read. Android retains its normal
-POSIX atomic writes. Virtual XML readback/backups are limited to 2 MB per file. From 0.7.17, incomplete/changed VFS reads and empty/oversized virtual writes are refused before accepting a snapshot or changing a preference.
+POSIX atomic writes. Virtual XML readback/backups are limited to 2 MB per file. From 0.7.17, incomplete/changed VFS reads and empty/oversized virtual writes are refused before accepting a snapshot or changing a preference. Version 0.7.18 also verifies existence/stat against the handle, since Kodi's Python constructor can silently ignore a failed native open.
 
 Non-XML files, directories, cache databases and backup manifests remain disposable tvOS storage.
 A missing source directory cannot enumerate retained XML keys; Manager refuses that snapshot instead of treating it as empty. Reopen the affected add-on on the TV to recreate its directories, then inspect before backing up. Purged subdirectories/manifests cannot establish a complete recoverable snapshot.

@@ -48,7 +48,8 @@ def tvos(tmp_path, monkeypatch):
         values.pop(path, None)
         return True
 
-    vfs = SimpleNamespace(File=File, translatePath=lambda path: str(root),
+    vfs = SimpleNamespace(File=File, Stat=lambda path: SimpleNamespace(st_size=lambda: len(values[path])),
+                          translatePath=lambda path: str(root),
                           exists=lambda path: path in values, listdir=listing, delete=delete)
     monkeypatch.setattr(storage, "xbmcvfs", vfs)
     monkeypatch.setattr(storage, "is_tvos", lambda: True)
@@ -319,3 +320,33 @@ def test_file_path_uses_captured_profile_when_special_path_changes(tvos, monkeyp
     monkeypatch.setattr(portable_api, "translate", translate)
     assert portable_api.file_path("userdata/profiles/A/guisettings.xml") == str(first / "guisettings.xml")
     assert len(calls) == 1
+
+
+def test_missing_virtual_file_never_reports_empty_success(tvos, monkeypatch):
+    root, _values, _fail = tvos
+
+    def unopened(*args):
+        pytest.fail("A missing key must be refused before opening")
+
+    monkeypatch.setattr(storage.xbmcvfs, "File", unopened)
+    with pytest.raises(FileNotFoundError):
+        storage.read_bytes(root / "missing.xml")
+
+
+def test_failed_native_open_cannot_mask_existing_virtual_contents(tvos, monkeypatch):
+    root, values, _fail = tvos
+    path = root / "settings.xml"
+    values[str(path)] = b"original contents"
+    original = storage.xbmcvfs.File
+
+    class FailedOpen(original):
+        def size(self):
+            return 0  # The real Python wrapper does not raise when Open returns false.
+
+        def readBytes(self, limit):
+            return b""
+
+    monkeypatch.setattr(storage.xbmcvfs, "File", FailedOpen)
+    with pytest.raises(OSError, match="length is unreadable"):
+        fsutil.atomic_write_bytes(str(path), b"candidate")
+    assert values[str(path)] == b"original contents"
