@@ -247,7 +247,7 @@ def test_nightly_checkpoint_stops_when_the_service_exits(monkeypatch):
     monkeypatch.setattr(backup, "list_backups", lambda **kwargs: [])
     monkeypatch.setattr(dashboard_data, "stack_backup_addons", lambda kodi, index: [])
     monkeypatch.setattr(dashboard_data, "make_baseline", lambda kodi: None)
-    monkeypatch.setattr(addon_index, "AddonIndex", lambda kodi: SimpleNamespace(refresh=lambda force=False: None))
+    monkeypatch.setattr(addon_index, "AddonIndex", lambda kodi: SimpleNamespace(refresh=lambda force=False, should_stop=None: seen.update(index_should_stop=should_stop)))
     kodi = SimpleNamespace(log=lambda msg: None, notify=lambda *a: None, get_kodi_version=lambda: "22",
                            get_addon_setting=lambda addon, sid: "")
     stop = threading.Event()
