@@ -195,13 +195,18 @@ def drained(addon, timeout=10):
         return True
     _write(os.path.join(ROOT, 'drain-start-' + addon + '.json'), {'started': True})
     deadline = time.monotonic() + timeout
+    reported = None
     while True:
         children = _owned_workers(addon)
         if not children:
             _write(_ack_path(addon), {'complete': True})
             return True
+        names = [t.name for t in children]
+        if names != reported:
+            # Kodi can kill an aborted script before this drain timeout expires.
+            # Record pending worker names immediately, without inspecting frames.
+            _write(os.path.join(ROOT, 'drain-diagnostic.json'), {'addon': addon, 'workers': names})
+            reported = names
         if time.monotonic() >= deadline:
-            _write(os.path.join(ROOT, 'drain-diagnostic.json'), {'addon': addon,
-                   'workers': [t.name for t in children]})
             return False
         time.sleep(.05)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.33 — 2026-10-13
+
+- Stop dashboard producers and retire the listener before private extension cleanup, so cleanup waits cannot leave those producers starting more Kodi work during shutdown.
+- Record pending profile-drain worker names before waiting: Kodi may terminate an aborted script before the drain timeout finishes. No Python frame inspection or credentials are recorded.
+
 ## 0.7.32 - 2026-10-13 (prerelease)
 
 - Recognize Bingie 2.0.2.6's unchanged focus-control diagnostic as a known notice, as for the reviewed 2.0.2.3/2.0.2.5 versions. Other controls, unknown skin versions and real errors still warn. Original log entries remain intact.

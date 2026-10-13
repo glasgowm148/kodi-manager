@@ -179,6 +179,17 @@ class CoordinatorTests(TransitionCase):
         report = json.loads((Path(pt.ROOT) / "drain-diagnostic.json").read_text())
         self.assertEqual(report, {"addon": "service.kodi.addonadmin", "workers": ["stuck-worker"]})
 
+    def test_pending_workers_are_recorded_before_kodi_can_kill_script(self):
+        pt = self.load(coordinator="coordinator.example")
+        worker = types.SimpleNamespace(name="synthetic-blocked-handler")
+        with patch.object(pt, "_owned_workers", return_value=[worker]), \
+                patch.object(pt.time, "sleep", side_effect=RuntimeError("synthetic Kodi stop")):
+            with self.assertRaisesRegex(RuntimeError, "synthetic Kodi stop"):
+                pt.drained("service.kodi.addonadmin", timeout=10)
+        report = json.loads((Path(pt.ROOT) / "drain-diagnostic.json").read_text())
+        self.assertEqual(report, {"addon": "service.kodi.addonadmin",
+                                 "workers": ["synthetic-blocked-handler"]})
+
     def test_a_malformed_state_file_is_ignored(self):
         pt = self.load(coordinator="coordinator.example")
         os.makedirs(pt.ROOT, exist_ok=True)

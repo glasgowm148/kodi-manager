@@ -193,6 +193,15 @@ def stop_extension(kodi, private):
             kodi.log("Private extension stop failed: %s" % type(error).__name__)
 
 
+def retire_runtime(server=None, refresher=None, watchdog=None, log_collector=None):
+    """Stop new work before extension shutdown can block on in-flight workers."""
+    for stop in (log_collector, getattr(refresher, 'stop', None), getattr(watchdog, 'stop', None)):
+        if stop is not None:
+            stop.set()
+    if server is not None:
+        server.stop()
+
+
 def shield_exit_supported(config):
     """This opt-in workaround is specific to reviewed NVIDIA builds, not Android generally."""
     return bool(xbmc and config['shield_exit_workaround']
@@ -321,21 +330,14 @@ def main():
     try:
         wait_for_shutdown(monitor, startup_monitor)
     finally:
-        if log_collector:
-            log_collector.set()
+        retire_runtime(running["server"], refresher, watchdog, log_collector)
         stop_extension(kodi, private)
-        if refresher:
-            refresher.stop.set()
-        if watchdog:
-            watchdog.stop.set()
         try:
             guard.on_abort()
             if supported:
                 kodi.log('Shield exit guard armed=%s' % bool(guard.child))
         except Exception as error:
             kodi.log('Shield exit guard unavailable: %s' % type(error).__name__)
-        if running["server"]:
-            running["server"].stop()
         write_session(session_path, dict(session, stopped_at=time.time()))
         kodi.log('Manager network shutdown complete')
 
