@@ -21,7 +21,7 @@ test("without a token the dashboard asks for one", async ({ page }) => {
   await expect(page.locator("#screenTitle")).toBeVisible();
 });
 
-test("overview prioritises tasks and attention, with logs and device details", async ({ page, app }) => {
+test("overview leads with clickable chart cards, then attention, history and tasks", async ({ page, app }) => {
   await app.open("dashboard");
   await expect(page.locator(".screen-state")).toContainText("Idle");
   await expect(page.locator("#screenTitle")).toHaveText("Overview");
@@ -31,6 +31,10 @@ test("overview prioritises tasks and attention, with logs and device details", a
   await expect(page.locator(".log-summary")).toContainText("123 warnings");
   const tiles = page.locator(".tiles a.tile[data-tile]");
   await expect(tiles).toHaveCount(6);
+  const chartTop = (await tiles.first().boundingBox()).y;
+  expect(chartTop).toBeLessThan((await page.locator('#attentionTitle').boundingBox()).y);
+  expect(chartTop).toBeLessThan((await page.locator('#manageTitle').boundingBox()).y);
+  await expect(page.locator('.log-since')).toContainText('0 errors · 29 warnings · 1 known notice');
   for (const key of ["memory", "internet", "rows", "backups", "protection", "accounts"]) {
     await expect(page.locator(`.tile[data-tile="${key}"]`)).toBeVisible();
   }
@@ -264,7 +268,7 @@ test("home tasks reach management pages and preserve keyboard focus on refresh",
   await expect(heading(page)).toHaveText("All add-ons");
   await app.open("health");
   await expect(page.locator('#healthAttention')).toHaveText('Needs attention now');
-  await expect(page.locator('#healthLogs')).toHaveText('Recorded in the past 24 hours');
+  await expect(page.locator('#healthLogs')).toHaveText('Recorded logs · past 24 hours');
   await expect(page.locator('#passedChecks')).not.toHaveAttribute('open', '');
   await page.locator('#passedChecks > summary').click();
   await expect(page.locator('#passedChecks .check').first()).toBeVisible();
@@ -283,4 +287,15 @@ test("overview refresh updates read-only state and opens direct add-on navigatio
   await expect(page.locator('#nav [data-group="addons"]')).toHaveAttribute('open','');
   await expect(page.locator('#nav .nav-shortcuts')).toHaveAttribute('open','');
   expect(app.errors).toEqual([]);
+});
+
+
+test("chart and section links keep keyboard focus through refresh", async ({page, app}) => {
+  await app.open('dashboard');
+  for (const selector of ['[data-tile="memory"]', '[data-overview-link="trends"]', '[data-overview-link="health"]']) {
+    const link = page.locator(selector);
+    await link.focus();
+    await page.clock.runFor(61000);
+    await expect(link).toBeFocused();
+  }
 });

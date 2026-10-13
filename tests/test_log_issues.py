@@ -146,3 +146,29 @@ def test_membership_is_rebuilt_when_an_older_collector_reuses_a_row_id(history):
         db.execute('INSERT INTO events VALUES (?,?,?,?,?,?,?)', (1, 'replacement', 1, 0, clock[0], 'warning', 'warning: another cause'))
     changed = h.snapshot()
     assert changed['issue_total'] == 1 and changed['issues'][0]['id'] != original
+
+
+def test_update_totals_are_unfiltered_ignore_reviews_and_use_time_and_id(history):
+    h, logs, clock = history
+    path = logs / 'kodi.log'
+    assert h.snapshot()['since_update_counts'] is None
+    path.write_text(line(clock[0], 'error', 'old failure'))
+    h.collect()
+    h = LogHistory(h.path, logs, h.clock, version='2.0')
+    h.collect()  # Existing event has the same timestamp but precedes the marker ID.
+    with path.open('a') as f:
+        f.write(line(clock[0] - 10, 'error', 'late old import'))
+        f.write(line(clock[0], 'warning', 'new warning'))
+    h.collect()
+    snap = h.snapshot(level='error', limit=1)
+    assert snap['since_update_counts'] == {'errors': 0, 'warnings': 1, 'notices': 0}
+    assert snap['counts']['errors'] == 2
+    assert snap['last_problem_at'] == clock[0]
+    for issue in h.snapshot()['issues']:
+        h.record_review(issue['id'])
+    assert h.snapshot()['since_update_counts'] == snap['since_update_counts']
+    clock[0] += 86401
+    h.collect()
+    expired = h.snapshot()
+    assert expired['since_update_counts'] == {'errors': 0, 'warnings': 0, 'notices': 0}
+    assert expired['last_problem_at'] is None

@@ -140,7 +140,8 @@ function overviewVerdict(o, tiles) {
 }
 const OVERVIEW_ACTIONS = {memory:"Check memory", internet:"Check connection", rows:"Find failing rows", backups:"Open backups", protection:"Review changes", accounts:"Check accounts"};
 function attentionMarkup(verdict) {
-  return `<section class="attention-panel" aria-labelledby="attentionTitle"><div class="section-heading"><h3 id="attentionTitle">Needs attention</h3><a href="#/health">All health checks</a></div>
+  if (!verdict.issues.length) return "";
+  return `<section class="attention-panel" aria-labelledby="attentionTitle"><div class="section-heading"><h3 id="attentionTitle">Needs attention</h3><a data-overview-link="health" href="#/health">All health checks</a></div>
     ${verdict.issues.length ? `<ul class="attention-list">${verdict.issues.map(i => `<li><a class="attention-item attention-item--${esc(i.tone)}" data-overview-link="attention-${esc(i.key)}" href="${esc(i.href)}">${dashboardIcon("alert")}<span><strong>${esc(i.name)} · ${esc(i.value)}</strong><span>${esc(i.text)}</span></span><span class="attention-action">${esc(OVERVIEW_ACTIONS[i.key] || "Review")}&nbsp;→</span></a></li>`).join("")}</ul>` : `<p class="muted">${verdict.unknown ? "Some checks have no result yet. See Device & services below for what is available." : "No current issues in the device and service checks below."}</p>`}</section>`;
 }
 function overviewTasks(status) {
@@ -156,11 +157,16 @@ function overviewTasks(status) {
 function tasksMarkup(status) {
   return `<section aria-labelledby="manageTitle"><div class="section-heading"><h3 id="manageTitle">Manage your Kodi</h3></div><div class="task-grid">${overviewTasks(status).map(([icon,title,text,href],i) => `<a class="task-card" data-overview-link="task-${i}" href="${href}">${dashboardIcon(icon)}<span><strong>${esc(title)}</strong><span>${esc(text)}</span></span><span aria-hidden="true">→</span></a>`).join("")}</div></section>`;
 }
-function logSummaryMarkup(history) {
-  const c = history?.counts, ready = history?.available && !history?.catching_up;
-  const value = c ? `${c.errors || 0} error${c.errors === 1 ? "" : "s"} · ${c.warnings || 0} warning${c.warnings === 1 ? "" : "s"} · ${c.notices || 0} known notice${c.notices === 1 ? "" : "s"}` : "Log history unavailable";
-  const note = !ready ? "Collection is incomplete or unavailable. Open the log to check its status." : "Recorded over the past 24 hours. Earlier problems remain here until they expire; this does not mean they are happening now.";
-  return `<section class="log-summary" aria-labelledby="logSummaryTitle"><div><h3 id="logSummaryTitle">Recent log activity</h3><p><strong>${esc(value)}</strong></p><p class="muted">${esc(note)}</p></div><a class="action" data-overview-link="logs" href="#/kodi-logs">Review log issues →</a></section>`;
+function logSummaryMarkup(history, headingId = "logSummaryTitle") {
+  const c = history?.counts, ready = history?.available === true && history?.catching_up === false;
+  const counts = c => `${c.errors || 0} error${c.errors === 1 ? "" : "s"} · ${c.warnings || 0} warning${c.warnings === 1 ? "" : "s"} · ${c.notices || 0} known notice${c.notices === 1 ? "" : "s"}`;
+  const value = c ? counts(c) : "Log history unavailable";
+  const update = history?.since_update_counts, marker = history?.recording_version;
+  const updateKnown = ready && update && marker && ["errors", "warnings", "notices"].every(k => finite(update[k]));
+  const since = updateKnown ? `<p class="log-since"><strong>${esc(counts(update))}</strong> since Manager ${esc(marker.version)} began recording, within the retained 24 hours.</p>` : "";
+  const last = finite(history?.last_problem_at) ? `<p class="muted">Last warning or error: ${esc(new Date(history.last_problem_at * 1000).toLocaleString())}.</p>` : "";
+  const note = !ready ? "Collection is incomplete or unavailable. Open the log to check its status." : "These are recorded log entries, not a count of current faults. Repeated messages may share one cause; open the grouped issues to investigate.";
+  return `<section class="log-summary" aria-labelledby="${esc(headingId)}"><div><h3 id="${esc(headingId)}">Recorded logs · past 24 hours</h3><p>${esc(value)}</p>${since}${last}<p class="muted">${esc(note)}</p></div><a class="action" data-overview-link="logs" href="#/kodi-logs">Review log issues →</a></section>`;
 }
 function tileMarkup(tile) {
   return `<a class="tile tile--${esc(tile.tone)}" href="${esc(tile.href)}" data-tile="${esc(tile.key)}"><span class="tile-head">${dashboardIcon(tile.icon)}<span class="tile-name">${esc(tile.name)}</span>${tonePill(tile.tone, TONE_WORD[tile.tone] || "")}</span><strong class="tile-value">${esc(tile.value)}</strong><span class="tile-text">${esc(tile.text)}</span>${tile.spark ? `<span class="tile-spark">${tile.spark}</span>` : ""}</a>`;
@@ -201,7 +207,7 @@ async function overviewView(refresh = false) {
   resetCharts();
   // A refresh keeps focus where it was (TV remotes and keyboards would otherwise lose their place).
   const focused = refresh ? (document.activeElement?.dataset?.overviewLink ? `[data-overview-link="${document.activeElement.dataset.overviewLink}"]` : document.activeElement?.dataset?.tile ? `[data-tile="${document.activeElement.dataset.tile}"]` : document.activeElement?.id ? `#${document.activeElement.id}` : "") : "";
-  out(`<div class="overview">${screenMarkup(o, verdict, checkedAt)}${attentionMarkup(verdict)}${tasksMarkup(state.status)}${logSummaryMarkup(logs)}<section aria-labelledby="deviceTitle"><div class="section-heading"><h3 id="deviceTitle">Device &amp; services</h3><a href="#/trends">View trends</a></div><div class="tiles">${tiles.map(tileMarkup).join("")}</div></section>
+  out(`<div class="overview">${screenMarkup(o, verdict, checkedAt)}<section aria-labelledby="deviceTitle"><div class="section-heading"><h3 id="deviceTitle">Device &amp; services</h3><a data-overview-link="trends" href="#/trends">View trends</a></div><div class="tiles">${tiles.map(tileMarkup).join("")}</div></section>${attentionMarkup(verdict)}${logSummaryMarkup(logs)}${tasksMarkup(state.status)}
     <div class="overview-foot"><span id="overviewNote" role="status">Updates every minute while this page is open.</span><button type="button" class="action" id="overviewRefresh">${dashboardIcon("refresh")}<span>Check now</span></button></div></div>`);
   $("#overviewRefresh").onclick = withErrors(() => overviewView(true));
   if (focused) document.querySelector(focused)?.focus({preventScroll:true});

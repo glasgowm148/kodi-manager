@@ -183,6 +183,15 @@ class LogHistory:
             metadata = dict(db.execute("SELECT key,value FROM metadata"))
             marker = json.loads(metadata['recording_version']) if 'recording_version' in metadata else None
             counts = dict(db.execute("SELECT level,count(*) FROM events WHERE at >= ? GROUP BY level", (now - RETENTION,)))
+            update_counts = None
+            if marker:
+                recent = dict(db.execute("SELECT level,count(*) FROM events WHERE at >= ? AND "
+                                         "(at > ? OR (at = ? AND id > ?)) GROUP BY level",
+                                         (now - RETENTION, marker['at'], marker['at'], marker.get('last_id', 0))))
+                update_counts = {key: recent.get(level, 0) for key, level in
+                                 (('errors', 'error'), ('warnings', 'warning'), ('notices', 'notice'))}
+            last_problem = db.execute("SELECT max(at) FROM events WHERE at >= ? AND level IN ('error','warning')",
+                                      (now - RETENTION,)).fetchone()[0]
             where = "at >= ?"
             args: List[Any] = [now - RETENTION]
             if level != "all":
@@ -230,4 +239,5 @@ class LogHistory:
                     next_before=entries[-1]["id"] if len(rows) > limit else None,
                     issues=issues, issue_total=group_total, issues_ready=issues_ready,
                     group_offset=group_offset, groups_has_more=group_offset + len(issues) < group_total,
-                    recording_version=marker, selected_issue=issue or None)
+                    recording_version=marker, since_update_counts=update_counts, last_problem_at=last_problem,
+                    selected_issue=issue or None)

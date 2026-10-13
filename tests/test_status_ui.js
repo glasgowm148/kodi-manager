@@ -306,3 +306,21 @@ test('home tasks expose supported layout editing without offering it to other sk
   assert.ok(!ui.overviewTasks({stack:{skin:{bingie_like:false}}}).some(t => t[3] === '#/widgets'));
   assert.ok(ui.overviewTasks({}).some(t => t[3] === '#/rows'));
 });
+
+
+test('log summaries separate historical totals from update recurrence without claiming health', () => {
+  const history = {available:true, catching_up:false, counts:{errors:111,warnings:292,notices:79},
+    recording_version:{version:'<test>'}, since_update_counts:{errors:0,warnings:0,notices:3}, last_problem_at:NOW};
+  const markup = ui.logSummaryMarkup(history);
+  assert.match(markup, /111 errors.*292 warnings/s);
+  assert.match(markup, /0 errors.*0 warnings.*3 known notices/s);
+  assert.match(markup, /since Manager &lt;test&gt; began recording/);
+  assert.match(markup, /Last warning or error:/);
+  assert.doesNotMatch(ui.logSummaryMarkup({...history, available:false}), /since Manager/);
+  assert.doesNotMatch(ui.logSummaryMarkup({...history, catching_up:true}), /since Manager/);
+  assert.doesNotMatch(ui.logSummaryMarkup({...history, since_update_counts:null}), /since Manager/);
+  assert.match(ui.healthCheckMarkup({id:'logs',label:'Recorded Kodi logs',status:'error'}), /Errors recorded/);
+  assert.doesNotMatch(ui.healthCheckMarkup({id:'logs',status:'error'}), />Problem</);
+  assert.match(ui.healthCheckMarkup({id:'logs',status:'unknown'}), /Not checked/);
+  assert.equal(ui.attentionMarkup({issues:[],unknown:3}), '', 'unknown checks stay on their cards, not in an alarm');
+});

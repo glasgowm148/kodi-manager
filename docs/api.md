@@ -253,3 +253,11 @@ samples and 256 KB and written atomically; a damaged file starts a fresh history
 (Health, `/api/overview`) also carry `days_left`, and the internet check carries `hosts[]`. Since 0.7.9 the
 memory check carries `pressure`: `tight` when swap is nearly full and under a quarter of memory is free
 (Android may then close Kodi in the background), `low` when memory is running out; full swap alone is `ok`.
+
+Log history and Health's `log_history` include `since_update_counts` (errors, warnings,
+notices) and `last_problem_at` (Unix seconds, or null when none remain). Update counts
+are null until a version marker exists; otherwise they cover retained events after
+that marker's timestamp/ID, independently of pagination, filters and per-issue reviews.
+They do not imply a current fault or a full day of observation. Check `available` and
+`catching_up` before interpreting a zero. Original totals and Health severity remain
+unchanged; the dashboard labels them as recorded history.

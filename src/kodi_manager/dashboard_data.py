@@ -198,7 +198,7 @@ def health_summary(kodi, index, config):
         {"id": "addons_path", "label": "Installed add-ons path", "status": "ok" if paths.get("addons_probe", {}).get("selected_path") else "warning", "detail": paths.get("addons_probe", {}).get("selected_path", "")},
         {"id": "write_mode", "label": "Dashboard access", "status": "info", "detail": "Changes allowed" if config.get("write_enabled") else "View only; changes are disabled for this profile"},
         dict({"id": "memory", "label": "Memory"}, **{k: v for k, v in memory.items() if k in ("status", "detail")}),
-        {"id": "logs", "label": "Kodi log scan", "status": log_status, "detail": log_detail},
+        {"id": "logs", "label": "Recorded Kodi logs", "status": log_status, "detail": log_detail},
     ]
     internet = internet_check()
     if internet:
@@ -224,7 +224,7 @@ def health_summary(kodi, index, config):
         # Log lines can carry tokens and keys (URLs, headers): mask them like API errors.
         "recent_errors": redact([e["line"] for e in history["entries"] if e["level"] == "error"]),
         "recent_warnings": redact([e["line"] for e in history["entries"] if e["level"] != "error"]),
-        "log_history": {k: history.get(k) for k in ("retention_hours", "since", "tracking_started_at", "last_scan_at", "available", "catching_up", "issues_ready", "issue_total", "recording_version")},
+        "log_history": {k: history.get(k) for k in ("retention_hours", "since", "tracking_started_at", "last_scan_at", "available", "catching_up", "issues_ready", "issue_total", "recording_version", "counts", "since_update_counts", "last_problem_at", "now")},
         "log_issues": history.get('issues', [])[:5],
     }
 

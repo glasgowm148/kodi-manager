@@ -20,7 +20,7 @@
 for status, add-on settings, playback routing, backups and home-screen rows. Use it from a phone or
 computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-MCP).
 
-![Kodi Manager overview: prioritised issues, management shortcuts and recent log activity with 7-day trends](docs/images/dashboard.png)
+![Kodi Manager overview: clickable status charts, recorded log activity and management shortcuts](docs/images/dashboard.png)
 
 *Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 

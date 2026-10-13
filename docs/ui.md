@@ -51,13 +51,14 @@ services can also consume RAM. Removal still happens through Kodi's own add-on m
 The overview has five parts, in this order:
 
 1. **Your Kodi:** playback state, active profile, whether changes are allowed and when the check ran.
-2. **Needs attention:** current device/service check failures, ordered by severity, with a specific
-   next step. Missing results are described as unavailable; they never produce an “all good” verdict.
-3. **Manage your Kodi:** add-ons, home screen, playback, accounts, backups and add-on settings.
+2. **Device & services:** six clickable status cards, with charts for memory, internet, rows and backups.
+   Unchecked services say so directly on their cards.
+3. **Needs attention:** appears when device/service checks report a fault, with specific next steps.
+4. **Recorded logs:** retained 24-hour totals, the last warning/error time and counts since the current
+   Manager version began recording (limited to retained history). These are logged observations,
+   not proof of a current fault. Missing or incomplete collection is explicit.
+5. **Manage your Kodi:** add-ons, home screen, playback, accounts, backups and add-on settings.
    Home layout editing appears only for supported skins. Read-only profiles can browse these pages.
-4. **Recent log activity:** retained 24-hour counts and a link to grouped issues. These are historical
-   observations, not proof that the TV is currently failing. Missing collection is stated explicitly.
-5. **Device & services:** all six detailed status cards and trends remain available below the tasks.
 
 | Tile | Number | Trend | Opens |
 |---|---|---|---|

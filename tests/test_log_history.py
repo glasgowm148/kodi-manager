@@ -209,3 +209,25 @@ def test_background_collector_stops_and_never_calls_kodi_from_its_thread(monkeyp
     finally:
         stop.set()
         release.set()
+
+
+@pytest.mark.parametrize('url,secrets', [
+    ('http://stream.example.invalid/live/play/fixture-stream-token/42', ['fixture-stream-token']),
+    ('https://stream.example.invalid/live/fixture-user/fixture-pass/42.ts', ['fixture-user', 'fixture-pass']),
+    ('https://stream.example.invalid/movie/fixture-user/fixture-pass/42.mkv', ['fixture-user', 'fixture-pass']),
+    ('https://stream.example.invalid/series/fixture-user/fixture-pass/42.mkv', ['fixture-user', 'fixture-pass']),
+    ('http://fixture-user:fixture-pass@stream.example.invalid/file', ['fixture-user', 'fixture-pass']),
+])
+def test_stream_path_credentials_are_masked_in_storage_and_legacy_responses(history, url, secrets):
+    h, logs, clock = history
+    raw = line(clock[0], 'error', 'Process - <' + url + '> source read failed with -1!')
+    (logs / 'kodi.log').write_text(raw)
+    h.collect()
+    with sqlite3.connect(h.path) as db:
+        stored = db.execute('SELECT line FROM events').fetchone()[0]
+        assert all(secret not in stored for secret in secrets)
+        db.execute('UPDATE events SET line=?', (raw,))
+    snapshot = h.snapshot()
+    assert all(secret not in str(snapshot) for secret in secrets)
+    assert snapshot['counts']['errors'] == snapshot['total'] == 1
+    assert 'stream.example.invalid' in snapshot['entries'][0]['line']

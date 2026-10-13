@@ -102,7 +102,7 @@ function toggleNav(open){
 /* The calm notice shown on every page when this Kodi profile is view-only (writes off). */
 function viewOnlyBanner(status){
   if (status?.write_enabled !== false) return "";
-  return `<div class="notice notice--view" role="note">${dashboardIcon("eye")}<details><summary><b>View only.</b> Changes are off${state.profile ? ` for ${esc(state.profile)}` : " for this profile"}. <span>How to allow changes</span></summary><p>On the TV, open <b>Add-ons → My add-ons → Services → Kodi Manager → Configure</b> and turn on <b>Enable writes</b>. It applies straight away. Controls that change the TV are disabled until then.</p></details></div>`;
+  return `<div class="notice notice--view" role="note">${dashboardIcon("eye")}<details><summary><b>View only.</b>&nbsp;Changes are off${state.profile ? ` for ${esc(state.profile)}` : " for this profile"}. <span>How to allow changes</span></summary><p>On the TV, open <b>Add-ons → My add-ons → Services → Kodi Manager → Configure</b> and turn on <b>Enable writes</b>. It applies straight away. Controls that change the TV are disabled until then.</p></details></div>`;
 }
 function applyStatus(status){
   state.status = status;
@@ -671,8 +671,9 @@ function healthSections(checks){
     info:checks.filter(info), logs:checks.filter(c => c.id === "logs")};
 }
 function healthCheckMarkup(c){
+  const historical = c.id === "logs";
   const informational = ["write_mode", "stack"].includes(c.id), tone = informational ? "muted" : healthTone(c.status);
-  return `<li class="check check--${tone}"><span class="check-icon">${dashboardIcon(c.status === "ok" && !informational ? "check" : informational ? "help" : "alert")}</span><div class="check-body"><div class="check-head"><b>${esc(c.label)}</b>${dashboardPill(tone, informational ? "Information" : HEALTH_WORDS[c.status] || c.status, informational ? "help" : c.status === "ok" ? "check" : "alert")}</div><p class="muted">${esc(c.detail)}</p>${healthAction(c)}${HEALTH_LINKS[c.id] ? `<a class="check-link" href="${HEALTH_LINKS[c.id][0]}">${esc(HEALTH_LINKS[c.id][1])}</a>` : ""}</div></li>`;
+  return `<li class="check check--${tone}"><span class="check-icon">${dashboardIcon(c.status === "ok" && !informational ? "check" : informational ? "help" : "alert")}</span><div class="check-body"><div class="check-head"><b>${esc(c.label)}</b>${dashboardPill(tone, informational ? "Information" : historical ? (c.status === "error" ? "Errors recorded" : c.status === "warning" ? "Review history" : c.status === "ok" ? "No errors recorded" : "Not checked") : HEALTH_WORDS[c.status] || c.status, informational ? "help" : c.status === "ok" ? "check" : "alert")}</div><p class="muted">${esc(c.detail)}</p>${healthAction(c)}${HEALTH_LINKS[c.id] ? `<a class="check-link" href="${HEALTH_LINKS[c.id][0]}">${esc(HEALTH_LINKS[c.id][1])}</a>` : ""}</div></li>`;
 }
 async function healthView(){
   const h = await api("/api/health"), groups = healthSections(h.checks || []);
@@ -680,7 +681,7 @@ async function healthView(){
   const statValue = (k,v) => k === "kodi_memory_mb" && v !== null && v !== undefined ? formatMB(Number(v)) : v ?? "—";
   out(`${pageHead("Health checks", "Check current problems, review recent log activity, and inspect the checks that passed.")}
     <section aria-labelledby="healthAttention"><div class="section-heading"><h3 id="healthAttention">Needs attention now</h3><span>${groups.attention.length} check${groups.attention.length === 1 ? "" : "s"}</span></div>${groups.attention.length ? checklist(groups.attention) : '<p class="notice">No current problems reported by these checks. Review recorded log activity below separately.</p>'}</section>
-    <section aria-labelledby="healthLogs"><div class="section-heading"><h3 id="healthLogs">Recorded in the past 24 hours</h3><a href="#/kodi-logs">All log issues →</a></div><p class="muted">Earlier warnings and errors remain until they expire. Their presence does not establish a current fault.</p>${checklist(groups.logs)}</section>
+    ${h.log_history?.counts ? logSummaryMarkup(h.log_history, "healthLogs") : `<section aria-labelledby="healthLogs"><div class="section-heading"><h3 id="healthLogs">Recorded logs · past 24 hours</h3><a href="#/kodi-logs">All log issues →</a></div><p class="muted">Earlier warnings and errors remain until they expire. Their presence does not establish a current fault.</p>${checklist(groups.logs)}</section>`}
     <details class="panel" id="passedChecks"><summary>Passed checks (${groups.passed.length})</summary>${checklist(groups.passed)}</details>
     <details class="panel"><summary>Setup &amp; access information</summary><p class="muted">View-only mode and optional add-on choices are configuration, not faults.</p>${checklist(groups.info)}</details>
     <details class="panel"><summary>Device &amp; add-on figures</summary><dl class="facts-grid">${Object.entries(h.stats || {}).map(([k,v]) => `<div><dt>${esc(HEALTH_STATS[k] || k.replace(/_/g," "))}</dt><dd>${esc(statValue(k,v))}</dd></div>`).join("")}</dl></details>

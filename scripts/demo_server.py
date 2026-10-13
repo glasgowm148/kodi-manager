@@ -29,7 +29,7 @@ WEB = Path(__file__).resolve().parents[1] / "web"
 sys.path.insert(0, str(WEB.parent / "src"))
 from kodi_manager.addon_catalog import annotate_addons  # noqa: E402
 TOKEN = "demo-token-0000"
-VERSION = "0.7.11-demo"
+VERSION = "0.7.31-demo"
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
        "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'")
 TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "application/javascript"}
@@ -215,6 +215,7 @@ class Demo:
                    {"id": "logs", "label": "Kodi log scan", "status": "warning", "detail": "0 errors · 123 warnings · 1 known notice in the past 24 hours"}]
         return {"status": "warning", "checks": checks,
                 "stats": {"addons": len(ADDONS), "enabled_addons": len(ADDONS) - 1, "config_folders": 7, "stack_detected": 4, "kodi_log_errors": 0, "kodi_log_warnings": 123, "kodi_memory_mb": 612},
+                "log_history": self.log_history({}),
                 "recent_errors": [], "recent_warnings": ["warning <general>: Skin has invalid include: DemoInclude", "warning <general>: Texture not found: demo.png", "warning <general>: Slow directory listing (2.1 s)"]}
 
     def log_history(self, query):
@@ -234,6 +235,9 @@ class Demo:
         return {"retention_hours": 24, "since": self.now - 86400, "now": self.now,
                 "tracking_started_at": self.now - 86400, "last_scan_at": self.now,
                 "available": True, "catching_up": False,
+                "recording_version": {"version": VERSION, "at": self.now - 1800, "last_id": 94},
+                "since_update_counts": {"errors": 0, "warnings": 29, "notices": 1},
+                "last_problem_at": self.now - 60,
                 "counts": {"errors": 0, "warnings": 123, "notices": 1, "warning_lines": 124},
                 "entries": page, "total": total, "has_more": len(entries) > limit,
                 "next_before": page[-1]["id"] if len(entries) > limit else None}

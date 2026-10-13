@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.31 — 2026-10-13 (prerelease)
+
+- Restore the clickable chart cards to the top of Overview, with management shortcuts below. Unchecked services stay on their cards without a redundant attention alarm.
+- Show retained log totals alongside counts since this Manager version began recording and the last warning/error time. Historical errors are labelled as recorded events, not current faults; collection failures remain explicit.
+- Mask IPTV stream-path credentials in new logs and older retained responses.
+- Keep original log entries, review state, auth and write guards intact. Fix spacing in the view-only banner.
+
 ## 0.7.30 — 2026-10-13 (prerelease)
 
 - Rework Overview around prioritised problems, direct management tasks, recent log activity and device details. Replace the decorative TV graphic with a compact profile/playback summary.

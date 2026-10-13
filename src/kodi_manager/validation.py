@@ -27,6 +27,10 @@ _QUERY_SECRET = re.compile(
     r"([?&;](?:token|access_token|auth_token|refresh_token|api_key|apikey|key"
     r"|__gda__|hdnea|hdnts|signature|policy|key-pair-id|x-amz-signature|x-goog-signature)=)"
     r"[^&#\s<>\"']*", re.I)
+# IPTV providers put credentials in path segments, not just query parameters.
+_STREAM_CREDENTIALS = re.compile(
+    r"(https?://[^/\s<>\"']+/(?:live|movie|series)/)([^/?#\s<>\"']+)/([^/?#\s<>\"']+)(?=/)", re.I)
+_URL_USERINFO = re.compile(r"(https?://)[^/\s<>\"']+@", re.I)
 _BEARER = re.compile(r"\b(Bearer)\s+[A-Za-z0-9._~+/=-]+", re.I)
 _ASSIGNED_SECRET = re.compile(
     r"\b((?:access_|refresh_|auth_|client_|api_)?(?:token|secret|password|passwd|api_?key|apikey|key))"
@@ -36,7 +40,10 @@ MASK = "••••••••"
 
 def mask_query_secrets(text):
     """Mask credentials and signed CDN query values, keeping the URL useful for diagnostics."""
-    return _QUERY_SECRET.sub(lambda m: m.group(1) + "***", str(text))
+    text = _URL_USERINFO.sub(lambda m: m.group(1) + "***@", str(text))
+    text = _STREAM_CREDENTIALS.sub(
+        lambda m: m.group(1) + ("play/***" if m.group(2).lower() == "play" else "***/***"), text)
+    return _QUERY_SECRET.sub(lambda m: m.group(1) + "***", text)
 
 
 def mask_secrets_in_text(text):
