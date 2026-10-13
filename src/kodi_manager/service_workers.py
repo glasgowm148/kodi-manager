@@ -163,7 +163,7 @@ def start_maintenance(kodi, is_busy=tv_busy, stopping=lambda: False):
     index = AddonIndex(kodi)
 
     def checkpoint():
-        index.refresh(force=True)
+        index.refresh(force=True, should_stop=stopping)
         return nightly_checkpoint(
             # Copying addon_data competes with playback for storage: stop if the TV gets busy
             # or the service is exiting.

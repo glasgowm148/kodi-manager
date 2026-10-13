@@ -2,6 +2,7 @@
 
 ## 0.7.34 — 2026-10-13
 
+- Cancel add-on index rebuilding between entries during nightly checkpoint preparation, preserving the last complete index instead of publishing partial results.
 - Check cancellation during backup traversal and between 1 MiB copy chunks. A large cache file no longer holds nightly maintenance through a profile switch; cancelled snapshots are discarded and an existing destination remains intact.
 - Include the active watchdog phase in pending-worker diagnostics to distinguish maintenance from connection checks and metrics.
 

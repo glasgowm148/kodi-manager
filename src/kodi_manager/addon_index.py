@@ -14,6 +14,15 @@ except ImportError:
     from adapters import adapter_for
     from addon_catalog import annotate_addons, plain_text
 
+class IndexRefreshCancelled(RuntimeError):
+    deferred = True
+
+
+def check_cancelled(should_stop):
+    if should_stop is not None and should_stop():
+        raise IndexRefreshCancelled("Add-on index refresh cancelled")
+
+
 STACK_IDS = {
     "plugin.video.themoviedb.helper", "plugin.video.tmdb.bingie.helper",
     "plugin.video.fenlight", "plugin.video.fen", "plugin.video.pov", "script.module.cocoscrapers",
@@ -125,27 +134,33 @@ class AddonIndex:
         self._refreshed_at = None
         self.refresh(force=True)
 
-    def refresh(self, force=False):
+    def refresh(self, force=False, should_stop=None):
         with self._lock:
             now = self._clock()
             if not force and self._refreshed_at is not None and now - self._refreshed_at < self.REFRESH_INTERVAL:
                 return self.addons
-            addons, probe = self._build()
+            check_cancelled(should_stop)
+            addons, probe = self._build(should_stop) if should_stop is not None else self._build()
+            check_cancelled(should_stop)
             self.addons, self.probe = addons, probe
             self._refreshed_at = self._clock()
             return addons
 
-    def _build(self):
+    def _build(self, should_stop=None):
         addons = {}
+        check_cancelled(should_stop)
         for addon in self.kodi.list_addons():
+            check_cancelled(should_stop)
             aid = addon.get("addon_id")
             if aid:
                 addon["jsonrpc_present"] = True
                 addons[aid] = enrich_addon(addon, self.kodi, addons)
         seed = getattr(self.kodi, "installer_seed", {}) if self.kodi else {}
+        check_cancelled(should_stop)
         probe = probe_all(seed)
         root = probe.get("addons_probe", {}).get("selected_path") or addons_root()
         for aid in safe_listdir(root)["dirs"]:
+            check_cancelled(should_stop)
             folder = root + ("" if root.endswith(("/", "\\")) else "/") + aid
             meta = addon_xml_meta(folder)
             aid = meta.get("addon_id") or aid
@@ -157,6 +172,7 @@ class AddonIndex:
             addons[aid] = enrich_addon(base, self.kodi, addons)
         root = builtin_root()
         for aid in safe_listdir(root)["dirs"]:
+            check_cancelled(should_stop)
             folder = root + aid
             meta = addon_xml_meta(folder)
             aid = meta.get("addon_id") or aid
@@ -174,10 +190,12 @@ class AddonIndex:
         data_root = "special://profile/addon_data/"
         live_root = translate(data_root)
         for aid in safe_listdir(data_root)["dirs"]:
+            check_cancelled(should_stop)
             base = addons.get(aid, {"addon_id": aid, "name": aid, "enabled": None, "type": ""})
             base["addon_data_present"] = True
             base["addon_data_path_override"] = os.path.join(live_root, aid)
             addons[aid] = enrich_addon(base, self.kodi, addons)
+        check_cancelled(should_stop)
         try:
             active_skin = self.kodi.get_active_skin().get("addon_id", "")
         except Exception:
