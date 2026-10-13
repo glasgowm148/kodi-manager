@@ -70,7 +70,7 @@ function rowsTile(rows, history) {
   const r = rows || {cached:0, failing:0, persistent:0};
   const s = history?.series || {};
   const spark = sparkline(s.t || [], s.rows_failing || [], {label:"Rows failing over the last 7 days", maxGap:historyGap(history), min:0, kind:"bars"});
-  if (!r.cached) return {key:"rows", name:"Home rows", icon:"rows", tone:"muted", value:"No cached rows", text:"Rows load straight from your add-ons. Cached rows make the home screen fill in instantly.", href:"#/rows", spark};
+  if (!r.cached) return {key:"rows", name:"Home rows", icon:"rows", tone:"muted", value:"No cached rows", text:"Kodi Manager is not caching any rows. Your add-ons may still supply the home screen normally.", href:"#/rows", spark};
   const tone = r.persistent ? "bad" : r.failing ? "warn" : "ok";
   const value = r.failing ? `${r.failing} of ${r.cached} failing` : `${r.cached} row${r.cached === 1 ? "" : "s"}, all working`;
   const stale = finite(r.stale) ? r.stale : 0, empty = finite(r.empty) ? r.empty : 0;
@@ -103,7 +103,7 @@ function protectionTile(protection) {
   else if (fixes.healthy === true) parts.push("Custom fixes intact");
   if (baseline && baseline.drifted) { tone = "warn"; parts.push(`${baseline.drifted} protected setting${baseline.drifted === 1 ? "" : "s"} changed`); }
   else if (baseline && baseline.total) parts.push(`${baseline.total} protected setting${baseline.total === 1 ? "" : "s"} as you set ${baseline.total === 1 ? "it" : "them"}`);
-  if (!parts.length) return {key:"protection", name:"Protection", icon:"shield", tone:"muted", value:"Nothing protected", text:"Protect a setting from Health checks to have it re-applied after add-on updates.", href:"#/health"};
+  if (!parts.length) return {key:"protection", name:"Protection", icon:"shield", tone:"muted", value:"Not configured or checked", text:"No custom fixes or protected settings have been confirmed. Save a settings backup before making changes.", href:"#/backups"};
   const href = fixes.healthy === false ? "#/fixes" : "#/health";
   return {key:"protection", name:"Protection", icon:"shield", tone, value:tone === "ok" ? "Intact" : "Changed", text:`${parts.join(". ")}.${tone === "ok" ? "" : " Usually after an update: re-apply from Health checks."}`, href};
 }
