@@ -6,6 +6,7 @@ computers; installing that library does not install the service.
 ## Start here
 
 1. [Setup](setup.md): choose the installable ZIP, install in Kodi, enable LAN access and sign in.
+   Only Configure is available? Use the [token/setup fallback](setup.md#only-configure-is-available).
 2. [FAQ](faq.md): skins, devices, write behavior, privacy and removal.
 3. [Troubleshooting](troubleshooting.md): installation, network, tokens and missing features.
 

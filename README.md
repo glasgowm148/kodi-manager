@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/banner.svg" alt="Kodi Manager — Understand your setup. Shape your Kodi experience." width="100%">
+  <img src="docs/images/banner.svg" alt="Kodi Manager : Understand your setup. Shape your Kodi experience." width="100%">
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
   <a href="#documentation">Documentation</a>
 </p>
 
-**Inspect and configure Kodi from your browser.** Kodi Manager is an add-on with a local dashboard
+Inspect and configure Kodi from your browser. Kodi Manager is an add-on with a local dashboard
 for status, add-on settings, playback routing, backups and home-screen rows. Use it from a phone or
 computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-MCP).
 
@@ -25,7 +25,7 @@ computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-
 *Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
 > [!NOTE]
-> **0.7.30 prerelease.** Targets Kodi 19+; cached rows need Kodi 20+. Live use is on one customized
+> 0.7.30 prerelease. Targets Kodi 19+; cached rows need Kodi 20+. Live use is on one customized
 > NVIDIA Shield. The current public ZIP and other hardware still need live validation;
 > see [compatibility](docs/compatibility.md).
 
@@ -45,32 +45,39 @@ computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-
 
 ![Playback pipeline showing the interface, metadata helper, playback provider and routing evidence](docs/images/pipeline.png)
 
-*Synthetic example: Bingie → TMDb Bingie Helper → POV. Detected relationships are separate from account authentication.*
+*Synthetic example: Bingie -> TMDb Bingie Helper -> POV. Detected relationships are separate from account authentication.*
 
 </details>
 
 ## Quick start
 
-1. **Download** `service.kodi.addonadmin-<version>.zip` from
-   [Releases](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.30), under **Assets**.
-   Choose the `service.kodi.addonadmin` ZIP; GitHub's **Source code** ZIP, wheel and tar.gz are not
-   installable Kodi add-ons.
-2. **Install it.** In Kodi, choose **Add-ons → Install from zip file** and pick the ZIP. Allow
-   unknown sources if Kodi asks.
-3. **Allow the dashboard on your network.** Go to **Add-ons → My add-ons → Services → Kodi Manager →
-   Configure** and turn on **Allow LAN access**. It takes effect straight away.
-4. **Open the dashboard.** In Kodi, open **Add-ons → Video add-ons → Kodi Manager → Open the
-   dashboard on another device**. It shows the address and access token to use in a browser. Once you
-   are in, **Advanced → Connection** offers a sign-in link (`http://IP:8765/#token=…`) for your other devices.
+You need Kodi and a browser on the same trusted home network. No AI agent, MCP, ADB or
+Python installation on your computer is needed for the dashboard.
 
-To change settings from the dashboard, turn on **Enable writes** in the same place.
+1. Download `service.kodi.addonadmin-<version>.zip` from the newest
+   [release](https://github.com/glasgowm148/kodi-manager/releases), under Assets. Releases are
+   currently marked prerelease. Choose the service ZIP, not Source code, a wheel or tar.gz.
+2. In Kodi, choose Add-ons -> Install from zip file and pick the ZIP. Allow unknown sources if asked.
+3. Open Settings -> Add-ons -> My add-ons -> Services -> Kodi Manager -> Configure.
+   Under Dashboard, turn on Allow LAN access, then select OK to save. Leave Enable writes off initially.
+4. Return to Kodi's home screen. Go to Add-ons -> Video add-ons and select the Kodi Manager
+   tile directly. Inside its menu, select “Open the dashboard on another device” to display
+   the address and access token. This is a menu item, not a setting to enable.
+5. On your phone or computer, open the displayed `http://` address and enter the token.
+   Keep Kodi running. Once signed in, Advanced -> Connection offers Copy sign-in link for another browser.
 
-The [setup guide](docs/setup.md) has menu-by-menu steps. Start with
-[troubleshooting](docs/troubleshooting.md) if installation, sign-in or a feature fails.
-The dashboard works without an AI agent, MCP, Python on your computer or ADB.
+Only seeing Configure, or an unavailable Open button? The My add-ons information screen is
+separate from the home-screen video add-on menu. Follow
+[the token/setup fallback](docs/setup.md#only-configure-is-available) if the tile still will not open.
+If your browser already shows the login page, the service is reachable; you need its access token next.
 
-**Keep access on a trusted LAN.** The dashboard uses a private token over plain HTTP and can show
-saved account credentials. Keep sign-in links, diagnostics and backups private.
+To edit settings from the dashboard, enable Enable writes in Kodi Manager's settings for the
+active Kodi profile. “View only” means web editing is off for that profile; it does not mean
+installation failed.
+
+[Full setup guide](docs/setup.md) · [Troubleshooting](docs/troubleshooting.md).
+Keep access on a trusted LAN. Tokens travel over plain HTTP; sign-in links, settings and backups
+can contain credentials and must stay private.
 
 ## Questions
 
@@ -89,7 +96,7 @@ Optional row caching, its measured results and undo steps are in the [widget cac
 
 ## For developers
 
-The dependency-free **Python 3.9+** library exposes `ManagerClient`, `parse_schema` and
+The dependency-free Python 3.9+ library exposes `ManagerClient`, `parse_schema` and
 `flatten_settings`. See the [library guide](docs/library.md) for installation and examples, the
 [HTTP API](docs/api.md) for endpoints, and [Contributing](CONTRIBUTING.md) for tests and release checks.
 Installing the library alone does not install the Kodi service.

@@ -9,10 +9,11 @@ pending; synthetic tests establish the storage/refusal contracts, not firmware c
 ## Installation
 
 Export/download the release ZIP and verify its checksum on the computer. Make it available through
-a private network source Kodi can read, then use Kodi's **Install from zip file**. Enable Manager's
-**Allow LAN access** and open `http://<apple-tv-ip>:8765` in your browser. Enter the token privately
-using **Video add-ons → Kodi Manager → Open the dashboard on another device** inside Kodi; this
-shows the full token even if the settings field is masked. Keep write mode off initially. Tokens and configuration belong to the
+a private network source Kodi can read, then use Kodi's Install from zip file. Enable Manager's
+Allow LAN access and open `http://<apple-tv-ip>:8765` in your browser. Enter the token privately
+using Home -> Add-ons -> Video add-ons -> Kodi Manager -> Open the dashboard on another device
+inside Kodi. Select the tile directly. If only Configure is available, follow the
+[Auth token fallback](setup.md#only-configure-is-available). Keep write mode off initially. Tokens and configuration belong to the
 active Kodi profile; switch profiles deliberately and use the corresponding token.
 
 There is no ADB push, Android storage root or loopback forwarding on Apple TV. Initial installation
@@ -24,7 +25,7 @@ existing Shield configuration in a separate server entry.
 ## Skin, settings and widgets
 
 Inspect installed versions and the active skin/profile first. Supported layout editing still uses
-inspect → preview → apply, source hashes, expected revision, backup and rollback. Reviewed Bingie
+inspect -> preview -> apply, source hashes, expected revision, backup and rollback. Reviewed Bingie
 2.0.2 / Skin Shortcuts 2.0.3 are writable; unknown forks or modified source stay view-only. Cached
 rows, sources, provider previews, non-credential settings and backup/restore use the existing APIs.
 Kodi/add-on dependencies must themselves support tvOS. This release does not install a skin or
@@ -49,7 +50,7 @@ stale physical shadows cannot replace it after a failed VFS read. Android retain
 POSIX atomic writes. Virtual XML readback/backups are limited to 2 MB per file. From 0.7.17, incomplete/changed VFS reads and empty/oversized virtual writes are refused before accepting a snapshot or changing a preference. Version 0.7.18 also verifies existence/stat against the handle, since Kodi's Python constructor can silently ignore a failed native open.
 
 From 0.7.22, backup paths retain Kodi's translated directory spelling for virtual XML keys,
-including aliases such as `/var` → `/private/var`. Canonical paths are used only for confinement.
+including aliases such as `/var` -> `/private/var`. Canonical paths are used only for confinement.
 Take a fresh validated snapshot after updating: older alias-affected physical XML snapshots may
 be refused as incomplete. Missing virtual keys never fall back to physical shadows; retained
 files are left intact. Keep independent private recovery copies.
@@ -57,8 +58,8 @@ files are left intact. Keep independent private recovery copies.
 Non-XML files, directories, cache databases and backup manifests remain disposable tvOS storage.
 A missing source directory cannot enumerate retained XML keys; Manager refuses that snapshot instead of treating it as empty. Reopen the affected add-on on the TV to recreate its directories, then inspect before backing up. Purged subdirectories/manifests cannot establish a complete recoverable snapshot.
 
-On-device configuration snapshots provide useful undo while intact, **not durable disaster
-recovery**. A raw filesystem/SMB copy may omit real preference values. Keep important configuration
+On-device configuration snapshots provide useful undo while intact, not durable disaster
+recovery. A raw filesystem/SMB copy may omit real preference values. Keep important configuration
 in separate private computer copies using VFS-aware reads; the MCP file reader can snapshot
 selected text files, but cannot restore those snapshots offline on tvOS. APK/IPA installation,
 app-container backup, signing renewal, shell access and hung-process force-stop are outside
