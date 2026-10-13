@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.34 — 2026-10-13
+
+- Check cancellation during backup traversal and between 1 MiB copy chunks. A large cache file no longer holds nightly maintenance through a profile switch; cancelled snapshots are discarded and an existing destination remains intact.
+- Include the active watchdog phase in pending-worker diagnostics to distinguish maintenance from connection checks and metrics.
+
 ## 0.7.33 — 2026-10-13
 
 - Stop dashboard producers and retire the listener before private extension cleanup, so cleanup waits cannot leave those producers starting more Kodi work during shutdown.

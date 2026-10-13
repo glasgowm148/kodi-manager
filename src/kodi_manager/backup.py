@@ -126,10 +126,12 @@ def _backup_path(*parts):
     return str(target)
 
 
-def _source_files(src, skip_top=()):
+def _source_files(src, skip_top=(), should_stop=None):
     """Relative paths of the regular files under src, never following symlinks."""
     files = []
     for root, dirs, names in tvos_storage.walk(src):
+        if should_stop is not None and should_stop():
+            raise BackupAborted("Snapshot stopped before it completed")
         rel = os.path.relpath(root, src)
         if rel == ".":
             dirs[:] = [d for d in dirs if d not in skip_top]
@@ -141,16 +143,35 @@ def _source_files(src, skip_top=()):
     return files
 
 
-def _copy_file(src, dst):
+def _copy_file(src, dst, should_stop=None):
     """Copy one file via a temporary sibling, so ``dst`` is never left half-written."""
+    def check_stop():
+        if should_stop is not None and should_stop():
+            raise BackupAborted("Snapshot stopped before it completed")
+
+    check_stop()
     if tvos_storage.virtual_xml(src) or tvos_storage.virtual_xml(dst):
-        atomic_write_bytes(dst, tvos_storage.read_bytes(src))
+        data = tvos_storage.read_bytes(src)
+        check_stop()
+        atomic_write_bytes(dst, data)
         return
     fd, tmp = tempfile.mkstemp(prefix="." + os.path.basename(dst) + ".", suffix=".km-tmp",
                                dir=os.path.dirname(dst))
     os.close(fd)
     try:
-        shutil.copy2(src, tmp, follow_symlinks=False)
+        if should_stop is None:
+            shutil.copy2(src, tmp, follow_symlinks=False)
+        else:
+            with open(src, 'rb') as source, open(tmp, 'wb') as target:
+                while True:
+                    check_stop()
+                    block = source.read(1024 * 1024)
+                    if not block:
+                        break
+                    target.write(block)
+            check_stop()
+            shutil.copystat(src, tmp, follow_symlinks=False)
+        check_stop()
         os.replace(tmp, dst)
     except BaseException:
         try:
@@ -164,7 +185,7 @@ def _copytree(src, dst, skip_top=(), should_stop=None, preserve_files=()):
     """Copy the regular files under src into dst. Symlinks are skipped on both sides:
     a link in src is not followed, and a link in dst is replaced, never written through.
 
-    Each file is replaced atomically. ``should_stop`` is asked before every file;
+    Each file is replaced atomically. ``should_stop`` is asked during traversal and copying;
     when it returns true the copy raises BackupAborted."""
     files = []
     if not src or not os.path.isdir(src):
@@ -172,7 +193,7 @@ def _copytree(src, dst, skip_top=(), should_stop=None, preserve_files=()):
             raise ValueError("tvOS source directory is missing; virtual XML cannot be enumerated safely")
         return files
     os.makedirs(dst, exist_ok=True)
-    for rel_file in _source_files(src, skip_top):
+    for rel_file in _source_files(src, skip_top, should_stop):
         if rel_file in preserve_files:
             continue
         if should_stop is not None and should_stop():
@@ -187,7 +208,10 @@ def _copytree(src, dst, skip_top=(), should_stop=None, preserve_files=()):
         d = os.path.join(dst, rel_file)
         if os.path.islink(d):
             os.remove(d)
-        _copy_file(os.path.join(src, rel_file), d)
+        if should_stop is None:
+            _copy_file(os.path.join(src, rel_file), d)
+        else:
+            _copy_file(os.path.join(src, rel_file), d, should_stop=should_stop)
         files.append(rel_file)
     return files
 

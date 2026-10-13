@@ -220,20 +220,24 @@ def start_watchdog(kodi):
     def run():
         while not watchdog.stop.is_set():
             try:
+                threading.current_thread().name = "km-watchdog (internet)"
                 watchdog.tick(watchdog.stop.is_set)
             except Exception as error:
                 kodi.log("Connection watchdog error: %s" % type(error).__name__)
             if housekeeping is not None and not watchdog.stop.is_set():
                 try:
+                    threading.current_thread().name = "km-watchdog (maintenance)"
                     housekeeping.tick(not tv_busy())
                 except Exception as error:
                     kodi.log("Maintenance error: %s" % type(error).__name__)
             if sampler is not None and not watchdog.stop.is_set():
                 try:
                     # Idle only: nothing extra runs while something plays.
+                    threading.current_thread().name = "km-watchdog (metrics)"
                     sampler.tick(not tv_busy())
                 except Exception as error:
                     kodi.log("Metrics history error: %s" % type(error).__name__)
+            threading.current_thread().name = "km-watchdog"
             watchdog.stop.wait(15)
 
     threading.Thread(target=run, name="km-watchdog", daemon=True).start()
