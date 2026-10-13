@@ -448,6 +448,7 @@ class BoundedThreadingHTTPServer(ThreadingHTTPServer):
 
     def __init__(self, *args, **kwargs):
         self._slots = threading.BoundedSemaphore(self.max_handlers)
+        self.stopping = threading.Event()
         self._clients = {}
         self._clients_lock = threading.Lock()
         ThreadingHTTPServer.__init__(self, *args, **kwargs)
@@ -477,13 +478,26 @@ class BoundedThreadingHTTPServer(ThreadingHTTPServer):
             else:
                 self._clients.pop(key, None)
 
+    def _acquire_slot(self):
+        deadline = time.monotonic() + self.slot_wait
+        while not self.stopping.is_set():
+            left = max(0.0, deadline - time.monotonic())
+            if self._slots.acquire(timeout=min(.1, left)):
+                if self.stopping.is_set():
+                    self._slots.release()
+                    return False
+                return True
+            if left <= .1:
+                return False
+        return False
+
     def process_request(self, request, client_address):
         key = self.client_key(client_address)
         # One client may not take every slot: refuse at once rather than block accepting others.
         if not self._claim_client(key):
             self.shutdown_request(request)
             return
-        if not self._slots.acquire(timeout=self.slot_wait):
+        if not self._acquire_slot():
             self._release_client(key)
             self.shutdown_request(request)
             return

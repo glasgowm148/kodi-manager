@@ -86,6 +86,12 @@ class WidgetHealth:
         self.warned = bool(persistent)
 
 
+def widget_refresh_tick(refresher, health):
+    refresher.tick(refresher.stop.is_set)
+    if not refresher.stop.is_set():
+        health.tick(refresher._quiet)
+
+
 def start_widget_refresher(kodi):
     """Refresh cached widget rows one at a time in the background."""
     runtime = xbmc
@@ -110,8 +116,7 @@ def start_widget_refresher(kodi):
     def run():
         while not refresher.stop.is_set():
             try:
-                refresher.tick(refresher.stop.is_set)
-                health.tick(refresher._quiet)
+                widget_refresh_tick(refresher, health)
             except Exception as error:
                 kodi.log("Widget cache refresh error: %s" % type(error).__name__)
             refresher.stop.wait(2)

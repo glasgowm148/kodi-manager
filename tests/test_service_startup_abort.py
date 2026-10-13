@@ -52,3 +52,15 @@ def test_retire_blocks_new_work_before_extension_cleanup():
 
 def test_retire_handles_disabled_workers_and_server():
     retire_runtime()
+
+
+def test_widget_shutdown_during_tick_skips_native_health_checks():
+    from threading import Event
+    from types import SimpleNamespace
+    from service_workers import widget_refresh_tick
+    stop = Event()
+    refresher = SimpleNamespace(stop=stop, tick=lambda predicate: stop.set(), _quiet=Mock())
+    health = Mock()
+    widget_refresh_tick(refresher, health)
+    health.tick.assert_not_called()
+    refresher._quiet.assert_not_called()

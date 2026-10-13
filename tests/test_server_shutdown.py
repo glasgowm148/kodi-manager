@@ -38,6 +38,35 @@ class ServerShutdownTests(unittest.TestCase):
         self.assertEqual(service.httpd.socket.fileno(), -1)
         self.assertTrue(service.stopping.is_set())
 
+    def test_stop_interrupts_saturated_handler_admission(self):
+        service = self.create_server(BaseHTTPRequestHandler)
+        service.httpd.slot_wait = 30
+        for _ in range(service.httpd.max_handlers):
+            self.assertTrue(service.httpd._slots.acquire(blocking=False))
+        waiting = threading.Event()
+        original = service.httpd._slots.acquire
+
+        def acquire(*args, **kwargs):
+            waiting.set()
+            return original(*args, **kwargs)
+
+        port = service.httpd.server_address[1]
+        connection = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
+        try:
+            with patch.object(service.httpd._slots, 'acquire', side_effect=acquire):
+                service.start()
+                connection.request('GET', '/')
+                self.assertTrue(waiting.wait(3))
+                self.stop_without_waiting(service)
+                service.join(1)
+                self.assertFalse(service.is_alive(), 'Admission still waits for an occupied handler slot')
+                self.assertEqual(service.httpd._clients, {})
+        finally:
+            connection.close()
+            service.stop()
+            for _ in range(service.httpd.max_handlers):
+                service.httpd._slots.release()
+
     def test_stop_while_request_waits_for_kodi(self):
         entered, release = threading.Event(), threading.Event()
 

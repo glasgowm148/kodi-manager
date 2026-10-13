@@ -132,6 +132,8 @@ class ServerThread(threading.Thread):
         set_retention(config.get("backup_retention", 20))
         self.httpd = BoundedThreadingHTTPServer((config["host"], int(config["port"])), make_handler(self.state))
         self.httpd.timeout = 0.2
+        # Slot admission must wake when the service retires, too.
+        self.httpd.stopping = self.stopping
 
     def run(self):
         self.state.log("Server started at http://%s:%s" % (self.state.config["host"], self.state.config["port"]))

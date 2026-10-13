@@ -3,6 +3,8 @@
 ## 0.7.33 — 2026-10-13
 
 - Stop dashboard producers and retire the listener before private extension cleanup, so cleanup waits cannot leave those producers starting more Kodi work during shutdown.
+- Cancel a saturated HTTP handler-slot wait when the dashboard retires; the listener no longer stays alive for the five-second admission timeout during profile changes.
+- Stop widget refresh results and health callbacks from making new native Kodi calls after shutdown begins; retain the previous cached row when a listing is cancelled.
 - Record pending profile-drain worker names before waiting: Kodi may terminate an aborted script before the drain timeout finishes. No Python frame inspection or credentials are recorded.
 
 ## 0.7.32 - 2026-10-13 (prerelease)

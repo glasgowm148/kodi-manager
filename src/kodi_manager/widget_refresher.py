@@ -65,6 +65,8 @@ class Refresher:
             return False
 
     def tick(self, should_stop=lambda: False):
+        if should_stop():
+            return 0
         now = self.clock()
         if not self._quiet() or now < self.next_work:
             return 0
@@ -107,6 +109,9 @@ class Refresher:
                 _cache.validate_source(source)
                 pages = self.cache.pages_for(source)
                 files, more, next_art = _cache.fetch_listing(self.jsonrpc, source, pages)
+                if should_stop():
+                    self.cache.request(source, priority=_cache.is_progress(source))
+                    return done
                 previous = self.cache.load(source)
                 if not files and previous and previous.get("files") and not _cache.is_progress(source):
                     # Many providers report a failed fetch as a successful empty directory.
@@ -117,12 +122,15 @@ class Refresher:
                 changed += bool(self.cache.save(source, files, self.clock(), pages=pages, more=more, next_art=next_art))
                 done += 1
             except Exception as exc:
+                if should_stop():
+                    self.cache.request(source, priority=_cache.is_progress(source))
+                    return done
                 self.cache.record_failure(source, self.clock())
                 self.cache.request(source, priority=_cache.is_progress(source))
                 self.log("Widget refresh failed (%s); preserving cached row" % type(exc).__name__)
         if attempted:
             self.next_work = self.clock() + self.BATCH_PAUSE
-        if changed:
+        if changed and not should_stop():
             self.bump(str(int(self.clock())))
             self.log("Widget cache refreshed %d rows, %d changed" % (done, changed))
         return done

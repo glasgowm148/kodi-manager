@@ -686,3 +686,28 @@ def test_refresher_does_not_rewrite_unselected_jobs(tmp_path):
     remaining = list(Path(cache.queue).glob("*.json"))
     assert len(remaining) == 28
     assert all(p.read_bytes() == untouched[p.name] for p in remaining)
+
+
+def test_stopped_refresher_does_not_call_native_quiet_checks(tmp_path):
+    calls = []
+    refresher = wc.Refresher(wc.WidgetCache(tmp_path), FakeRPC({}),
+                             lambda: calls.append('native player'), lambda value: calls.append('native reload'))
+    assert refresher.tick(lambda: True) == 0
+    assert calls == []
+
+
+def test_stop_during_listing_preserves_cache_without_native_reload(tmp_path):
+    from threading import Event
+    cache = wc.WidgetCache(tmp_path)
+    cache.save(CONTINUE, listing('Before')['result']['files'], 10 ** 6)
+    cache.request(CONTINUE)
+    stop, bumps = Event(), []
+
+    def rpc(method, params=None):
+        stop.set()
+        return listing('After')
+
+    refresher = wc.Refresher(cache, rpc, lambda: False, bumps.append, clock=Clock(10 ** 6))
+    assert refresher.tick(stop.is_set) == 0
+    assert cache.load(CONTINUE)['files'][0]['label'] == 'Before'
+    assert bumps == []
