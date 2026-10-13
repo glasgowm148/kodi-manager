@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.32 - 2026-10-13 (prerelease)
+
+- Recognize Bingie 2.0.2.6's unchanged focus-control diagnostic as a known notice, as for the reviewed 2.0.2.3/2.0.2.5 versions. Other controls, unknown skin versions and real errors still warn. Original log entries remain intact.
+- Clarify first-run setup, the home-screen menu versus My add-ons, and setting a private Auth token through Configure when the token-display menu is inaccessible.
+
 ## 0.7.31 — 2026-10-13 (prerelease)
 
 - Restore the clickable chart cards to the top of Overview, with management shortcuts below. Unchecked services stay on their cards without a redundant attention alarm.

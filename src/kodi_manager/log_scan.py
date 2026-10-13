@@ -18,7 +18,7 @@ def classify_line(line, following=(), skin=None, prior_notice=False):
         return ("notice" if prior_notice else "warning"), prior_notice
     skin = skin or {}
     focus_buttons = (skin.get("active") and skin.get("addon_id") == "skin.bingie"
-                     and skin.get("version") in ("2.0.2.3", "2.0.2.5"))
+                     and skin.get("version") in ("2.0.2.3", "2.0.2.5", "2.0.2.6"))
     resolved_type = (message == 'JSONRPC: Could not parse type "Setting.Details.SettingList"'
                      and any("JSONRPC: Resolving incomplete types/methods referencing Setting.Details.Setting"
                              in other for other in following))
