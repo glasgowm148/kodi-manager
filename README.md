@@ -20,18 +20,19 @@
 for status, add-on settings, playback routing, backups and home-screen rows. Use it from a phone or
 computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-MCP).
 
-![Kodi Manager overview: the TV's state, a one-line verdict and tiles for memory, internet, home rows, backups, protection and accounts with 7-day trends](docs/images/dashboard.png)
+![Kodi Manager overview: prioritised issues, management shortcuts and recent log activity with 7-day trends](docs/images/dashboard.png)
 
 *Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
 > [!NOTE]
-> **0.7.29 prerelease.** Targets Kodi 19+; cached rows need Kodi 20+. Live use is on one customized
+> **0.7.30 prerelease.** Targets Kodi 19+; cached rows need Kodi 20+. Live use is on one customized
 > NVIDIA Shield. The current public ZIP and other hardware still need live validation;
 > see [compatibility](docs/compatibility.md).
 
 ## What you can do
 
-- See playback, memory, connection checks, account status and seven-day trends.
+- Start with current issues and direct tasks for add-ons, home rows, playback, accounts and recovery.
+- Inspect playback, memory, connection checks, account status and seven-day trends.
 - Understand add-on purposes and dependencies, then edit supported settings with backups.
 - Keep masked 24-hour logs across restarts, with grouped issues, explanations and recurrence after review.
 - Trace the playback pipeline from skin and metadata helper to selected player.
@@ -51,7 +52,7 @@ computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-
 ## Quick start
 
 1. **Download** `service.kodi.addonadmin-<version>.zip` from
-   [Releases](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.29), under **Assets**.
+   [Releases](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.30), under **Assets**.
    Choose the `service.kodi.addonadmin` ZIP; GitHub's **Source code** ZIP, wheel and tar.gz are not
    installable Kodi add-ons.
 2. **Install it.** In Kodi, choose **Add-ons → Install from zip file** and pick the ZIP. Allow

@@ -193,10 +193,10 @@ def health_summary(kodi, index, config):
     found = sum(1 for key in core if stack.get(key, {}).get("found") or stack.get(key, {}).get("active"))
     checks = [
         {"id": "jsonrpc", "label": "Kodi JSON-RPC", "status": "ok" if kodi.get_kodi_version() else "warning", "detail": kodi.get_kodi_version()},
-        {"id": "stack", "label": "Core stack", "status": "ok" if found >= 4 else "warning", "detail": "%s/%s detected" % (found, len(core))},
+        {"id": "stack", "label": "Optional integrations", "status": "info", "detail": "%s recognised integrations detected; only install the add-ons you need" % found},
         {"id": "addon_data", "label": "Addon config path", "status": "ok" if paths.get("addon_data_probe", {}).get("selected_path") else "error", "detail": paths.get("addon_data_probe", {}).get("selected_path", "")},
         {"id": "addons_path", "label": "Installed add-ons path", "status": "ok" if paths.get("addons_probe", {}).get("selected_path") else "warning", "detail": paths.get("addons_probe", {}).get("selected_path", "")},
-        {"id": "write_mode", "label": "Write mode", "status": "ok" if config.get("write_enabled") else "warning", "detail": "enabled" if config.get("write_enabled") else "disabled"},
+        {"id": "write_mode", "label": "Dashboard access", "status": "info", "detail": "Changes allowed" if config.get("write_enabled") else "View only; changes are disabled for this profile"},
         dict({"id": "memory", "label": "Memory"}, **{k: v for k, v in memory.items() if k in ("status", "detail")}),
         {"id": "logs", "label": "Kodi log scan", "status": log_status, "detail": log_detail},
     ]

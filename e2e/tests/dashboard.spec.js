@@ -21,11 +21,14 @@ test("without a token the dashboard asks for one", async ({ page }) => {
   await expect(page.locator("#screenTitle")).toBeVisible();
 });
 
-test("overview shows the TV, a verdict and six tiles", async ({ page, app }) => {
+test("overview prioritises tasks and attention, with logs and device details", async ({ page, app }) => {
   await app.open("dashboard");
   await expect(page.locator(".screen-state")).toContainText("Idle");
-  await expect(page.locator("#screenTitle")).toHaveText(/^(All good|.+ needs? a look)$/);
+  await expect(page.locator("#screenTitle")).toHaveText("Overview");
   await expect(page.locator(".screen-meta")).toContainText("Living room");
+  await expect(page.locator(".task-grid a")).toHaveCount(6);
+  await expect(page.locator("#attentionTitle")).toHaveText("Needs attention");
+  await expect(page.locator(".log-summary")).toContainText("123 warnings");
   const tiles = page.locator(".tiles a.tile[data-tile]");
   await expect(tiles).toHaveCount(6);
   for (const key of ["memory", "internet", "rows", "backups", "protection", "accounts"]) {
@@ -53,9 +56,11 @@ test("the side menu and section tabs move between pages", async ({ page, app }, 
   await waitForPage(page);
   await expect(heading(page)).toHaveText("Health checks");
   await expect(page.locator('#subnav a[href="#/health"]')).toHaveAttribute("aria-current", "page");
+  await page.locator('#nav [data-group="backups"] > summary').click();
   await page.locator('#nav a[data-route="#/backups"]').click();
   await waitForPage(page);
   await expect(heading(page)).toHaveText("Backups");
+  await page.locator('#nav [data-group="addons"] > summary').click();
   await page.locator('#nav a[data-route="#/addons"]').click();
   await waitForPage(page);
   await expect(heading(page)).toHaveText("All add-ons");
@@ -76,6 +81,7 @@ test("the phone bottom bar and its More menu move between pages", async ({ page,
   await page.locator("#tabMore").click();
   await expect(page.locator("#nav")).toBeVisible();
   await expect(page.locator("#tabMore")).toHaveAttribute("aria-expanded", "true");
+  await page.locator('#nav [data-group="accounts"] > summary').click();
   await page.locator('#nav a[data-route="#/accounts"]').click();
   await waitForPage(page);
   await expect(page.locator("#nav")).toBeHidden();
@@ -243,5 +249,38 @@ test("Kodi log retains 24 hours with pagination, filters and a separate raw tail
   await page.locator('summary').filter({hasText:'Current raw log tail'}).click();
   await page.locator("#loadRawKodiLog").click();
   await expect(page.locator("#rawKodiLog")).toContainText("info");
+  expect(app.errors).toEqual([]);
+});
+
+
+test("home tasks reach management pages and preserve keyboard focus on refresh", async ({page, app}) => {
+  await app.open("dashboard");
+  const task = page.locator('[data-overview-link="task-0"]');
+  await task.focus();
+  await page.clock.runFor(61000);
+  await expect(task).toBeFocused();
+  await task.click();
+  await waitForPage(page);
+  await expect(heading(page)).toHaveText("All add-ons");
+  await app.open("health");
+  await expect(page.locator('#healthAttention')).toHaveText('Needs attention now');
+  await expect(page.locator('#healthLogs')).toHaveText('Recorded in the past 24 hours');
+  await expect(page.locator('#passedChecks')).not.toHaveAttribute('open', '');
+  await page.locator('#passedChecks > summary').click();
+  await expect(page.locator('#passedChecks .check').first()).toBeVisible();
+  expect(app.errors).toEqual([]);
+});
+
+
+test("overview refresh updates read-only state and opens direct add-on navigation", async ({page, app}) => {
+  await app.open('dashboard');
+  await page.request.get('/demo/writes');
+  await page.clock.runFor(61000);
+  await expect(page.locator('#top')).toContainText('View only');
+  await expect(page.locator('.screen-meta')).toContainText('View only');
+  await expect(page.locator('.screen-detail')).toContainText('changes are off');
+  await app.open('pov');
+  await expect(page.locator('#nav [data-group="addons"]')).toHaveAttribute('open','');
+  await expect(page.locator('#nav .nav-shortcuts')).toHaveAttribute('open','');
   expect(app.errors).toEqual([]);
 });

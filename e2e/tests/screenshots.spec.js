@@ -16,6 +16,7 @@ async function waitForStableHeight(page) {
 
 const PAGES = [
   ["overview", "dashboard", ".tiles a.tile"],
+  ["health", "health", "#healthAttention"],
   ["trends", "trends", "figure.chart svg.chart-canvas"],
   ["row-health", "rows", "#rowCards .row-card"],
   ["backups", "backups", "figure.chart svg.chart-canvas"],

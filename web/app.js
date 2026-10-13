@@ -50,12 +50,16 @@ function routeGroup(route, groups){
   return groups.find(g => g.items.some(item => item[1] === route)) || null;
 }
 function navLink(label, route, sub){ return `<a href="${esc(route)}" data-route="${esc(route)}"${sub ? ' class="nav-sub"' : ""}>${esc(label)}</a>`; }
+function navItems(items){
+  const main = items.filter(item => !item[2]?.sub), shortcuts = items.filter(item => item[2]?.sub);
+  return main.map(([label,route]) => navLink(label,route)).join("") + (shortcuts.length ? `<details class="nav-shortcuts"><summary>Individual add-on settings</summary>${shortcuts.map(([label,route]) => navLink(label,route,true)).join("")}</details>` : "");
+}
 function setNav(groups){
   state.navGroups = groups;
   const key = JSON.stringify(groups);
   if (key === state.navKey) return highlightNav();
   state.navKey = key;
-  $("#nav").innerHTML = `<div class="nav-sheet-head"><span>All pages</span><button type="button" class="action" data-close-nav>Close</button></div>` + groups.map(group => `<div class="nav-section" data-group="${esc(group.key || "")}"><div class="nav-title">${dashboardIcon(group.icon || "help")}<span>${esc(group.group)}</span></div>${group.items.map(([label, route, opts]) => navLink(label, route, opts?.sub)).join("")}</div>`).join("");
+  $("#nav").innerHTML = `<div class="nav-sheet-head"><span>All pages</span><button type="button" class="action" data-close-nav>Close</button></div>` + groups.map(group => `<details class="nav-section" data-group="${esc(group.key || "")}"><summary class="nav-title">${dashboardIcon(group.icon || "help")}<span>${esc(group.group)}</span></summary>${navItems(group.items)}</details>`).join("");
   const tabbar = $("#tabbar");
   if (tabbar) tabbar.innerHTML = groups.filter(g => TABBAR.includes(g.key)).map(g => `<a href="${esc(g.items[0][1])}" data-tab-group="${esc(g.key)}">${dashboardIcon(g.icon)}<span>${esc(g.short || g.group)}</span></a>`).join("") + `<button type="button" id="tabMore" data-tab-group="more" aria-controls="nav" aria-expanded="false">${dashboardIcon("more")}<span>More</span></button>`;
   highlightNav();
@@ -75,9 +79,10 @@ function highlightNav(){
   document.querySelectorAll("#nav [data-route]").forEach(b => {
     const active = b.dataset.route === current;
     b.classList.toggle("active", active);
-    if (active) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    if (active) { b.setAttribute("aria-current", "page"); const shortcuts = b.closest?.(".nav-shortcuts"); if (shortcuts) shortcuts.open = true; } else b.removeAttribute("aria-current");
   });
   const group = routeGroup(current, state.navGroups || navGroups(state.status));
+  if (group) { const section = document.querySelector(`#nav [data-group="${group.key}"]`); if (section) section.open = true; }
   const tabKey = group ? (TABBAR.includes(group.key) ? group.key : "more") : "";
   document.querySelectorAll("#tabbar [data-tab-group]").forEach(tab => {
     const on = tab.dataset.tabGroup === tabKey;
@@ -92,12 +97,12 @@ function toggleNav(open){
   body.classList.toggle("nav-open", next);
   $("#navToggle")?.setAttribute("aria-expanded", String(next));
   $("#tabMore")?.setAttribute("aria-expanded", String(next));
-  if (next) document.querySelector("#nav a")?.focus?.();
+  if (next) document.querySelector("#nav [aria-current=page], #nav summary")?.focus?.();
 }
 /* The calm notice shown on every page when this Kodi profile is view-only (writes off). */
 function viewOnlyBanner(status){
   if (status?.write_enabled !== false) return "";
-  return `<div class="notice notice--view" role="note">${dashboardIcon("eye")}<div><p><b>View only.</b> Changes are off${state.profile ? ` for the ${esc(state.profile)} profile` : " for this Kodi profile"}, so anything that would change the TV is greyed out.</p><details><summary>How to allow changes</summary><p>On the TV, open <b>Add-ons → My add-ons → Services → Kodi Manager → Configure</b> and turn on <b>Enable writes</b>. It applies straight away.</p></details></div></div>`;
+  return `<div class="notice notice--view" role="note">${dashboardIcon("eye")}<details><summary><b>View only.</b> Changes are off${state.profile ? ` for ${esc(state.profile)}` : " for this profile"}. <span>How to allow changes</span></summary><p>On the TV, open <b>Add-ons → My add-ons → Services → Kodi Manager → Configure</b> and turn on <b>Enable writes</b>. It applies straight away. Controls that change the TV are disabled until then.</p></details></div>`;
 }
 function applyStatus(status){
   state.status = status;
@@ -106,7 +111,11 @@ function applyStatus(status){
   updateDirtyBar();
   $("#top").innerHTML = `<span class="conn-chip" title="Connected to Kodi Manager ${esc(status.service_version || "")}"><span class="conn-dot" aria-hidden="true"></span><span>Kodi ${esc(status["Kodi version"] || "")}</span></span>${status.write_enabled === false ? dashboardPill("muted", "View only", "eye") : ""}`;
   const banner = $("#banner");
-  if (banner) banner.innerHTML = viewOnlyBanner(status);
+  if (banner) {
+    const expanded = banner.querySelector?.("details")?.open;
+    banner.innerHTML = viewOnlyBanner(status);
+    if (expanded && banner.querySelector?.("details")) banner.querySelector("details").open = true;
+  }
 }
 function pageHead(title, lead, actions=""){
   return `<header class="page-head"><div><h2>${esc(title)}</h2>${lead ? `<p class="lead">${esc(lead)}</p>` : ""}</div>${actions ? `<div class="page-actions">${actions}</div>` : ""}</header>`;
@@ -651,24 +660,32 @@ async function componentsView(refresh=false){
     }
   }
 }
-const HEALTH_WORDS = {ok:"OK", warning:"Needs a look", error:"Problem"};
-/* Where to look next for each health check. */
-const HEALTH_LINKS = {logs:["#/kodi-logs","See the past 24 hours"], memory:["#/trends","See memory over time"], internet:["#/trends","See answer times"], nightly:["#/backups","Open backups"], trakt:["#/accounts","Open accounts"], torbox:["#/accounts","Open accounts"], stack:["#/components","See your add-ons"], write_mode:["#/setup","How changes are allowed"]};
-const HEALTH_STATS = {addons:"Add-ons installed", enabled_addons:"Turned on", config_folders:"With saved settings", stack_detected:"Core add-ons found", kodi_log_errors:"Errors in Kodi’s log", kodi_log_warnings:"Warnings in Kodi’s log", kodi_memory_mb:"Memory used by Kodi"};
-function healthTone(status){ return status === "ok" ? "ok" : status === "error" ? "bad" : "warn"; }
+const HEALTH_WORDS = {ok:"OK", warning:"Needs a look", error:"Problem", info:"Information", unknown:"Not checked"};
+const HEALTH_LINKS = {logs:["#/kodi-logs","Review log issues"], memory:["#/trends","See memory over time"], internet:["#/trends","See connection checks"], nightly:["#/backups","Open backups"], trakt:["#/accounts","Open accounts"], torbox:["#/accounts","Open accounts"], stack:["#/components","See your add-ons"], write_mode:["#/setup","Connection & access"]};
+const HEALTH_STATS = {addons:"Add-ons installed", enabled_addons:"Enabled add-ons", config_folders:"With saved settings", stack_detected:"Optional integrations found", kodi_log_errors:"Recorded errors · 24 hours", kodi_log_warnings:"Recorded warnings · 24 hours", kodi_log_notices:"Known notices · 24 hours", kodi_log_warning_lines:"Warning lines · 24 hours", kodi_memory_mb:"Kodi memory"};
+function healthTone(status){ return status === "ok" ? "ok" : status === "error" ? "bad" : status === "warning" ? "warn" : "muted"; }
+function healthSections(checks){
+  const info = c => ["write_mode", "stack"].includes(c.id) || c.status === "info";
+  return {attention:checks.filter(c => c.id !== "logs" && !info(c) && c.status !== "ok").sort((a,b) => (b.status === "error") - (a.status === "error")),
+    passed:checks.filter(c => c.id !== "logs" && !info(c) && c.status === "ok"),
+    info:checks.filter(info), logs:checks.filter(c => c.id === "logs")};
+}
+function healthCheckMarkup(c){
+  const informational = ["write_mode", "stack"].includes(c.id), tone = informational ? "muted" : healthTone(c.status);
+  return `<li class="check check--${tone}"><span class="check-icon">${dashboardIcon(c.status === "ok" && !informational ? "check" : informational ? "help" : "alert")}</span><div class="check-body"><div class="check-head"><b>${esc(c.label)}</b>${dashboardPill(tone, informational ? "Information" : HEALTH_WORDS[c.status] || c.status, informational ? "help" : c.status === "ok" ? "check" : "alert")}</div><p class="muted">${esc(c.detail)}</p>${healthAction(c)}${HEALTH_LINKS[c.id] ? `<a class="check-link" href="${HEALTH_LINKS[c.id][0]}">${esc(HEALTH_LINKS[c.id][1])}</a>` : ""}</div></li>`;
+}
 async function healthView(){
-  const h = await api("/api/health");
-  const checks = h.checks || [];
-  const attention = checks.filter(c => c.status !== "ok");
-  const tone = healthTone(h.status);
-  const verdict = !attention.length ? "Every check passed" : `${attention.length} check${attention.length === 1 ? " needs" : "s need"} a look`;
-  const statValue = (k, v) => k === "kodi_memory_mb" && v !== null && v !== undefined ? formatMB(Number(v)) : v ?? "—";
-  out(`${pageHead("Health checks", "Everything Kodi Manager checks on the TV, in plain words, with a fix where there is one.")}
-  <section class="verdict verdict--${tone}" aria-label="Summary">${dashboardIcon(tone === "ok" ? "check" : "alert")}<div><h3>${esc(verdict)}</h3><p>${esc(attention.length ? "The checks that need a look are listed first." : "Nothing needs doing right now.")}</p></div></section>
-  <ul class="checklist">${[...attention, ...checks.filter(c => c.status === "ok")].map(c => `<li class="check check--${healthTone(c.status)}"><span class="check-icon">${dashboardIcon(c.status === "ok" ? "check" : "alert")}</span><div class="check-body"><div class="check-head"><b>${esc(c.label)}</b>${dashboardPill(healthTone(c.status), HEALTH_WORDS[c.status] || c.status, c.status === "ok" ? "check" : "alert")}</div><p class="muted">${esc(c.detail)}</p>${healthAction(c)}${HEALTH_LINKS[c.id] && c.status !== "ok" ? `<a class="check-link" href="${HEALTH_LINKS[c.id][0]}">${esc(HEALTH_LINKS[c.id][1])}</a>` : ""}</div></li>`).join("")}</ul>
-  <section class="panel"><h3>At a glance</h3><dl class="facts-grid">${Object.entries(h.stats || {}).map(([k,v]) => `<div><dt>${esc(HEALTH_STATS[k] || k.replace(/_/g," "))}</dt><dd>${esc(statValue(k, v))}</dd></div>`).join("")}</dl></section>
-  ${(h.log_issues || []).length ? `<section class="panel"><h3>Recorded issue groups</h3>${logIssueCards(h.log_issues, 'all', true)}</section>` : ''}
-  <details class="panel log-problems"><summary>Latest recorded problems from the past 24 hours</summary><h4>Errors</h4><pre>${esc(logBlock(h.recent_errors))}</pre><h4>Warnings</h4><pre>${esc(logBlock(h.recent_warnings))}</pre><a href="#/kodi-logs">See all retained warnings and errors</a></details>`);
+  const h = await api("/api/health"), groups = healthSections(h.checks || []);
+  const checklist = items => `<ul class="checklist">${items.map(healthCheckMarkup).join("")}</ul>`;
+  const statValue = (k,v) => k === "kodi_memory_mb" && v !== null && v !== undefined ? formatMB(Number(v)) : v ?? "—";
+  out(`${pageHead("Health checks", "Check current problems, review recent log activity, and inspect the checks that passed.")}
+    <section aria-labelledby="healthAttention"><div class="section-heading"><h3 id="healthAttention">Needs attention now</h3><span>${groups.attention.length} check${groups.attention.length === 1 ? "" : "s"}</span></div>${groups.attention.length ? checklist(groups.attention) : '<p class="notice">No current problems reported by these checks. Review recorded log activity below separately.</p>'}</section>
+    <section aria-labelledby="healthLogs"><div class="section-heading"><h3 id="healthLogs">Recorded in the past 24 hours</h3><a href="#/kodi-logs">All log issues →</a></div><p class="muted">Earlier warnings and errors remain until they expire. Their presence does not establish a current fault.</p>${checklist(groups.logs)}</section>
+    <details class="panel" id="passedChecks"><summary>Passed checks (${groups.passed.length})</summary>${checklist(groups.passed)}</details>
+    <details class="panel"><summary>Setup &amp; access information</summary><p class="muted">View-only mode and optional add-on choices are configuration, not faults.</p>${checklist(groups.info)}</details>
+    <details class="panel"><summary>Device &amp; add-on figures</summary><dl class="facts-grid">${Object.entries(h.stats || {}).map(([k,v]) => `<div><dt>${esc(HEALTH_STATS[k] || k.replace(/_/g," "))}</dt><dd>${esc(statValue(k,v))}</dd></div>`).join("")}</dl></details>
+    ${(h.log_issues || []).length ? `<details class="panel"><summary>Recent issue examples</summary>${logIssueCards(h.log_issues, 'all', true)}</details>` : ''}
+    <details class="panel log-problems"><summary>Latest recorded entries</summary><h4>Errors</h4><pre>${esc(logBlock(h.recent_errors))}</pre><h4>Warnings</h4><pre>${esc(logBlock(h.recent_warnings))}</pre><a href="#/kodi-logs">See all retained warnings and errors</a></details>`);
   bindHealthActions();
 }
 function healthAction(check){

@@ -204,15 +204,15 @@ class Demo:
 
     def health(self):
         checks = [{"id": "jsonrpc", "label": "Kodi JSON-RPC", "status": "ok", "detail": "22.0"},
-                  {"id": "stack", "label": "Core stack", "status": "ok", "detail": "4/6 detected"},
+                  {"id": "stack", "label": "Optional integrations", "status": "info", "detail": "4 recognised integrations detected; only install the add-ons you need"},
                   {"id": "addon_data", "label": "Addon config path", "status": "ok", "detail": "/storage/.kodi/userdata/addon_data"},
-                  {"id": "write_mode", "label": "Write mode", "status": "ok" if self.writes else "warning", "detail": "enabled" if self.writes else "disabled"},
+                  {"id": "write_mode", "label": "Dashboard access", "status": "info", "detail": "Changes allowed" if self.writes else "View only; changes are disabled for this profile"},
                   {"id": "memory", "label": "Memory", "status": "ok", "detail": "Kodi uses 612 MB · 1180 MB of 2900 MB free · swap 41% used"},
                   {"id": "internet", "label": "Internet (add-on services)", "status": "ok", "detail": "TorBox 0.3s · Trakt 0.2s · TMDb 0.1s · checked 4 min ago"},
                   {"id": "baseline", "label": "Protected settings", "status": "ok", "detail": "6 settings as you set them"}]
         checks += [{"id": a["id"], "label": a["label"], "status": a["status"], "detail": a["detail"]} for a in self.accounts_now()]
         checks += [{"id": "nightly", "label": "Nightly checkpoint", "status": "ok", "detail": "Last taken today 03:12"},
-                   {"id": "logs", "label": "Kodi log scan", "status": "warning", "detail": "0 errors · 123 warnings · 1 known notices in the past 24 hours"}]
+                   {"id": "logs", "label": "Kodi log scan", "status": "warning", "detail": "0 errors · 123 warnings · 1 known notice in the past 24 hours"}]
         return {"status": "warning", "checks": checks,
                 "stats": {"addons": len(ADDONS), "enabled_addons": len(ADDONS) - 1, "config_folders": 7, "stack_detected": 4, "kodi_log_errors": 0, "kodi_log_warnings": 123, "kodi_memory_mb": 612},
                 "recent_errors": [], "recent_warnings": ["warning <general>: Skin has invalid include: DemoInclude", "warning <general>: Texture not found: demo.png", "warning <general>: Slow directory listing (2.1 s)"]}

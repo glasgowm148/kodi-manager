@@ -7,9 +7,9 @@ instant, so pages and screenshots are identical on every run.
 
 | File | What it checks |
 | --- | --- |
-| `tests/dashboard.spec.js` | Sign-in, Overview (verdict and tiles), side menu (desktop) and bottom bar with More (phone), Trends charts, Row health filters/search/sort, saving a setting, the `playback_active` refusal, a view-only profile, the Backups restore dialog, the theme button |
+| `tests/dashboard.spec.js` | Sign-in, Overview (attention, tasks, logs and device cards), side menu (desktop) and bottom bar with More (phone), Trends charts, Row health filters/search/sort, saving a setting, the `playback_active` refusal, a view-only profile, the Backups restore dialog, the theme button |
 | `tests/layout.spec.js` | No page scrolls sideways at 390 px (phone project) |
-| `tests/screenshots.spec.js` | Overview, Trends, Row health and Backups against stored screenshots, desktop (1280×800) and phone (390×844) |
+| `tests/screenshots.spec.js` | Overview, Health, Trends, Row health and Backups against stored screenshots, desktop (1280×800) and phone (390×844) |
 
 Every test also fails on a browser console error or an uncaught exception.
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.30 — 2026-10-13 (prerelease)
+
+- Rework Overview around prioritised problems, direct management tasks, recent log activity and device details. Replace the decorative TV graphic with a compact profile/playback summary.
+- Collapse navigation into task groups while preserving all routes, add-on shortcuts, mobile navigation and keyboard focus across refreshes. Keep read-only guidance compact and update access state on refresh.
+- Separate current Health faults from retained 24-hour logs; keep passed checks and detailed figures in expandable sections. Treat read-only mode and optional add-on choices as information, not faults.
+- Preserve existing authentication, write/playback guards, history, settings and backup flows.
+
 ## 0.7.29 — 2026-10-13 (prerelease)
 
 - Group retained diagnostics by cause, with recorded-entry counts, first/last seen, source evidence and suggested next steps. Keep every original event and its pagination available.

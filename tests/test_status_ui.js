@@ -145,16 +145,16 @@ test('the TV verdict counts what needs a look and respects playback', () => {
   const o = {playback:{active:true, title:'<b>Bluey</b>'}, profile:'Kids <x>', kodi_version:'22.0', write_enabled:false};
   const tiles = [{name:'Memory', tone:'ok'}, {name:'Home rows', tone:'warn', href:'#/rows', value:'2 of 14 failing'}, {name:'Accounts', tone:'bad', href:'#/accounts', value:'x'}];
   const verdict = ui.overviewVerdict(o, tiles);
-  assert.equal(verdict.headline, '2 things need a look');
+  assert.equal(verdict.headline, '2 checks need attention');
   assert.equal(verdict.tone, 'bad');
-  assert.match(verdict.detail, /waits until viewing has finished/);
+  assert.match(verdict.detail, /wait until viewing has finished/);
   const markup = ui.screenMarkup(o, verdict, '12:00');
   assert.doesNotMatch(markup, /<b>Bluey|<x>/);
   assert.match(markup, /Profile: Kids &lt;x&gt;/);
   assert.match(markup, /View only/);
-  assert.match(markup, /href="#\/rows"/);
-  assert.equal(ui.overviewVerdict({playback:{active:false}}, [{name:'Memory', tone:'ok'}]).headline, 'All good');
-  assert.match(ui.overviewVerdict({playback:{active:false}}, []).detail, /good time to make changes/);
+  assert.match(ui.attentionMarkup(verdict), /href="#\/rows"/);
+  assert.equal(ui.overviewVerdict({playback:{active:false}}, [{name:'Memory', tone:'ok'}]).headline, 'No issues in these checks');
+  assert.match(ui.overviewVerdict({playback:{active:false}}, []).detail, /changes are off/);
   assert.match(ui.tileMarkup({key:'k', name:'<i>', icon:'memory', tone:'ok', value:'<v>', text:'<t>', href:'#/trends'}), /&lt;i&gt;.*&lt;v&gt;.*&lt;t&gt;/s);
 });
 
@@ -276,5 +276,33 @@ test('memory explains tight memory on Android and marks Kodi restarts', () => {
   assert.equal(spec.events.length, 1);
   assert.match(spec.summary, /Kodi started once in this period/);
   assert.match(ui.chartSvg(spec, 600), /class="event"/);
-  assert.match(ui.screenMarkup({kodi_started_at:NOW - 3 * 3600, generated_at:NOW, playback:{active:false}}, {tone:'ok', headline:'All good', detail:'', issues:[]}, '12:00'), /Kodi started 3 hours ago/);
+  assert.match(ui.screenMarkup({kodi_started_at:NOW - 3 * 3600, generated_at:NOW, playback:{active:false}}, {tone:'ok', headline:'All good', detail:'', issues:[]}, '12:00'), /Started 3 hours ago/);
+});
+
+
+test('unknown checks and unavailable history never imply a clean bill of health', () => {
+  const verdict = ui.overviewVerdict({playback:{}}, [{tone:'muted', name:'Memory'}]);
+  assert.equal(verdict.tone, 'muted');
+  assert.equal(verdict.headline, 'Some checks aren’t ready');
+  assert.match(verdict.detail, /Playback state is unavailable/);
+  assert.match(ui.logSummaryMarkup(null), /Log history unavailable/);
+  assert.match(ui.logSummaryMarkup({available:false, counts:{errors:0,warnings:0}}), /incomplete or unavailable/);
+  assert.match(ui.logSummaryMarkup({available:true, catching_up:false, counts:{errors:12,warnings:3,notices:1}}), /12 errors.*3 warnings.*1 known notice/s);
+});
+
+test('health separates real faults, unknown checks, retained logs and configuration', () => {
+  const groups = ui.healthSections([{id:'write_mode',status:'warning'}, {id:'stack',status:'warning'},
+    {id:'logs',status:'error'}, {id:'memory',status:'warning'}, {id:'network',status:'error'},
+    {id:'unknown',status:'unknown'}, {id:'jsonrpc',status:'ok'}]);
+  assert.deepEqual(plain(groups.attention.map(c => c.id)), ['network','memory','unknown']);
+  assert.deepEqual(plain(groups.info.map(c => c.id)), ['write_mode','stack']);
+  assert.deepEqual(plain(groups.logs.map(c => c.id)), ['logs']);
+  assert.deepEqual(plain(groups.passed.map(c => c.id)), ['jsonrpc']);
+  assert.match(ui.healthCheckMarkup({id:'memory',label:'<script>',detail:'<img>',status:'error'}), /&lt;script&gt;/);
+});
+
+test('home tasks expose supported layout editing without offering it to other skins', () => {
+  assert.ok(ui.overviewTasks({stack:{skin:{bingie_like:true}}}).some(t => t[3] === '#/widgets'));
+  assert.ok(!ui.overviewTasks({stack:{skin:{bingie_like:false}}}).some(t => t[3] === '#/widgets'));
+  assert.ok(ui.overviewTasks({}).some(t => t[3] === '#/rows'));
 });

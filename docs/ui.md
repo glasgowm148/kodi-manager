@@ -1,7 +1,7 @@
 # Dashboard design
 
-The dashboard answers one question first: **is the TV all right?** Then it lets the person who looks
-after the TV fix what is not, from a phone on the sofa, a laptop or the TV's own browser. Everything
+The dashboard starts with **what needs attention and what do you want to manage?** It gives the person who looks
+after the TV direct next steps, from a phone on the sofa, a laptop or the TV's own browser. Everything
 is served by the add-on itself: no fonts, scripts or images from the internet (poster previews come
 from the same allowlisted artwork hosts the TV already uses, without a referrer).
 
@@ -39,18 +39,25 @@ services can also consume RAM. Removal still happens through Kodi's own add-on m
 
 - **Phone (under 900 px):** a bottom bar with Status, Home screen, Add-ons, Backups and More. More
   opens the full menu (Accounts and Advanced live there). The current group is highlighted.
-- **Tablet and laptop:** a side rail lists every group and page.
+- **Tablet and laptop:** the side rail has six expandable task groups. The current group opens
+  automatically. Individual add-on shortcuts sit inside a second disclosure, keeping common tasks visible.
+  Direct links and browser Back still reach every existing page.
 - **TV remote:** once something on the page has focus, the arrow keys move focus to the nearest
   control in that direction; Enter activates it. With nothing focused the arrows scroll as usual.
   Every control has a visible focus ring and a tap target of at least 44 px.
 
 ## Overview
 
-The first screen is drawn as the TV itself: the "screen" says in plain words what state the TV is in
-(idle, or what is playing), which profile is active and whether changes are allowed from here. Below
-it, one tile per household concern. Each tile shows a single sentence ("All good", "2 rows failing:
-tap to see"), the number that matters, a 7-day sparkline where there is history, and links to the
-page that explains it.
+The overview has five parts, in this order:
+
+1. **Your Kodi:** playback state, active profile, whether changes are allowed and when the check ran.
+2. **Needs attention:** current device/service check failures, ordered by severity, with a specific
+   next step. Missing results are described as unavailable; they never produce an “all good” verdict.
+3. **Manage your Kodi:** add-ons, home screen, playback, accounts, backups and add-on settings.
+   Home layout editing appears only for supported skins. Read-only profiles can browse these pages.
+4. **Recent log activity:** retained 24-hour counts and a link to grouped issues. These are historical
+   observations, not proof that the TV is currently failing. Missing collection is stated explicitly.
+5. **Device & services:** all six detailed status cards and trends remain available below the tasks.
 
 | Tile | Number | Trend | Opens |
 |---|---|---|---|
@@ -61,7 +68,19 @@ page that explains it.
 | Protection | custom fixes and protected settings | – | Custom fixes / Health |
 | Accounts | days until the next expiry | – | Accounts |
 
-The overview refreshes every minute while it is visible and stops while the tab is hidden.
+The overview refreshes every minute while visible, skips hidden tabs and preserves focus on its
+actions. Refresh also updates the active profile’s read-only state. Network check failures name the
+affected services rather than recommending an immediate TV/router restart.
+
+## Health checks
+
+Current faults and unavailable checks appear first. Retained log issues have their own section
+with a clear 24-hour timeframe. Passed checks, setup/access information and detailed device
+figures are expandable, so nothing is removed to make the page shorter.
+
+Read-only mode is an intentional configuration. Recognised integrations are optional: a device
+does not need Fen, Fen Light, POV and CocoScrapers together to be healthy. Both checks use
+`info` status and do not raise overall health severity. Real log errors retain their severity.
 
 ## Charts
 

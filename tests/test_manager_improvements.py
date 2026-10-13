@@ -64,6 +64,16 @@ class ManagerImprovementTests(unittest.TestCase):
         self.assertEqual(h["stats"]["stack_detected"], 5)
         self.assertEqual(h["stats"]["kodi_log_errors"], 1)
 
+    def test_read_only_and_optional_addons_are_not_health_faults(self):
+        index = FakeIndex()
+        index.addons.clear()
+        result = health_summary(FakeKodi(), index, {"write_enabled": False})
+        checks = {c["id"]: c for c in result["checks"]}
+        self.assertEqual(checks["write_mode"]["status"], "info")
+        self.assertEqual(checks["stack"]["status"], "info")
+        self.assertEqual(checks["logs"]["status"], "error")
+        self.assertEqual(result["status"], "error", "real recorded errors must remain visible")
+
     def test_playback_test_is_safe_dry_run(self):
         r = playback_test(FakeKodi(), FakeIndex(), {"target_player_addon_id": "plugin.video.fenlight", "plugin_url": "plugin://plugin.video.fenlight/"})
         self.assertTrue(r["dry_run"])

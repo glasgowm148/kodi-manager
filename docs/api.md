@@ -93,6 +93,11 @@ an exact installation time. `null` means no comparison point exists. Review anno
 across profile changes/restarts, without changing Health severity or creating a Kodi configuration
 backup. `/api/health` adds `log_issues` (up to five groups) and grouping/recording metadata.
 
+Since 0.7.30, health checks for dashboard access (`write_mode`) and optional integrations
+(`stack`) have `status: "info"`. They do not raise overall health severity. Other warning/error
+checks, including retained logs, still determine the top-level status. Clients should display
+unknown check statuses conservatively rather than treating them as errors.
+
 The collector runs every two seconds, including during playback, without Kodi calls from its worker.
 It incrementally reads `kodi.log` and `kodi.old.log`, stores masked entries and file cursors in
 `special://masterprofile/addon_data/service.kodi.addonadmin/log-history.db`, and shares that history

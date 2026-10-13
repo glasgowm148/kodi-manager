@@ -63,7 +63,7 @@ function internetTile(internet, history) {
   const slowest = Math.max(0, ...hosts.filter(h => finite(h.seconds)).map(h => h.seconds));
   const tone = toneOf(internet.status);
   const value = failed.length ? `${failed.length} of ${hosts.length} not answering` : hosts.length ? `${formatMs(slowest * 1000)} slowest` : "Checked";
-  const text = failed.length ? `${failed.join(" and ")} didn’t answer. If streams fail, restart the TV or router.` : hosts.length ? `${hosts.map(h => h.name).join(", ")} answered.` : internet.detail || "";
+  const text = failed.length ? `${failed.join(" and ")} didn’t answer. Open Trends to check the affected services; one failed service does not establish a broken internet connection.` : hosts.length ? `${hosts.map(h => h.name).join(", ")} answered.` : internet.detail || "";
   return {key:"internet", name:"Internet", icon:"wifi", tone, value, text:`${text} Checked ${formatRelative(internet.age_seconds)}.`, href:"#/trends", spark};
 }
 function rowsTile(rows, history) {
@@ -128,40 +128,62 @@ function overviewTiles(o, history, now) {
 }
 /* One sentence for the whole TV, plus links to whatever needs a look. */
 function overviewVerdict(o, tiles) {
-  const issues = tiles.filter(t => t.tone === "warn" || t.tone === "bad");
-  const headline = !issues.length ? "All good" : issues.length === 1 ? `${issues[0].name} needs a look` : `${issues.length} things need a look`;
-  const tone = issues.some(t => t.tone === "bad") ? "bad" : issues.length ? "warn" : "ok";
+  const issues = tiles.filter(t => t.tone === "warn" || t.tone === "bad").sort((a,b) => TONE_RANK[b.tone] - TONE_RANK[a.tone]);
+  const unknown = tiles.filter(t => t.tone === "muted").length;
+  const headline = issues.length ? `${issues.length} check${issues.length === 1 ? " needs" : "s need"} attention` : unknown ? "Some checks aren’t ready" : "No issues in these checks";
+  const tone = issues.some(t => t.tone === "bad") ? "bad" : issues.length ? "warn" : unknown ? "muted" : "ok";
   const playing = o.playback?.active === true;
   const what = o.playback?.title ? `“${o.playback.title}” is playing.` : "Something is playing.";
-  const detail = playing ? `${what} Anything that would restart or reload Kodi waits until viewing has finished.`
-    : o.playback?.active === false ? "Nothing is playing, so it’s a good time to make changes." : "Kodi didn’t say whether something is playing.";
-  return {tone, headline, detail, playing, issues:issues.map(t => ({name:t.name, href:t.href, value:t.value}))};
+  const detail = playing ? `${what} Changes that interrupt playback wait until viewing has finished.`
+    : o.playback?.active === false ? (o.write_enabled ? "Nothing is playing. You can review your setup and make changes." : "Nothing is playing. Browse your setup; changes are off for this profile.") : "Playback state is unavailable. Check the TV before making changes.";
+  return {tone, headline, detail, playing, unknown, issues};
+}
+const OVERVIEW_ACTIONS = {memory:"Check memory", internet:"Check connection", rows:"Find failing rows", backups:"Open backups", protection:"Review changes", accounts:"Check accounts"};
+function attentionMarkup(verdict) {
+  return `<section class="attention-panel" aria-labelledby="attentionTitle"><div class="section-heading"><h3 id="attentionTitle">Needs attention</h3><a href="#/health">All health checks</a></div>
+    ${verdict.issues.length ? `<ul class="attention-list">${verdict.issues.map(i => `<li><a class="attention-item attention-item--${esc(i.tone)}" data-overview-link="attention-${esc(i.key)}" href="${esc(i.href)}">${dashboardIcon("alert")}<span><strong>${esc(i.name)} · ${esc(i.value)}</strong><span>${esc(i.text)}</span></span><span class="attention-action">${esc(OVERVIEW_ACTIONS[i.key] || "Review")}&nbsp;→</span></a></li>`).join("")}</ul>` : `<p class="muted">${verdict.unknown ? "Some checks have no result yet. See Device & services below for what is available." : "No current issues in the device and service checks below."}</p>`}</section>`;
+}
+function overviewTasks(status) {
+  return [
+    ["box", "Manage add-ons", "See what’s installed, what it does and what depends on it.", "#/addons"],
+    ["rows", "Organise the home screen", homeLayoutSupported(status) ? "Arrange rows and shortcuts, or check rows that won’t load." : "Check and manage cached rows from your add-ons.", homeLayoutSupported(status) ? "#/widgets" : "#/rows"],
+    ["play", "Set up playback", "Check which add-on handles films and TV shows.", "#/pipeline"],
+    ["key", "Manage accounts", "Review sign-ins, subscriptions and account settings.", "#/accounts"],
+    ["history", "Back up or restore", "Save your settings before changes, or recover an earlier setup.", "#/backups"],
+    ["tools", "Find an add-on setting", "Open settings for your skin and playback add-ons.", "#/components"]
+  ];
+}
+function tasksMarkup(status) {
+  return `<section aria-labelledby="manageTitle"><div class="section-heading"><h3 id="manageTitle">Manage your Kodi</h3></div><div class="task-grid">${overviewTasks(status).map(([icon,title,text,href],i) => `<a class="task-card" data-overview-link="task-${i}" href="${href}">${dashboardIcon(icon)}<span><strong>${esc(title)}</strong><span>${esc(text)}</span></span><span aria-hidden="true">→</span></a>`).join("")}</div></section>`;
+}
+function logSummaryMarkup(history) {
+  const c = history?.counts, ready = history?.available && !history?.catching_up;
+  const value = c ? `${c.errors || 0} error${c.errors === 1 ? "" : "s"} · ${c.warnings || 0} warning${c.warnings === 1 ? "" : "s"} · ${c.notices || 0} known notice${c.notices === 1 ? "" : "s"}` : "Log history unavailable";
+  const note = !ready ? "Collection is incomplete or unavailable. Open the log to check its status." : "Recorded over the past 24 hours. Earlier problems remain here until they expire; this does not mean they are happening now.";
+  return `<section class="log-summary" aria-labelledby="logSummaryTitle"><div><h3 id="logSummaryTitle">Recent log activity</h3><p><strong>${esc(value)}</strong></p><p class="muted">${esc(note)}</p></div><a class="action" data-overview-link="logs" href="#/kodi-logs">Review log issues →</a></section>`;
 }
 function tileMarkup(tile) {
   return `<a class="tile tile--${esc(tile.tone)}" href="${esc(tile.href)}" data-tile="${esc(tile.key)}"><span class="tile-head">${dashboardIcon(tile.icon)}<span class="tile-name">${esc(tile.name)}</span>${tonePill(tile.tone, TONE_WORD[tile.tone] || "")}</span><strong class="tile-value">${esc(tile.value)}</strong><span class="tile-text">${esc(tile.text)}</span>${tile.spark ? `<span class="tile-spark">${tile.spark}</span>` : ""}</a>`;
 }
 function screenMarkup(o, verdict, checkedAt) {
   const uptime = finite(o.kodi_started_at) && finite(o.generated_at) ? o.generated_at - o.kodi_started_at : null;
-  const chips = [o.profile ? `Profile: ${o.profile}` : "", o.kodi_version ? `Kodi ${o.kodi_version}` : "", finite(uptime) && uptime >= 0 ? `Kodi started ${formatRelative(uptime)}` : "", o.write_enabled ? "Changes allowed" : "View only"].filter(Boolean);
+  const chips = [o.profile ? `Profile: ${o.profile}` : "Profile unavailable", o.kodi_version ? `Kodi ${o.kodi_version}` : "", finite(uptime) && uptime >= 0 ? `Started ${formatRelative(uptime)}` : "", o.write_enabled ? "Changes allowed" : "View only"].filter(Boolean);
   return `<section class="screen screen--${esc(verdict.tone)}${verdict.playing ? " screen--playing" : ""}" aria-labelledby="screenTitle">
-    <div class="screen-glass"><p class="screen-state">${dashboardIcon(verdict.playing ? "play" : "tv")}<span>${verdict.playing ? "Playing now" : o.playback?.active === false ? "Idle" : "State unknown"}</span></p>
-    <h2 id="screenTitle">${esc(verdict.headline)}</h2><p class="screen-detail">${esc(verdict.detail)}</p>
-    ${verdict.issues.length ? `<ul class="screen-issues">${verdict.issues.map(i => `<li><a href="${esc(i.href)}">${esc(i.name)}: ${esc(i.value)}</a></li>`).join("")}</ul>` : ""}</div>
-    <div class="screen-stand" aria-hidden="true"></div>
-    <ul class="screen-meta" aria-label="This TV">${chips.map(c => `<li>${esc(c)}</li>`).join("")}<li class="screen-checked">Checked ${esc(checkedAt)}</li></ul>
+    <div class="screen-heading"><div><p class="eyebrow">YOUR KODI</p><h2 id="screenTitle">Overview</h2></div><p class="screen-state">${dashboardIcon(verdict.playing ? "play" : "tv")}<span>${verdict.playing ? "Playing now" : o.playback?.active === false ? "Idle" : "Playback unknown"}</span></p></div>
+    <p class="screen-detail">${esc(verdict.detail)}</p><ul class="screen-meta" aria-label="This TV">${chips.map(c => `<li>${esc(c)}</li>`).join("")}<li class="screen-checked">Checked ${esc(checkedAt)}</li></ul>
   </section>`;
 }
 function overviewSkeleton() {
-  return `<div class="overview" aria-busy="true"><section class="screen screen--muted"><div class="screen-glass"><p class="screen-state">${dashboardIcon("tv")}<span>Checking the TV…</span></p><h2>Your TV</h2><p class="screen-detail skeleton-line"></p></div><div class="screen-stand" aria-hidden="true"></div></section><div class="tiles">${Array.from({length:6}, () => '<div class="tile tile--skeleton"><span class="skeleton-line short"></span><span class="skeleton-line"></span><span class="skeleton-line"></span></div>').join("")}</div></div>`;
+  return `<div class="overview" aria-busy="true"><section class="screen"><h2>Checking your Kodi…</h2><p class="skeleton-line"></p></section><div class="task-grid">${Array.from({length:6}, () => '<div class="task-card"><span class="skeleton-line"></span></div>').join("")}</div></div>`;
 }
 
 async function overviewView(refresh = false) {
   const request = state.overviewRequest = (state.overviewRequest || 0) + 1;
   clearInterval(state.overviewTimer);
   if (!refresh) out(overviewSkeleton());
-  let o, history;
+  let o, history, logs;
   try {
-    [o, history] = await Promise.all([api("/api/overview"), api("/api/metrics/history?days=7").catch(() => null)]);
+    [o, history, logs] = await Promise.all([api("/api/overview"), api("/api/metrics/history?days=7").catch(() => null), api("/api/kodi/logs/history?limit=1").catch(() => null)]);
   } catch (error) {
     if (request !== state.overviewRequest) return;
     // An older service on the TV has no overview: show the add-on summary instead.
@@ -171,16 +193,15 @@ async function overviewView(refresh = false) {
   }
   if (request !== state.overviewRequest || !overviewVisible()) return;
   state.profile = o.profile || "";
-  const banner = $("#banner");
-  if (banner && state.status) banner.innerHTML = viewOnlyBanner(state.status);
+  if (state.status) applyStatus({...state.status, write_enabled:o.write_enabled === true});
   const now = o.generated_at || Math.floor(Date.now() / 1000);
   const tiles = overviewTiles(o, history, now);
   const verdict = overviewVerdict(o, tiles);
   const checkedAt = formatClock(now);
   resetCharts();
   // A refresh keeps focus where it was (TV remotes and keyboards would otherwise lose their place).
-  const focused = refresh ? (document.activeElement?.dataset?.tile ? `[data-tile="${document.activeElement.dataset.tile}"]` : document.activeElement?.id ? `#${document.activeElement.id}` : "") : "";
-  out(`<div class="overview">${screenMarkup(o, verdict, checkedAt)}<h3 class="sr-only">Details</h3><div class="tiles">${tiles.map(tileMarkup).join("")}</div>
+  const focused = refresh ? (document.activeElement?.dataset?.overviewLink ? `[data-overview-link="${document.activeElement.dataset.overviewLink}"]` : document.activeElement?.dataset?.tile ? `[data-tile="${document.activeElement.dataset.tile}"]` : document.activeElement?.id ? `#${document.activeElement.id}` : "") : "";
+  out(`<div class="overview">${screenMarkup(o, verdict, checkedAt)}${attentionMarkup(verdict)}${tasksMarkup(state.status)}${logSummaryMarkup(logs)}<section aria-labelledby="deviceTitle"><div class="section-heading"><h3 id="deviceTitle">Device &amp; services</h3><a href="#/trends">View trends</a></div><div class="tiles">${tiles.map(tileMarkup).join("")}</div></section>
     <div class="overview-foot"><span id="overviewNote" role="status">Updates every minute while this page is open.</span><button type="button" class="action" id="overviewRefresh">${dashboardIcon("refresh")}<span>Check now</span></button></div></div>`);
   $("#overviewRefresh").onclick = withErrors(() => overviewView(true));
   if (focused) document.querySelector(focused)?.focus({preventScroll:true});
