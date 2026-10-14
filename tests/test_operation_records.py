@@ -145,7 +145,8 @@ def test_os_error_after_a_write_starts_is_unknown_not_refused(operations_service
     service = operations_service
     service.state.fail_after_write = "oserror"
     status, body = service.request("/api/stack/backup", "POST")
-    assert status == 403 and body["code"] == "write_disabled"
+    # An OS permission error is a server failure, not a Write Mode refusal.
+    assert status == 500 and body["code"] == "server_error"
     assert body["operation"]["outcome"] == "unknown" and service.writes == ["backup"]
 
 
@@ -215,3 +216,29 @@ def test_timeout_can_complete_write_and_client_never_repeats_it(operations_servi
     assert service.writes == ["backup"]
     assert service.state.operations.selected()[0]["outcome"] == "succeeded"
     assert client.last_operation is None
+
+
+def test_write_mode_refusal_stays_write_disabled_and_refused(operations_service):
+    service = operations_service
+    service.state.config["write_enabled"] = False
+    status, body = service.request("/api/stack/backup", "POST")
+    assert (status, body["code"], body["operation"]["outcome"]) == (403, "write_disabled", "refused")
+    assert service.writes == []
+
+
+def test_non_private_client_with_malformed_path_is_forbidden_and_unrecorded(operations_service, monkeypatch):
+    from kodi_manager import http_base
+    service = operations_service
+    service.state.config["host"] = "0.0.0.0"
+    monkeypatch.setattr(http_base, "_private_client", lambda address: False)
+    before = len(service.state.operations.selected(500))
+    status, body = service.request("/api/./stack/backup", "POST")
+    assert status == 403 and body["code"] == "forbidden" and "operation" not in body
+    assert len(service.state.operations.selected(500)) == before
+
+
+def test_trakt_unavailable_is_a_refusal(operations_service):
+    service = operations_service
+    service.state.index = SimpleNamespace(get=lambda aid: None)
+    status, body = service.request("/api/trakt/sync", "POST")
+    assert (status, body["code"], body["operation"]["outcome"]) == (404, "trakt_unavailable", "refused")

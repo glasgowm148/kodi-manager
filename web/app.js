@@ -356,6 +356,15 @@ function describeSetting(id, label){
 
 function showTokenForm(message=""){
   clearInterval(state.dashboardTimer);
+  clearInterval(state.overviewTimer);
+  // Stop the page behind the form: its pending reads and refresh timers must not replace a half-typed token.
+  endRoute();
+  state.overviewRequest = (state.overviewRequest || 0) + 1;
+  state.logHistoryRequest = (state.logHistoryRequest || 0) + 1;
+  state.dashboardController?.abort();
+  state.dashboardRequest = (state.dashboardRequest || 0) + 1;
+  state.dashboardLoading = false;
+  session.routeSignal = null;
   state.currentHash = location.hash;
   out(`<div class="panel token-panel"><h2>Connect to Kodi Manager</h2>${message ? `<p class="warn" role="alert">${esc(message)}</p>` : ""}<p>Enter the access token for this Kodi. On the TV, open <b>Add-ons → Video add-ons → Kodi Manager → Open the dashboard on another device</b> to see the address and token.</p><form id="tokenForm" class="token-form"><label for="tokenInput">Access token<input id="tokenInput" type="password" autocomplete="off" spellcheck="false" required></label><button class="primary" type="submit">Connect</button></form></div>`);
   $("#tokenForm").onsubmit = withErrors(async event => {
@@ -437,7 +446,18 @@ const ROUTES = {
   setup: () => serviceSetup(),
   diagnostics: () => diagnostics()
 };
+/* Each route() is one generation with its own AbortController (api()'s default signal for reads).
+   Starting another route ends the previous one, so a slow page can never render over the current one. */
+function endRoute(){
+  state.routeGeneration = (state.routeGeneration || 0) + 1;
+  state.routeController?.abort();
+  state.routeController = null;
+  return state.routeGeneration;
+}
 async function route(){
+  const generation = endRoute();
+  const controller = state.routeController = new AbortController();
+  session.routeSignal = controller.signal;
   clearInterval(state.dashboardTimer);
   clearInterval(state.overviewTimer);
   state.overviewRequest = (state.overviewRequest || 0) + 1;
@@ -445,12 +465,17 @@ async function route(){
   state.dashboardController?.abort();
   state.dashboardRequest = (state.dashboardRequest || 0) + 1;
   state.dashboardLoading = false;
+  let r = location.hash.replace(/^#\/?/, "");
+  // Unknown pages and "#/" show the overview under its own address, so its refresh checks recognise it.
+  if (!(r.startsWith("search") || r.split("?")[0] === "kodi-logs" || r.startsWith("addon/") || Object.prototype.hasOwnProperty.call(ROUTES, r))) {
+    history.replaceState(null, "", "#/dashboard");
+    r = "dashboard";
+  }
   state.currentHash = location.hash;
   if (typeof resetCharts === "function") resetCharts();
   try {
     highlightNav();
     out(pageSkeleton());
-    const r = location.hash.replace(/^#\/?/, "") || "dashboard";
     if (r.startsWith("search")) await searchView(new URLSearchParams(r.split("?")[1] || "").get("q") || "");
     else if (r.split('?')[0] === 'kodi-logs') {
       const params = new URLSearchParams(r.split('?')[1] || '');
@@ -458,9 +483,10 @@ async function route(){
     }
     else if (r.startsWith("addon/")) await addonSettings(decodeURIComponent(r.slice(6)));
     else await (ROUTES[r] || ROUTES.dashboard)();
+    if (generation !== state.routeGeneration) return;
     focusHeading();
   } catch(e) {
-    if (e?.code === "unauthorized") return;
+    if (generation !== state.routeGeneration || e?.code === "unauthorized") return;
     const f = friendlyError(e);
     out(`<div class="panel error-panel" role="alert"><h2>Couldn’t load this page</h2><p>${esc(f.title)}</p>${f.hint ? `<p class="muted">${esc(f.hint)}</p>` : ""}${f.detail && f.detail !== f.title && f.detail !== f.hint ? `<details><summary>Details</summary><p>${esc(f.detail)}</p></details>` : ""}<button type="button" class="action" id="routeRetry">${dashboardIcon("refresh")}<span>Try again</span></button></div>`);
     const retry = $("#routeRetry");
@@ -656,7 +682,7 @@ async function componentsView(refresh=false){
     if (request === state.dashboardRequest) {
       state.dashboardLoading = false;
       if ($("#dashboardRefresh")) $("#dashboardRefresh").disabled = false;
-      if (dashboardVisible()) state.dashboardTimer = setInterval(() => { if (!document.hidden) componentsView(!!$("#dashboardRefresh")); }, 30000);
+      if (dashboardVisible() && session.token) state.dashboardTimer = setInterval(() => { if (!document.hidden) componentsView(!!$("#dashboardRefresh")); }, 30000);
     }
   }
 }

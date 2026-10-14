@@ -50,7 +50,7 @@ stale_revision stale_preview checksum_mismatch not_configured
 app_running asleep device_identity_unknown device_mismatch foreground_unknown interrupt_not_permitted
 kodi_stopped nothing_playing offline_recovery_not_permitted other_app other_app_foreground
 other_app_playing pairing_required process_unknown secret_edit secret_read too_large unsafe_route
-untrusted_signer wakefulness_unknown
+untrusted_signer wakefulness_unknown trakt_unavailable
 """.split()
 )
 NEXT_STEPS = {

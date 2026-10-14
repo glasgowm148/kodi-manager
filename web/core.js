@@ -6,7 +6,7 @@ const ESCAPES = {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;","`"
 const esc = s => String(s ?? "").replace(/[&<>"'`]/g, c => ESCAPES[c]);
 const WRITE_HINT = "Turn on “Enable writes” in Kodi Manager’s add-on settings in Kodi to make changes.";
 const TOKEN_KEY = "bsa_token";
-const session = {token: "", onUnauthorized: null};
+const session = {token: "", onUnauthorized: null, routeSignal: null};
 
 class ApiError extends Error {
   constructor(message, {status = 0, code = "", details = null, operation = null, outcome = "failed"} = {}) {
@@ -89,7 +89,9 @@ async function request(method, path, body, signal) {
     signal?.removeEventListener("abort", cancel);
   }
 }
-function api(path, body, signal) { return request(body ? "POST" : "GET", path, body, signal); }
+/* Reads without their own signal stop when the page that asked for them is left (route() aborts routeSignal).
+   Writes are never cancelled this way: their outcome would become unknown. */
+function api(path, body, signal) { return request(body ? "POST" : "GET", path, body, signal || (body ? undefined : session.routeSignal || undefined)); }
 function apiMethod(method, path, body) { return request(method, path, body); }
 
 function hasDocument() {

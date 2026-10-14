@@ -216,7 +216,7 @@ async function overviewView(refresh = false) {
 function overviewVisible() { return !location.hash || ["#/dashboard", "#dashboard", "#/overview"].includes(location.hash); }
 function scheduleOverview() {
   clearInterval(state.overviewTimer);
-  if (overviewVisible()) state.overviewTimer = setInterval(() => { if (!document.hidden && overviewVisible()) overviewView(true).catch(() => {}); }, 60000);
+  if (overviewVisible() && session.token) state.overviewTimer = setInterval(() => { if (!document.hidden && overviewVisible()) overviewView(true).catch(() => {}); }, 60000);
 }
 
 /* Trends ------------------------------------------------------------------------------------ */

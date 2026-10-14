@@ -124,6 +124,47 @@ def test_prune_removes_unused_rows(tmp_path):
     assert cache.load(MOVIES) is None and cache.load(CONTINUE) is not None
 
 
+def test_refreshes_do_not_keep_an_unshown_row_alive(tmp_path):
+    """A row removed from the skin is refreshed only until PRUNE_AFTER, then pruned."""
+    cache = wc.WidgetCache(str(tmp_path))
+    cache.save(MOVIES, [], now=0)
+    now = 0
+    while now <= wc.PRUNE_AFTER:
+        now += wc.TTL_DEFAULT + 1
+        assert cache.queue_stale(now=now) == (0 if now > wc.PRUNE_AFTER else 1)
+        if cache.take_queue():
+            cache.save(MOVIES, [{"label": "Up", "file": "x"}], now=now)
+    assert cache.load(MOVIES)["used_at"] == 0
+    assert cache.prune(now=now) == 1 and cache.load(MOVIES) is None
+    assert cache.queue_stale(now=now) == 0
+
+
+def test_served_row_keeps_refreshing(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    cache.save(MOVIES, [], now=0)
+    now = 0
+    while now <= 2 * wc.PRUNE_AFTER:
+        now += wc.TTL_DEFAULT + 1
+        cache.touch(MOVIES, now=now)
+        assert cache.queue_stale(now=now) == 1
+        assert cache.take_queue() == [MOVIES]
+        cache.save(MOVIES, [], now=now)
+        assert cache.prune(now=now) == 0
+    assert now - cache.load(MOVIES)["used_at"] <= 86400
+
+
+def test_legacy_entry_without_used_at_falls_back_to_mtime(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    os.makedirs(cache.entries)
+    path = cache.entry_path(MOVIES)
+    Path(path).write_text(json.dumps({"source": MOVIES, "fetched_at": 0, "files": []}))
+    os.utime(path, (100, 100))
+    assert cache.prune(now=wc.PRUNE_AFTER + 50) == 0
+    cache.save(MOVIES, [], now=wc.PRUNE_AFTER)  # A refresh keeps the legacy use time.
+    assert cache.load(MOVIES)["used_at"] == 100
+    assert cache.prune(now=wc.PRUNE_AFTER + 101) == 1
+
+
 # Setters InfoTagVideo has on Kodi 20+; Kodi 19's tag has none of them.
 KODI20_SETTERS = ("setTitle", "setYear", "setMpaa", "setPlot", "setTagLine", "setOriginalTitle", "setIMDBNumber",
                   "setPremiered", "setFirstAired", "setTrailer", "setLastPlayed", "setDateAdded", "setPlaycount",

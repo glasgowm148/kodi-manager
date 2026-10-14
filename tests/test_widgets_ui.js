@@ -337,7 +337,11 @@ test('a delayed previous-page response cannot overwrite the current page or cont
   resolveOld({...h.replies.get(h.lists[0].path),items:[{label:'OLD PAGE TITLE',type:'movie',classification:'media'}]});
   await drainCatalogue();
   assert.deepEqual(visibleLabels(h),afterPage);
-  assert.ok(h.rows().every(row=>!row.innerHTML.includes('OLD PAGE TITLE')));
+  // The late reply fills only its own card (now on this page) instead of leaving it on "Reading live folder…".
+  const own=h.rows().find(row=>row.innerHTML.includes('<h4>'+h.lists[0].label+'<'));
+  assert.ok(own.innerHTML.includes('OLD PAGE TITLE'));
+  assert.doesNotMatch(own.innerHTML,/Reading live folder/);
+  assert.ok(h.rows().filter(row=>row!==own).every(row=>!row.innerHTML.includes('OLD PAGE TITLE')));
   assert.deepEqual(mediaRequests(h),[h.lists[0].path,...h.lists.slice(12,24).map(item=>item.path)]);
   assert.match(h.pageLabels[0].textContent,/Page 2 of 3/);
 });
@@ -538,4 +542,36 @@ test('a layout the server cannot apply is labelled read only', async () => {
   const writable=catalogueHarness([],{sources:[]});
   await settleCatalogue(writable);
   assert.equal(writable.elements.get('#bs-connection').textContent,'Connected to Kodi');
+});
+
+test('saving a draft keeps browser drafts of sections not opened in this visit', async () => {
+  const storage=new Map([['bingie_studio_drafts_v2',JSON.stringify({'section-2':{section_id:'section-2',label:'Shows',rows:[],base:'x'}})]]);
+  const rows=[{id:'home:first',label:'First',path:'special://videoplaylists/'},{id:'home:second',label:'Second',path:'special://videoplaylists/'}];
+  const h=catalogueHarness(rows,{storage,rowPreview:{status:'ok',items:[]}});
+  await settleCatalogue(h);
+  await h.click({moveRow:'0,1'});
+  const saved=JSON.parse(storage.get('bingie_studio_drafts_v2'));
+  assert.deepEqual(Object.keys(saved).sort(),['section-1','section-2']);
+  assert.equal(saved['section-2'].label,'Shows');
+});
+
+test('the studio keeps working after an in-page anchor and stops when the page changes', async () => {
+  const listeners=[];
+  const h=catalogueHarness([], {listCount:2});
+  h.context.window={addEventListener:(name,handler)=>listeners.push({name,handler}),removeEventListener:(name,handler)=>{const i=listeners.findIndex(l=>l.handler===handler);if(i>=0)listeners.splice(i,1);}};
+  h.context.location={hash:'#/widgets'};
+  h.context.currentRoute=()=>h.context.location.hash.split('?')[0];
+  await settleCatalogue(h);
+  const fire=()=>listeners.filter(l=>l.name==='hashchange').forEach(l=>l.handler());
+  const before=h.calls.length;
+  h.context.location.hash='#content'; fire();
+  h.context.location.hash='#/widgets'; fire();
+  h.elements.get('#bs-refresh-catalogue').onclick(); await drainCatalogue();
+  assert.ok(h.calls.length>before,'the catalogue still loads after an anchor link');
+  assert.equal(listeners.length,1);
+  h.context.location.hash='#/backups'; fire();
+  assert.equal(listeners.length,0,'the listener is removed once the page changes');
+  const after=h.calls.length;
+  h.elements.get('#bs-refresh-catalogue').onclick(); await drainCatalogue();
+  assert.equal(h.calls.length,after,'a stopped studio sends no more requests');
 });

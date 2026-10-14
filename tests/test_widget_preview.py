@@ -162,6 +162,18 @@ class SavedRowPreviewTests(unittest.TestCase):
         self.assertIn('$INFO[', result['source']['path'])
         self.assertEqual(result['status'], 'ok')
 
+    def test_auto_cached_row_previews_its_source_directory(self):
+        from widget_cache import cache_url
+        self.row.update(path=cache_url(self.path), action='')
+        for limit, resolver in ((5, lambda value: value.replace('$INFO[Window(Home).Property(km_widgets)]', '4')), (6, lambda value: value)):
+            self.kodi.jsonrpc.reset_mock()
+            with patch.object(widget_preview, 'xbmc', SimpleNamespace(getInfoLabel=resolver)):
+                result = self.preview(limit=limit)
+            self.assertEqual(result['status'], 'ok', result['reason'])
+            self.assertEqual(result['resolved_path'], self.path)
+            self.assertEqual(self.kodi.jsonrpc.call_args.args[1]['directory'], self.path)
+            self.assertIn('mode=cached', result['source']['path'])
+
     def test_unresolved_main_variable_has_a_diagnostic_and_no_directory_request(self):
         self.row.update(path='', action='$VAR[DefNewHub2Content]')
         for api in (None, SimpleNamespace(getInfoLabel=lambda _: ''), SimpleNamespace(getInfoLabel=lambda value: value)):

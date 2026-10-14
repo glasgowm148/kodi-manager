@@ -120,3 +120,26 @@ test('addon view preserves native categories and starts with all settings', asyn
   assert.doesNotMatch(markup, /<h3>Accounts<\/h3>/);
   assert.match(markup, /Default: Off/);
 });
+
+test('a failed backups tab load can be retried by selecting the tab again', async () => {
+  const handlers = [], container = {innerHTML:''};
+  let loads = 0;
+  ui.state = {dirtyChanges:{},writeEnabled:true};
+  ui.api = async endpoint => endpoint === '/api/status' ? {write_enabled:true} : {name:'POV', groups:[]};
+  ui.clearDirty = () => {};
+  ui.updateDirtyBar = () => {};
+  ui.out = () => {};
+  ui.withErrors = fn => async (...args) => { try { return await fn(...args); } catch (_) { return undefined; } };
+  ui.renderAddonBackups = async () => { loads++; if (loads === 1) throw new Error('Kodi did not answer'); container.innerHTML = 'BACKUPS'; };
+  const tab = {dataset:{settingsTab:'backups'}, classList:{toggle(){}}, setAttribute(){}, addEventListener:(_, handler) => handlers.push(handler)};
+  ui.$ = selector => selector === '#addon-backups' ? container : {value:'',addEventListener(){},classList:{toggle(){}}};
+  ui.document = {querySelectorAll:selector => selector === '[data-settings-tab]' ? [tab] : []};
+  await ui.renderAddonSettingsView('plugin.video.pov');
+  await handlers[0]();
+  assert.match(container.innerHTML, /Couldn’t load backups/);
+  await handlers[0]();
+  assert.equal(loads, 2);
+  assert.equal(container.innerHTML, 'BACKUPS');
+  await handlers[0]();
+  assert.equal(loads, 2);
+});

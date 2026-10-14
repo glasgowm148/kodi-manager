@@ -1,3 +1,5 @@
+import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import shutil
@@ -334,3 +336,116 @@ def test_stack_does_not_restore_folders_absent_from_manifest(storage, tmp_path):
     result = backup.restore_stack_backup(index, snapshot["backup_id"])
     assert result["restored"] == [info["addon_id"]]
     assert (extra_live / "settings.xml").read_text() == "current extra"
+
+
+def _self_folder(tmp_path):
+    live = tmp_path / "self"
+    for rel, data in {"settings.xml": "live settings", "baseline.json": "old baseline",
+                      "widget_cache/rows.json": "old rows", "widget_cache/entries/a.json": "old cache",
+                      "fix_backups/fix1/settings.xml": "old fix", "operations/history.sqlite3": "old history",
+                      "log-history.db": "old log", "metrics_history.json": "old metrics",
+                      "installer_seed.json": "old seed", "installer_result.json": "old token"}.items():
+        (live / rel).parent.mkdir(parents=True, exist_ok=True)
+        (live / rel).write_text(data)
+    return live, {"addon_id": backup.SELF_ID, "addon_data_path": str(live)}
+
+
+@pytest.mark.parametrize("kind", ["addon", "stack"])
+def test_restoring_own_snapshot_keeps_internal_stores(storage, tmp_path, kind):
+    live, me = _self_folder(tmp_path)
+    snap = backup.create_backup(me) if kind == "addon" else backup.create_stack_backup([me])
+    folder = Path(storage[0], backup.SELF_ID if kind == "addon" else "_stack", snap["backup_id"],
+                  "addon_data" if kind == "addon" else backup.SELF_ID)
+    # Only user configuration is in Kodi Manager's own snapshot.
+    assert sorted(str(p.relative_to(folder)) for p in folder.rglob("*") if p.is_file()) == [
+        "baseline.json", "settings.xml", "widget_cache/rows.json"]
+    newer = {"fix_backups/fix2/settings.xml": "new fix", "operations/history.sqlite3": "new history",
+             "log-history.db": "new log", "log-history.db-journal": "new journal",
+             "widget_cache/entries/b.json": "new cache", "metrics_history.json": "new metrics",
+             "installer_seed.applied": "digest", "installer_result.json": "new token",
+             "baseline.json": "new baseline", "widget_cache/rows.json": "new rows", "extra.json": "new"}
+    for rel, data in newer.items():
+        (live / rel).parent.mkdir(parents=True, exist_ok=True)
+        (live / rel).write_text(data)
+    if kind == "addon":
+        backup.restore_backup(me, snap["backup_id"])
+    else:
+        backup.restore_stack_backup(SimpleNamespace(get={backup.SELF_ID: me}.get), snap["backup_id"])
+    for rel in ("fix_backups/fix1/settings.xml", "fix_backups/fix2/settings.xml", "operations/history.sqlite3",
+                "log-history.db", "log-history.db-journal", "widget_cache/entries/a.json",
+                "widget_cache/entries/b.json", "metrics_history.json", "installer_seed.applied",
+                "installer_result.json"):
+        assert (live / rel).exists(), rel
+    assert (live / "operations/history.sqlite3").read_text() == "new history"
+    assert (live / "installer_result.json").read_text() == "new token"
+    # User configuration comes back from the snapshot; files it lacks are removed.
+    assert (live / "baseline.json").read_text() == "old baseline"
+    assert (live / "widget_cache/rows.json").read_text() == "old rows"
+    assert not (live / "extra.json").exists()
+
+
+def test_restoring_an_older_own_snapshot_that_holds_internal_stores_still_works(storage, tmp_path):
+    live, me = _self_folder(tmp_path)
+    snap = backup.create_backup(me)
+    folder = Path(storage[0], backup.SELF_ID, snap["backup_id"], "addon_data")
+    # Snapshots taken before internal stores were left out still hold them.
+    (folder / "operations").mkdir()
+    (folder / "operations/history.sqlite3").write_text("ancient history")
+    manifest = json.loads((Path(folder).parent / "manifest.json").read_text())
+    manifest["files_copied"] += 1
+    (Path(folder).parent / "manifest.json").write_text(json.dumps(manifest))
+    (live / "operations/history.sqlite3").write_text("new history")
+    backup.restore_backup(me, snap["backup_id"])
+    assert (live / "operations/history.sqlite3").read_text() == "new history"
+    assert (live / "baseline.json").read_text() == "old baseline"
+
+
+def test_backup_skips_transient_and_vanished_files(storage, monkeypatch):
+    root, settings, info = storage
+    live = settings.parent
+    settings.write_text("settings")
+    for name in ("cache.db-journal", "cache.db-shm", ".settings.xml.ab1_x9zq.tmp",
+                 ".settings.xml.ab1_x9zq.km-tmp", "job.%s.tmp" % ("0" * 32), "gone.json"):
+        (live / name).write_text("x")
+    real_copy = backup._copy_file
+
+    def racing_copy(src, dst, *args, **kwargs):
+        if src.endswith("gone.json"):
+            os.remove(src)  # Deleted by its add-on after the folder was listed.
+        return real_copy(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(backup, "_copy_file", racing_copy)
+    snap = backup.create_backup(info)
+    folder = root / info["addon_id"] / snap["backup_id"] / "addon_data"
+    assert sorted(p.name for p in folder.iterdir()) == ["settings.xml"]
+    assert snap["files_copied"] == 1
+    (live / "cache.db-wal").write_text("committed pages")  # may hold data not yet in cache.db: kept
+    snap = backup.create_backup(info)
+    folder = root / info["addon_id"] / snap["backup_id"] / "addon_data"
+    assert sorted(p.name for p in folder.iterdir()) == ["cache.db-wal", "settings.xml"]
+    assert snap["files_copied"] == 2
+    stack = backup.create_stack_backup([info])
+    assert stack["file_counts"] == {info["addon_id"]: 2}
+    settings.write_text("changed")
+    backup.restore_backup(info, snap["backup_id"])
+    assert settings.read_text() == "settings"
+
+
+def test_restore_still_fails_when_a_snapshot_file_vanishes(storage, monkeypatch):
+    root, settings, info = storage
+    settings.write_text("settings")
+    snap = backup.create_backup(info)
+    real_copy = backup._copy_file
+
+    snapshot_file = str(root / info["addon_id"] / snap["backup_id"] / "addon_data" / "settings.xml")
+
+    def racing_copy(src, dst, *args, **kwargs):
+        if src == snapshot_file:
+            os.remove(src)
+        return real_copy(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(backup, "_copy_file", racing_copy)
+    settings.write_text("live")
+    with pytest.raises(FileNotFoundError):
+        backup.restore_backup(info, snap["backup_id"])
+    assert settings.read_text() == "live"

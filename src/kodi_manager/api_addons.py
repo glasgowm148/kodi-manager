@@ -162,7 +162,7 @@ class AddonRoutes(RequestHandler):
                 raw = parse_user_settings(addon.get("user_settings_path"))
                 if sid not in raw:
                     raise ValueError("Unknown raw setting: %s" % sid)
-                if isinstance(ch.get("value"), (dict, list)):
+                if ch.get("value") is None or isinstance(ch.get("value"), (dict, list)):
                     raise ValueError("Expected a single value: %s" % sid)
                 clean.append({"id": sid, "value": str(ch.get("value")), "source": "raw", "previous": raw[sid]})
                 continue

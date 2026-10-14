@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.36 — 2026-10-15
+
+- Cached rows the skin no longer shows stop refreshing their source add-on and are pruned after 21 days; a background refresh no longer counts as a use.
+- Restoring Kodi Manager's own backup keeps its internal stores (repair copies, operation history, log history, widget cache entries, metrics, installer state); those stores are no longer included in its backups.
+- Backups skip files that vanish while they are copied and transient SQLite journal/shared-memory and temp files, instead of failing the whole snapshot. SQLite -wal files are still copied.
+- TV-layout preview works for rows routed through the widget cache; `$ADDON[...]` labels fall back to skin strings only for the active skin.
+- OS permission errors are reported as server errors instead of "Write Mode is disabled"; a raw setting change without a value is refused instead of writing "None"; `trakt_unavailable` is recorded as a refusal; outside clients are refused before the request path is parsed or recorded.
+- Web UI: a slow page can no longer replace the page you navigated to; the token form is not wiped by polling after a 401; unknown routes open the overview; the layout studio survives in-page anchors; failed backup lists can be retried; previews and saved drafts are no longer lost.
+
 ## 0.7.35 — 2026-10-14
 
 - Add private bounded operation records and authenticated support bundle v1, correlated with nvidia-MCP and exposed in Health checks when supported.

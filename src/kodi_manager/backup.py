@@ -37,6 +37,19 @@ SELF_ID = "service.kodi.addonadmin"
 # restoring an old copy of its own folder keeps the live settings.xml, so a
 # replaced token or a LAN switch turned off cannot come back from a backup.
 SELF_KEEP = ("settings.xml", "device_identity.xml")
+# Kodi Manager's own internal stores in its addon_data folder: fix undo copies,
+# operation history, log history, the widget cache and metrics, and the one-time
+# installer handoff (whose token and LAN switch must not come back either). They
+# are not in its snapshots, and restoring one leaves the live copies alone. The
+# user's cached-row list (widget_cache/rows.json) and baseline.json are restored.
+SELF_STATE_DIRS = ("fix_backups", "operations", "widget_cache")
+SELF_STATE_FILES = ("log-history.db", "metrics_history.json", "installer_seed.json", "installer_seed.applied",
+                    "installer_result.json", "allow_lan_first_run.flag")
+SELF_RESTORED = ("widget_cache/rows.json",)
+# Files that only exist while something is being written: SQLite journals and the
+# temporary siblings of atomic writes (fsutil, _copy_file, profile_transition).
+# A SQLite -wal file can hold committed data not yet in the database, so it is kept.
+_TRANSIENT = re.compile(r"(?:-journal|-shm)$|^\..+\.[a-z0-9_]{8}\.(?:tmp|km-tmp)$|\.[0-9a-f]{32}\.tmp$")
 _ROOT = threading.local()
 
 
@@ -128,8 +141,23 @@ def _backup_path(*parts):
     return str(target)
 
 
-def _source_files(src, skip_top=(), should_stop=None):
-    """Relative paths of the regular files under src, never following symlinks."""
+def _self_state(rel):
+    """True for a path (relative to Kodi Manager's addon_data) of one of its internal stores."""
+    rel = rel.replace(os.sep, "/")
+    top = rel.split("/")[0]
+    if top in SELF_STATE_DIRS:
+        return rel not in SELF_RESTORED
+    return "/" not in rel and any(rel == name or rel.startswith(name + "-") for name in SELF_STATE_FILES)
+
+
+def _self_preserved(rel):
+    return rel in SELF_KEEP or _self_state(rel)
+
+
+def _source_files(src, skip_top=(), should_stop=None, exclude=None):
+    """Relative paths of the regular files under src, never following symlinks.
+
+    Files for which ``exclude(relative path)`` is true are left out."""
     files = []
     for root, dirs, names in tvos_storage.walk(src):
         if should_stop is not None and should_stop():
@@ -141,7 +169,9 @@ def _source_files(src, skip_top=(), should_stop=None):
         for name in names:
             path = os.path.join(root, name)
             if not os.path.islink(path) and tvos_storage.is_file(path):
-                files.append(os.path.relpath(path, src))
+                rel_file = os.path.relpath(path, src)
+                if exclude is None or not exclude(rel_file):
+                    files.append(rel_file)
     return files
 
 
@@ -183,20 +213,25 @@ def _copy_file(src, dst, should_stop=None):
         raise
 
 
-def _copytree(src, dst, skip_top=(), should_stop=None, preserve_files=()):
+def _copytree(src, dst, skip_top=(), should_stop=None, preserve_files=(), exclude=None, snapshot=False):
     """Copy the regular files under src into dst. Symlinks are skipped on both sides:
     a link in src is not followed, and a link in dst is replaced, never written through.
 
     Each file is replaced atomically. ``should_stop`` is asked during traversal and copying;
-    when it returns true the copy raises BackupAborted."""
+    when it returns true the copy raises BackupAborted. Files for which ``exclude`` is true
+    are not copied. With ``snapshot`` (taking a backup of a live folder), transient files
+    (SQLite journals, atomic-write temporaries) are left out, and a file removed between
+    listing and copying is skipped rather than failing the whole backup."""
     files = []
     if not src or not os.path.isdir(src):
         if src and tvos_storage.userdata(src):
             raise ValueError("tvOS source directory is missing; virtual XML cannot be enumerated safely")
         return files
     os.makedirs(dst, exist_ok=True)
-    for rel_file in _source_files(src, skip_top, should_stop):
+    for rel_file in _source_files(src, skip_top, should_stop, exclude):
         if rel_file in preserve_files:
+            continue
+        if snapshot and _TRANSIENT.search(os.path.basename(rel_file)):
             continue
         if should_stop is not None and should_stop():
             raise BackupAborted("Snapshot stopped before it completed")
@@ -210,10 +245,15 @@ def _copytree(src, dst, skip_top=(), should_stop=None, preserve_files=()):
         d = os.path.join(dst, rel_file)
         if os.path.islink(d):
             os.remove(d)
-        if should_stop is None:
-            _copy_file(os.path.join(src, rel_file), d)
-        else:
-            _copy_file(os.path.join(src, rel_file), d, should_stop=should_stop)
+        try:
+            if should_stop is None:
+                _copy_file(os.path.join(src, rel_file), d)
+            else:
+                _copy_file(os.path.join(src, rel_file), d, should_stop=should_stop)
+        except FileNotFoundError:
+            if snapshot and not os.path.lexists(os.path.join(src, rel_file)):
+                continue  # Deleted after it was listed: it is simply not in this snapshot.
+            raise
         files.append(rel_file)
     return files
 
@@ -268,10 +308,11 @@ def prune(scope, keep=None):
     return removed
 
 
-def _replace_tree(src, dst, skip_top=(), expected_files=None, preserve_files=()):
+def _replace_tree(src, dst, skip_top=(), expected_files=None, preserve_files=(), preserve=None):
     """Make dst match src: copy every file from src, then remove files that src lacks.
 
-    Top-level folders in `skip_top` are left untouched on both sides. Refuses
+    Top-level folders in `skip_top` are left untouched on both sides, as are files
+    in ``preserve_files`` or for which ``preserve(relative path)`` is true. Refuses
     (ValueError, before touching dst) when src is missing, when it holds a
     different number of files than its manifest recorded, or when it is empty
     and the manifest does not say the snapshot was empty.
@@ -283,16 +324,18 @@ def _replace_tree(src, dst, skip_top=(), expected_files=None, preserve_files=())
         raise ValueError("Backup is incomplete (%d of %d files); nothing was restored" % (count, expected_files))
     if expected_files is None and count == 0:
         raise ValueError("Backup is empty; nothing was restored")
-    wanted = set(_copytree(src, dst, skip_top, preserve_files=preserve_files)) | set(preserve_files)
+    wanted = set(_copytree(src, dst, skip_top, preserve_files=preserve_files, exclude=preserve)) | set(preserve_files)
     for root, _dirs, names in tvos_storage.walk(dst, topdown=False):
         rel = os.path.relpath(root, dst)
         if rel.split(os.sep)[0] in skip_top:
             continue
         for name in names:
             path = os.path.join(root, name)
-            if os.path.relpath(path, dst) not in wanted:
+            rel_path = os.path.relpath(path, dst)
+            if rel_path not in wanted and not (preserve is not None and preserve(rel_path)):
                 tvos_storage.remove(path)
-        if root != dst and not os.path.islink(root) and not tvos_storage.listdir(root):
+        if (root != dst and not os.path.islink(root) and not (preserve is not None and preserve(rel))
+                and not tvos_storage.listdir(root)):
             os.rmdir(root)
 
 
@@ -300,8 +343,10 @@ def _restore_folder(aid, src, dest, skip, expected):
     """Make the live folder of ``aid`` match a snapshot (see _replace_tree)."""
     # Never transiently replace the live token/identity with snapshot values:
     # concurrent authenticated reads must see the same owner throughout restore.
+    # Its internal stores (operation history, fix undo copies, caches) stay as they are.
     _replace_tree(src, dest, skip, expected_files=expected,
-                  preserve_files=SELF_KEEP if aid == SELF_ID else ())
+                  preserve_files=SELF_KEEP if aid == SELF_ID else (),
+                  preserve=_self_preserved if aid == SELF_ID else None)
 
 
 def _write_manifest(dest, manifest):
@@ -336,7 +381,8 @@ def create_backup(addon_info, kodi_version="", adapter="", protect=()):
     ts, backup_id, dest = allocate_backup(aid, protect)
     src = live_addon_data(addon_info)
     with discard_on_failure(dest):
-        files = _copytree(src, os.path.join(dest, "addon_data"), skip_top=("backups",) if aid == SELF_ID else ())
+        files = _copytree(src, os.path.join(dest, "addon_data"), skip_top=("backups",) if aid == SELF_ID else (),
+                          exclude=_self_state if aid == SELF_ID else None, snapshot=True)
         manifest = {
             "backup_id": backup_id,
             "addon_id": aid,
@@ -442,7 +488,8 @@ def create_stack_backup(addons, kodi_version="", note="", should_stop=None):
             if src and os.path.isdir(src):
                 files = _copytree(src, os.path.join(root, addon["addon_id"]),
                                   skip_top=("backups",) if addon["addon_id"] == SELF_ID else (),
-                                  should_stop=should_stop)
+                                  should_stop=should_stop,
+                                  exclude=_self_state if addon["addon_id"] == SELF_ID else None, snapshot=True)
                 os.makedirs(os.path.join(root, addon["addon_id"]), exist_ok=True)
                 counts[addon["addon_id"]] = len(files)
                 for rel in files:

@@ -114,7 +114,8 @@ async function renderAddonSettingsView(aid) {
     document.querySelectorAll("[data-settings-panel]").forEach(panel => panel.classList.toggle("hidden", panel.dataset.settingsPanel !== name));
     if (name === "backups" && !backupsLoaded) {
       backupsLoaded = true;
-      await renderAddonBackups(aid, $("#addon-backups"));
+      try { await renderAddonBackups(aid, $("#addon-backups")); }
+      catch (error) { backupsLoaded = false; $("#addon-backups").innerHTML = '<p class="muted">Couldn’t load backups. Select Backups again to retry.</p>'; throw error; }
     }
   })));
   const applyFilter = () => {

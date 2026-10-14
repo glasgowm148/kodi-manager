@@ -257,7 +257,7 @@ def with_row_titles(kodi, index, entries):
         if aid in addons and (addons[aid] or {}).get("name"):
             names[aid] = addons[aid]["name"]
     skin = kodi.get_active_skin() if hasattr(kodi, "get_active_skin") else {}
-    titles = row_titles(sources, translate(SHORTCUTS_DATA), label_resolver(kodi, (skin or {}).get("path", "")), names)
+    titles = row_titles(sources, translate(SHORTCUTS_DATA), label_resolver(kodi, (skin or {}).get("path", ""), (skin or {}).get("addon_id", "")), names)
     out = []
     for entry in entries:
         info = titles.get(entry.get("source"), {})

@@ -33,6 +33,15 @@ def test_string_ids_resolve_through_kodi_addons_and_po_files():
     assert resolve_label("32043", lambda n: 1 / 0, po_strings={"32043": "From po"}) == "From po", "Kodi errors fall back"
 
 
+def test_addon_label_uses_skin_strings_only_for_the_active_skin():
+    po = {"32050": "Skin text"}
+    failing = lambda addon, n: 1 / 0  # noqa: E731
+    assert resolve_label("$ADDON[plugin.video.pov 32050]", kodi_string, failing, po, "skin.bingie") == ""
+    assert resolve_label("$ADDON[plugin.video.pov 32050]", kodi_string, lambda a, n: "", po, "skin.bingie") == ""
+    assert resolve_label("$ADDON[plugin.video.pov 32050]", kodi_string, failing, po) == ""
+    assert resolve_label("$ADDON[skin.bingie 32050]", kodi_string, failing, po, "skin.bingie") == "Skin text"
+
+
 def test_paths_become_readable_titles():
     assert route_title(HISTORY) == {"title": "Trakt history (movies)", "addon": "TMDb Helper"}
     assert route_title(RECS)["title"] == "Trakt recommendations (shows)"
@@ -84,6 +93,8 @@ def test_skin_strings_fall_back_to_the_english_po_file(tmp_path):
     assert skin_strings(str(tmp_path / "skin.bingie")) == {"32043": "Recently watched"}
     resolve = label_resolver(SimpleNamespace(get_localized_string=lambda n: ""), str(tmp_path / "skin.bingie"))
     assert resolve("32043") == "Recently watched"
+    assert resolve("$ADDON[skin.bingie 32043]") == "Recently watched"
+    assert resolve("$ADDON[plugin.video.pov 32043]") == "", "another add-on's id is not a skin string"
     assert skin_strings(str(tmp_path / "nothing")) == {}
 
 

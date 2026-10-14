@@ -58,11 +58,12 @@ def clean_text(text):
     return " ".join(text.split())[:80]
 
 
-def resolve_label(label, kodi_string=None, addon_string=None, po_strings=None):
+def resolve_label(label, kodi_string=None, addon_string=None, po_strings=None, skin_id=None):
     """Turn a stored label into text, or "" when it is only an id nobody can resolve.
 
     ``kodi_string(n)`` asks Kodi (core and active-skin strings); ``addon_string(addon, n)``
-    asks an add-on; ``po_strings`` is {id: text} from the skin's strings.po files.
+    asks an add-on; ``po_strings`` is {id: text} from the strings.po files of the
+    skin ``skin_id``, used for ``$ADDON[...]`` labels only when they name that skin.
     """
     text = clean_text(label)
     if not text:
@@ -81,7 +82,7 @@ def resolve_label(label, kodi_string=None, addon_string=None, po_strings=None):
         candidates.append(lambda: addon_string(addon, int(number)))
     if kodi_string and not addon:
         candidates.append(lambda: kodi_string(int(number)))
-    if po_strings:
+    if po_strings and (not addon or (skin_id and addon.casefold() == skin_id.casefold())):
         candidates.append(lambda: po_strings.get(number, ""))
     for candidate in candidates:
         try:
@@ -217,12 +218,14 @@ def skin_strings(skin_path):
     return {}
 
 
-def label_resolver(kodi, skin_path=""):
+def label_resolver(kodi, skin_path="", skin_id=""):
     """resolve(label) using Kodi's strings, the add-on's own strings, then the skin's strings.po."""
     po = skin_strings(skin_path)
+    # Kodi installs an add-on in a folder named after its id.
+    skin_id = skin_id or (os.path.basename(os.path.normpath(skin_path)) if skin_path else "")
     kodi_string = getattr(kodi, "get_localized_string", None)
     addon_string = getattr(kodi, "get_addon_string", None)
-    return lambda label: resolve_label(label, kodi_string, addon_string, po)
+    return lambda label: resolve_label(label, kodi_string, addon_string, po, skin_id)
 
 
 def row_titles(sources, shortcuts_root, resolve=lambda label: clean_text(label), addon_names=None):

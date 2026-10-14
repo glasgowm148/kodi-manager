@@ -402,8 +402,12 @@ class WidgetCache:
         now = time.time() if now is None else now
         old = self.load(source)
         digest = _digest(files)
+        # A refresh is not a use: keep the last time a row was shown so rows the
+        # skin no longer requests stop refreshing and are pruned (see used_at).
+        used_at = now if old is None else self.used_at(old, self._mtime(self.entry_path(source)))
         self.record_success(source)
-        self._write(self.entry_path(source), {"source": source, "fetched_at": now, "digest": digest,
+        self._write(self.entry_path(source), {"source": source, "fetched_at": now, "used_at": used_at,
+                                              "digest": digest,
                                               "pages": _clamp_pages(pages), "more": bool(more),
                                               "next_art": next_art,
                                               "content": content_for(source, files), "files": files})
@@ -438,13 +442,32 @@ class WidgetCache:
         now = time.time() if now is None else now
         return now - float(entry.get("fetched_at", 0)) > ttl_for(entry["source"])
 
-    def touch(self, source, now=None):
-        """Record use via the file mtime (cheap) at most once a day."""
+    @staticmethod
+    def _mtime(path):
+        try:
+            return os.path.getmtime(path)
+        except OSError:
+            return 0
+
+    @staticmethod
+    def used_at(entry, mtime=0):
+        """Last time a row was shown. Entries written before ``used_at`` existed
+        fall back to the file mtime / fetch time."""
+        try:
+            return float(entry["used_at"])
+        except (KeyError, TypeError, ValueError):
+            return max(float(mtime or 0), float(entry.get("fetched_at", 0) or 0))
+
+    def touch(self, source, now=None, entry=None):
+        """Record use in the entry's ``used_at`` at most once a day."""
         path = self.entry_path(source)
         now = time.time() if now is None else now
+        entry = self.load(source) if entry is None else entry
+        if not entry or ("used_at" in entry and now - self.used_at(entry) <= 86400):
+            return
         try:
-            if now - os.path.getmtime(path) > 86400:
-                os.utime(path, (now, now))
+            # Re-read right before writing so a refresh saved since serve() loaded the entry is kept.
+            self._write(path, dict(self.load(source) or entry, used_at=now), fsync=False)
         except OSError:
             pass
 
@@ -517,16 +540,20 @@ class WidgetCache:
             try:
                 with open(path, encoding="utf-8") as fh:
                     entry = json.load(fh)
-                entry["_used_at"] = os.path.getmtime(path)
-            except (OSError, ValueError):
+                if not isinstance(entry, dict) or not isinstance(entry.get("source"), str):
+                    continue
+                entry["_used_at"] = self.used_at(entry, os.path.getmtime(path))
+            except (OSError, ValueError, TypeError):
                 continue
-            if isinstance(entry, dict) and isinstance(entry.get("source"), str):
-                out.append(entry)
+            out.append(entry)
         return out
 
     def queue_stale(self, now=None, progress_only=False, everything=False):
+        now = time.time() if now is None else now
         count = 0
         for entry in self.all_entries():
+            if now - entry["_used_at"] > PRUNE_AFTER:
+                continue  # No longer shown by the skin: let prune() drop it instead of refreshing.
             progress = is_progress(entry["source"])
             if progress_only and not progress:
                 continue
@@ -539,7 +566,7 @@ class WidgetCache:
         now = time.time() if now is None else now
         removed = 0
         for entry in self.all_entries():
-            if now - max(entry["_used_at"], float(entry.get("fetched_at", 0))) > PRUNE_AFTER:
+            if now - entry["_used_at"] > PRUNE_AFTER:
                 try:
                     os.remove(self.entry_path(entry["source"]))
                     removed += 1
@@ -720,7 +747,7 @@ def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
                 cache.request(source, priority=True, pages=pages)
             elif cache.is_stale(entry):
                 cache.request(source, priority=True)
-            cache.touch(source)
+            cache.touch(source, entry=entry)
         more = view_more_url(source, bool(entry.get("more")))
         if excluded and not full:
             more = cache_url(source, reload=False, pages=pages, hide_watched=hide_watched,

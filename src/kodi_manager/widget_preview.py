@@ -19,10 +19,12 @@ try:
     from .skin_layout import inspect_layout, _validate_destination
     from .widget_catalog import browse_directory, listing_path, clean_label, PROPERTIES, _media_item, _RPC_SLOTS
     from .widget_plugin import collect_family_directory
+    from .widget_cache import source_from_cache_url
 except ImportError:
     from skin_layout import inspect_layout, _validate_destination
     from widget_catalog import browse_directory, listing_path, clean_label, PROPERTIES, _media_item, _RPC_SLOTS
     from widget_plugin import collect_family_directory
+    from widget_cache import source_from_cache_url
 
 _DYNAMIC = re.compile(r"\$(?:VAR|INFO)\[", re.I)
 _FAVOURITES = re.compile(r"ActivateWindow\(\s*(?:FavouritesBrowser|10134)\s*\)", re.I)
@@ -84,6 +86,15 @@ def _directory(value):
     return value
 
 
+def _cached_source(path):
+    """The source row behind a Kodi Manager cached widget URL (mode=cached), or None."""
+    try:
+        source = source_from_cache_url(path) if isinstance(path, str) and path.startswith("plugin://") else None
+    except ValueError:
+        return None
+    return source if isinstance(source, str) and source else None
+
+
 def _validate_path(path, index):
     if not isinstance(path, str) or not path or len(path) > 12000 or any(ord(c) < 32 for c in path):
         raise ValueError("This row does not resolve to a directory.")
@@ -102,6 +113,10 @@ def _validate_path(path, index):
         listing_path(path, index)
         return "video_plugin"
     if parsed.scheme == "plugin" and parsed.netloc == "service.kodi.addonadmin":
+        source = _cached_source(path)
+        if source and not _cached_source(source):
+            # widget_cache_auto rewrites rows to cached URLs; preview the source row itself.
+            return _validate_path(source, index)
         try:
             _validate_destination(index, path)
         except (OSError, ValueError, ET.ParseError) as error:
@@ -209,6 +224,7 @@ def row_preview(kodi, index, body):
         result["reason"] = "Kodi could not resolve this skin variable in the current skin context." if dynamic else "This row has no directory source."
         return result
     path = _directory(value)
+    path = _cached_source(path) or path
     try:
         if path is None:
             items, limits, skipped = _favourites(kodi, index, limit)

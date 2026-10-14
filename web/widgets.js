@@ -100,7 +100,9 @@ async function widgetStudioView() {
     const rebuild=document.createElement("button");rebuild.className="action";rebuild.textContent="Rebuild skin menu";$b("#bs-notice").append(rebuild);
     rebuild.onclick=async()=>{rebuild.disabled=true;try{const started=await api("/api/widgets/layout/rebuild",{},abort.signal);if(!started.started)throw Error("Kodi did not start the rebuild.");notice("Rebuild requested. The skin will refresh after its menu has been generated.");}catch(error){offerRebuild(error.code === "playback_active" ? "Stop playback, then rebuild the skin menu." : error.message+" Try again, or restart Kodi to rebuild the menu.",true);}};
   }
-  function saveDrafts() { review = null; try { localStorage.setItem(storageKey, JSON.stringify(drafts)); } catch (_) {} renderDraftStatus(); }
+  // Saved drafts of sections not opened in this visit are kept alongside the ones open now.
+  function storeDrafts() { try { localStorage.setItem(storageKey, JSON.stringify({...savedDrafts,...drafts})); } catch (_) {} }
+  function saveDrafts() { review = null; storeDrafts(); renderDraftStatus(); }
   function dirty() { const current = draft(); return !!current && JSON.stringify(widgetLayoutBody(current)) !== current.base; }
   function canEdit() { return selected === "new" ? !!layout?.new_section?.available : section()?.editable === true; }
   function renderDraftStatus() {
@@ -274,8 +276,9 @@ async function widgetStudioView() {
         const result = await readFolder(entry.path); if (!active() || catalogRun !== epoch) return;
         entry.result = result; entry.status = "loaded"; discover(entry,result);
       } catch (error) { if (!active() || catalogRun !== epoch) return; entry.status = "error"; entry.reason = error.message; }
-      if (run !== pageRun) return;
+      // Show this result even if the batch was superseded (renderEntry skips cards no longer on the page).
       renderEntry(entry); progress();
+      if (run !== pageRun) return;
     }
     finishPreviewBatch(run,catalogRun);
   }
@@ -379,7 +382,7 @@ async function widgetStudioView() {
         const fresh=await api("/api/widgets/layout",undefined,abort.signal); if(!active()) return;
         const current=Array.isArray(fresh?.sections) ? [...widgetVisibleSections(fresh),...(fresh.inactive_sections || [])].find(s => s.id === selected) : null;
         if (fresh?.revision !== result.revision || !current || widgetSectionBase(selected,current) !== draft().base) { notice("This section changed on your TV after you started this draft (on another device or in Kodi). Applying it would undo those newer changes. Export the section if you want to keep your edits, then use Refresh from TV and make them again.",true); return; }
-        draft().revision = result.revision; try { localStorage.setItem(storageKey, JSON.stringify(drafts)); } catch (_) {}
+        draft().revision = result.revision; storeDrafts();
       }
       review={body,result,section:selected,revision:draft().revision};
       $b("#bs-review-content").innerHTML=`<div class="bs-dialog-heading"><div><p class="muted">Review changes before they reach the TV</p><h3>${esc(draft().label)}</h3></div><button class="bs-icon-button" id="bs-close-review" aria-label="Close review">×</button></div><p>${section()?.rows.length || 0} saved rows → ${draft().rows.length} proposed rows. Only this section will be changed.</p><ol>${draft().rows.map(row => `<li><b>${esc(row.label)}</b><span>${esc((row.breadcrumb || []).join(" › ") || widgetSourceDescription(row) || sourceName(row.path))}${row.filtered ? " · Family " + esc(row.maxRating) : ""}</span></li>`).join("")}</ol>${result.reasons?.length ? `<div class="bs-notice bs-error">${result.reasons.map(esc).join("<br>")}</div>` : ""}<p class="muted">A backup is created first. Existing rows omitted from this draft will be removed from this section.</p><div class="bs-actions"><button class="bs-save" id="bs-apply" ${!result.can_apply ? "disabled" : ""}>Apply to TV</button><button class="action" id="bs-cancel-review">Keep editing</button></div><p id="bs-apply-result" role="status"></p>`;
@@ -387,7 +390,12 @@ async function widgetStudioView() {
       $b("#bs-apply").onclick=async applyEvent=>{ const applyButton=applyEvent.currentTarget;applyButton.disabled=true;try { const result=await api("/api/widgets/layout/apply",{...review.body,expected_revision:review.revision},abort.signal); delete drafts[review.section];delete savedDrafts[review.section];saveDrafts();dialog.close();await loadLayout();offerRebuild(`Section saved. Backup ${result.backup_id}. Rebuild Bingie to show the changes on your TV.`); } catch(error) { $b("#bs-apply-result").textContent=error.message+" Close this preview and review again before retrying."; } };
     } catch(error) { notice(error.message,true); } finally { renderDraftStatus(); }
   };
-  window.addEventListener("hashchange",() => { abort.abort();clearTimeout(searchTimer);epoch++;pageRun++; },{once:true});
+  // Stop only when the page changes: in-page anchors (Skip to content) keep the studio working.
+  const mountedRoute = typeof currentRoute === "function" ? currentRoute() : "";
+  const stop = () => { if (abort.signal.aborted) return; window.removeEventListener("hashchange",onHashChange);abort.abort();clearTimeout(searchTimer);epoch++;pageRun++; };
+  const onHashChange = () => { if (!location.hash.startsWith("#/") || typeof currentRoute === "function" && currentRoute() === mountedRoute) return; stop(); };
+  window.addEventListener("hashchange",onHashChange);
+  if (typeof session !== "undefined") session.routeSignal?.addEventListener("abort",stop,{once:true});
   const results=await Promise.allSettled([api("/api/widgets/sources",undefined,abort.signal),loadLayout()]);
   if(!active()) return;
   if(results[0].status==="fulfilled") { sources=results[0].value.sources || []; chosenSources=new Set((savedSources ?? widgetRecommendedSources(sources)).filter(id => sources.some(source => source.addon_id === id)));renderSources();startCatalogue();if(draft())renderCurrent(); }

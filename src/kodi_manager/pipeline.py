@@ -11,7 +11,7 @@ try:
     from .backup import allocate_backup, finish_backup, discard_on_failure, create_file_backup, _copytree, _with_backup_root
     from . import fenlight_db, tvos_storage
     from .fenlight_db import DB_EDITABLE_TYPES
-    from .write_policy import check_writable
+    from .write_policy import check_writable, WriteRefused
 except ImportError:
     from settings_schema import parse_schema, flatten_settings, parse_user_settings, setting_description
     from stack_detector import detect_stack
@@ -22,7 +22,7 @@ except ImportError:
     import fenlight_db
     import tvos_storage
     from fenlight_db import DB_EDITABLE_TYPES
-    from write_policy import check_writable
+    from write_policy import check_writable, WriteRefused
 
 PLAYER_IDS = ["plugin.video.fenlight", "plugin.video.fen", "plugin.video.pov", "plugin.video.umbrella", "plugin.video.seren"]
 HELPER_IDS = ["plugin.video.tmdb.bingie.helper", "plugin.video.themoviedb.helper"]
@@ -438,7 +438,7 @@ def pipeline_backup(index, kodi_version="", pipeline_obj=None):
             addon = index.get(aid)
             src = translate(addon.get("addon_data_path") or "") if addon else ""
             if src and os.path.isdir(src):
-                _copytree(src, os.path.join(dest, aid))
+                _copytree(src, os.path.join(dest, aid), snapshot=True)
                 included.append(aid)
             else:
                 skipped.append(aid)
@@ -567,7 +567,7 @@ def _write_config(write_enabled, config):
 
 def apply_pipeline_settings(kodi, index, changes, write_enabled=False, kodi_version="", config=None):
     if not write_enabled:
-        raise PermissionError("Writes disabled in service settings")
+        raise WriteRefused("Writes disabled in service settings")
     plan = _plan_changes(index, changes, _write_config(write_enabled, config))
     backup = _backup_touched(plan, kodi_version)
     changed = _apply_plan(kodi, plan)
@@ -576,7 +576,7 @@ def apply_pipeline_settings(kodi, index, changes, write_enabled=False, kodi_vers
 
 def apply_account_settings(kodi, index, changes, write_enabled=False, kodi_version="", config=None):
     if not write_enabled:
-        raise PermissionError("Writes disabled in service settings")
+        raise WriteRefused("Writes disabled in service settings")
     plan = _plan_changes(index, changes, _write_config(write_enabled, config), account=True)
     backup = _backup_touched(plan, kodi_version)
     changed = _apply_plan(kodi, plan)
@@ -585,7 +585,7 @@ def apply_account_settings(kodi, index, changes, write_enabled=False, kodi_versi
 
 def switch_player(kodi, index, target, apply_to=None, keep_current_as_fallback=True, write_enabled=False, kodi_version=""):
     if not write_enabled:
-        raise PermissionError("Writes disabled in service settings")
+        raise WriteRefused("Writes disabled in service settings")
     addon = index.get(target)
     if not addon or not (addon.get("installed") or addon.get("config_present")):
         raise ValueError("%s is not detected. Install/configure it first, then rescan." % target)

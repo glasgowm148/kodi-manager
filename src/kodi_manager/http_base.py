@@ -303,15 +303,19 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._handler_returned = False
         self._deliberate_refusal = False
         self._operation_result = None
+        # Outside clients and wrong Host names are turned away (unrecorded) before the
+        # request target is even parsed, so they cannot add 400s to the history.
+        if not self._client_allowed() or not self._host_allowed():
+            return
         path = self._target()
+        if path is None:
+            return
         for route_method, pattern, name, needs_write, _ in self.route_table:
-            if method == route_method and path and pattern.match(path):
+            if method == route_method and pattern.match(path):
                 self._operation_name = name
                 # Read-only POST routes (needs_write False) cannot leave an unknown outcome.
                 self._operation_write = needs_write
                 break
-        if path is None or not self._client_allowed() or not self._host_allowed():
-            return
         is_api = path == "/api" or path.startswith("/api/")
         if not is_api:
             self._operation_started = None
@@ -345,14 +349,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         try:
             self._check_context()
             if needs_write and not self.state.config.get("write_enabled"):
-                raise PermissionError("Write Mode is disabled")
+                raise WriteRefused("Write Mode is disabled")
             if method in ("POST", "PATCH"):
                 self.body()  # Validate framing before even handlers that take no body fields.
                 self._check_context()
                 if not self._auth(path):
                     return
                 if needs_write and not self.state.config.get("write_enabled"):
-                    raise PermissionError("Write Mode is disabled")
+                    raise WriteRefused("Write Mode is disabled")
                 try:
                     from .tvos_storage import require_active
                 except ImportError:
@@ -376,8 +380,6 @@ class RequestHandler(BaseHTTPRequestHandler):
         except WriteRefused as exc:
             self._deliberate_refusal = True
             self.err(403, exc.code, str(exc))
-        except PermissionError as exc:
-            self.err(403, "write_disabled", str(exc))
         except ValueError as exc:
             setting_id = getattr(exc, "setting_id", None)
             self.err(400, value_code, str(exc), {"setting_id": setting_id} if setting_id else None)
