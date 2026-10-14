@@ -25,7 +25,7 @@ invalid IDs are replaced. Credentials must never be used as correlation IDs.
 | `outcome` | `succeeded`, `refused`, `failed`, `partial` or `unknown` |
 | `backup_refs`, `recovery_refs` | Existing opaque backup IDs, including undo IDs; no paths or profile/add-on map keys |
 
-Refusal, authentication, incompatible/missing APIs, connection failures and invalid responses
+Refusals, sign-in failures, missing or incompatible APIs, connection failures and invalid responses
 remain distinguishable through codes such as `write_disabled`, `unauthorized`, `unsupported`,
 `unreachable` and `invalid_response`. API errors retain their existing original `error.code`.
 An `allow` decision does not imply success. A successful response to a queued job confirms

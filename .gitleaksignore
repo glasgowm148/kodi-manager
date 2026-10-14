@@ -1,0 +1,2 @@
+# False positive: prose "authentication, incompatible/missing" in docs/operation-records.md (reworded in the next commit)
+330a61d0d453cb3535559fb97dfde0e82e1cbf8e:docs/operation-records.md:generic-api-key:28
