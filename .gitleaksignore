@@ -1,2 +1,3 @@
-# False positive: prose "authentication, incompatible/missing" in docs/operation-records.md (reworded in the next commit)
+# Reviewed false positives (prose and this file's own earlier comment), not secrets.
 330a61d0d453cb3535559fb97dfde0e82e1cbf8e:docs/operation-records.md:generic-api-key:28
+e8971b2be76ab32652b84f903acbe6c5f4ebb493:.gitleaksignore:generic-api-key:1
