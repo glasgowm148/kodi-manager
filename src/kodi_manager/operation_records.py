@@ -231,6 +231,36 @@ class History:
             db.close()
             raise
 
+    def _append_shared(self, row):
+        # Another process (Kodi Manager and nvidia-MCP, or a second Kodi profile) may hold the
+        # write lock briefly; Windows reports that sooner than POSIX. Retry for at most ~2 s.
+        attempts = 6
+        for attempt in range(attempts):
+            db = self._connect()
+            try:
+                with db:
+                    db.execute("BEGIN IMMEDIATE")
+                    db.execute(
+                        "DELETE FROM operations WHERE at < ?",
+                        (int(time.time()) - RETENTION,),
+                    )
+                    db.execute(
+                        "DELETE FROM operations WHERE id NOT IN (SELECT id FROM operations ORDER BY id DESC LIMIT ?)",
+                        (MAX_RECORDS - 1,),
+                    )
+                    db.execute(
+                        "INSERT INTO operations (at, record) VALUES (?, ?)",
+                        (row["recorded_at"], json.dumps(row, separators=(",", ":"))),
+                    )
+                return
+            except sqlite3.OperationalError as exc:
+                busy = "locked" in str(exc) or "busy" in str(exc)
+                if not busy or attempt == attempts - 1:
+                    raise
+            finally:
+                db.close()
+            time.sleep(0.05 * (2 ** attempt))
+
     def append(self, row):
         try:
             row = clean(row)
@@ -240,24 +270,7 @@ class History:
                 if self.directory is None:
                     self._rows.append(row)
                 else:
-                    db = self._connect()
-                    try:
-                        with db:
-                            db.execute("BEGIN IMMEDIATE")
-                            db.execute(
-                                "DELETE FROM operations WHERE at < ?",
-                                (int(time.time()) - RETENTION,),
-                            )
-                            db.execute(
-                                "DELETE FROM operations WHERE id NOT IN (SELECT id FROM operations ORDER BY id DESC LIMIT ?)",
-                                (MAX_RECORDS - 1,),
-                            )
-                            db.execute(
-                                "INSERT INTO operations (at, record) VALUES (?, ?)",
-                                (row["recorded_at"], json.dumps(row, separators=(",", ":"))),
-                            )
-                    finally:
-                        db.close()
+                    self._append_shared(row)
             self.available = True
             return True
         except Exception:
