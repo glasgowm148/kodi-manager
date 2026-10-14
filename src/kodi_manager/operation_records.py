@@ -220,7 +220,7 @@ class History:
             os.chmod(path, 0o600)
         except OSError:
             pass
-        db = sqlite3.connect(path, timeout=0.25)
+        db = sqlite3.connect(path, timeout=1.0)
         try:
             db.execute("PRAGMA max_page_count=256")
             db.execute(
@@ -231,35 +231,43 @@ class History:
             db.close()
             raise
 
-    def _append_shared(self, row):
+    def _retry(self, work):
         # Another process (Kodi Manager and nvidia-MCP, or a second Kodi profile) may hold the
-        # write lock briefly; Windows reports that sooner than POSIX. Retry for at most ~2 s.
+        # write lock briefly, including while the table is created on connect; Windows reports
+        # that sooner than POSIX. Retry busy/locked errors for at most about 2 s.
         attempts = 6
         for attempt in range(attempts):
-            db = self._connect()
+            db = None
             try:
-                with db:
-                    db.execute("BEGIN IMMEDIATE")
-                    db.execute(
-                        "DELETE FROM operations WHERE at < ?",
-                        (int(time.time()) - RETENTION,),
-                    )
-                    db.execute(
-                        "DELETE FROM operations WHERE id NOT IN (SELECT id FROM operations ORDER BY id DESC LIMIT ?)",
-                        (MAX_RECORDS - 1,),
-                    )
-                    db.execute(
-                        "INSERT INTO operations (at, record) VALUES (?, ?)",
-                        (row["recorded_at"], json.dumps(row, separators=(",", ":"))),
-                    )
-                return
+                db = self._connect()
+                return work(db)
             except sqlite3.OperationalError as exc:
                 busy = "locked" in str(exc) or "busy" in str(exc)
                 if not busy or attempt == attempts - 1:
                     raise
             finally:
-                db.close()
+                if db is not None:
+                    db.close()
             time.sleep(0.05 * (2 ** attempt))
+
+    def _append_shared(self, row):
+        def work(db):
+            with db:
+                db.execute("BEGIN IMMEDIATE")
+                db.execute(
+                    "DELETE FROM operations WHERE at < ?",
+                    (int(time.time()) - RETENTION,),
+                )
+                db.execute(
+                    "DELETE FROM operations WHERE id NOT IN (SELECT id FROM operations ORDER BY id DESC LIMIT ?)",
+                    (MAX_RECORDS - 1,),
+                )
+                db.execute(
+                    "INSERT INTO operations (at, record) VALUES (?, ?)",
+                    (row["recorded_at"], json.dumps(row, separators=(",", ":"))),
+                )
+
+        self._retry(work)
 
     def append(self, row):
         try:
@@ -284,17 +292,13 @@ class History:
                 if self.directory is None:
                     rows = list(reversed(self._rows))
                 else:
-                    db = self._connect()
-                    try:
-                        rows = [
-                            json.loads(item[0])
-                            for item in db.execute(
-                                "SELECT record FROM operations WHERE at >= ? AND length(record) <= 4096 ORDER BY id DESC LIMIT ?",
-                                (int(time.time()) - RETENTION, limit),
-                            )
-                        ]
-                    finally:
-                        db.close()
+                    rows = self._retry(lambda db: [
+                        json.loads(item[0])
+                        for item in db.execute(
+                            "SELECT record FROM operations WHERE at >= ? AND length(record) <= 4096 ORDER BY id DESC LIMIT ?",
+                            (int(time.time()) - RETENTION, limit),
+                        )
+                    ])
             return [
                 r
                 for r in (clean(row) for row in rows)
