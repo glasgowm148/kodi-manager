@@ -249,6 +249,7 @@ class History:
                 if db is not None:
                     db.close()
             time.sleep(0.05 * (2**attempt))
+        raise sqlite3.OperationalError("database is locked")
 
     def _append_shared(self, row):
         def work(db):
