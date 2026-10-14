@@ -686,8 +686,16 @@ async function healthView(){
     <details class="panel"><summary>Setup &amp; access information</summary><p class="muted">View-only mode and optional add-on choices are configuration, not faults.</p>${checklist(groups.info)}</details>
     <details class="panel"><summary>Device &amp; add-on figures</summary><dl class="facts-grid">${Object.entries(h.stats || {}).map(([k,v]) => `<div><dt>${esc(HEALTH_STATS[k] || k.replace(/_/g," "))}</dt><dd>${esc(statValue(k,v))}</dd></div>`).join("")}</dl></details>
     ${(h.log_issues || []).length ? `<details class="panel"><summary>Recent issue examples</summary>${logIssueCards(h.log_issues, 'all', true)}</details>` : ''}
-    <details class="panel log-problems"><summary>Latest recorded entries</summary><h4>Errors</h4><pre>${esc(logBlock(h.recent_errors))}</pre><h4>Warnings</h4><pre>${esc(logBlock(h.recent_warnings))}</pre><a href="#/kodi-logs">See all retained warnings and errors</a></details>`);
+    <details class="panel log-problems"><summary>Latest recorded entries</summary><h4>Errors</h4><pre>${esc(logBlock(h.recent_errors))}</pre><h4>Warnings</h4><pre>${esc(logBlock(h.recent_warnings))}</pre><a href="#/kodi-logs">See all retained warnings and errors</a></details>
+    ${h.diagnostics?.support_bundle_version === 1 ? '<section class="panel"><h3>Support diagnostics</h3><p>Private versions, metrics and recent operation references. Excludes credentials, setting values and viewing history.</p><button type="button" class="action" id="supportDiagnostics">View support bundle</button><div id="supportBundle" role="status"></div></section>' : ''}`);
   bindHealthActions();
+  const support = $("#supportDiagnostics");
+  if (support) support.onclick = withErrors(async () => {
+    const bundle = await api("/api/diagnostics/support");
+    if (bundle?.schema_version !== 1) throw new ApiError("Unsupported support bundle version.", {code:"unsupported"});
+    const failures = (bundle.failures || []).slice(0, 20);
+    $("#supportBundle").innerHTML = `<p>${bundle.operations?.length || 0} recent operations. ${bundle.history?.history_available === false ? 'History unavailable; operation results still apply.' : ''}</p>${failures.map(f => `<p><b>${esc(f.reason_code)}</b> · ${esc(f.outcome)}<br>${esc(f.next_step)}<br>Operation reference: <code>${esc(f.operation_id)}</code></p>`).join('')}<details><summary>Bundle JSON</summary><pre>${esc(JSON.stringify(bundle, null, 2))}</pre></details>`;
+  });
 }
 function healthAction(check){
   const action = check && check.action;

@@ -254,8 +254,10 @@ def test_nightly_checkpoint_stops_when_the_service_exits(monkeypatch):
     m = service.start_maintenance(kodi, is_busy=lambda: False, stopping=stop.is_set)
     m.checkpoint()
     assert seen["should_stop"]() is False
+    assert seen["index_should_stop"]() is False
     stop.set()                          # Kodi is quitting or switching profile
     assert seen["should_stop"]() is True
+    assert seen["index_should_stop"]() is True
 
 def test_nightly_checkpoint_interrupted_by_playback_is_retried_later():
     class Deferred(Exception):

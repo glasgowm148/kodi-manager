@@ -49,6 +49,7 @@ _ADDON = r"/api/addons/(?P<aid>[A-Za-z0-9._-]+)"
 
 # (method, path regex, handler method, needs Write Mode, error code for ValueError)
 ROUTES = [
+    ("GET", r"/api/diagnostics/support", "diagnostics_support", False, "bad_request"),
     ("GET", r"/api/portable/state", "portable_state", False, "bad_request"),
     ("GET", r"/api/portable/file", "portable_file", False, "bad_request"),
     ("GET", r"/api/widget-cache/url", "widget_cache_url", False, "bad_request"),

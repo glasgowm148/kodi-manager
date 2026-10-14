@@ -23,11 +23,16 @@ import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import parse_qs, quote_plus, unquote, urlsplit
 
 WEB = Path(__file__).resolve().parents[1] / "web"
 sys.path.insert(0, str(WEB.parent / "src"))
 from kodi_manager.addon_catalog import annotate_addons  # noqa: E402
+from kodi_manager.diagnostics import CAPABILITIES, support_bundle  # noqa: E402
+from kodi_manager.http_base import RequestHandler  # noqa: E402
+from kodi_manager.operation_records import History, correlation  # noqa: E402
+from kodi_manager.server import ROUTE_TABLE  # noqa: E402
 TOKEN = "demo-token-0000"
 VERSION = "0.7.31-demo"
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
@@ -283,6 +288,7 @@ class Demo:
 
 
 def make_handler(demo):
+    operations = History()
     class Handler(BaseHTTPRequestHandler):
         server_version = "KodiManagerDemo"
 
@@ -302,10 +308,12 @@ def make_handler(demo):
             self.wfile.write(data)
 
         def ok(self, data):
-            self.send(200, {"ok": True, "data": data})
+            meta = RequestHandler._finish_operation(self, "ok", "succeeded", data)
+            self.send(200, {"ok": True, "data": data, **meta})
 
         def fail(self, status, code, message):
-            self.send(status, {"ok": False, "code": code, "error": {"code": code, "message": message, "details": {}}})
+            meta = RequestHandler._finish_operation(self, code, "refused")
+            self.send(status, {"ok": False, "code": code, "error": {"code": code, "message": message, "details": {}}, **meta})
 
         def do_GET(self):
             self.route("GET")
@@ -330,6 +338,10 @@ def make_handler(demo):
                 return self.toggle(path)
             if not path.startswith("/api/"):
                 return self.static(path)
+            self.state = SimpleNamespace(operations=operations)
+            self._operation_started = time.monotonic()
+            self._correlation_id = correlation(self.headers.get("X-Correlation-ID"))
+            self._operation_name = next((name for verb, pattern, name, _, _ in ROUTE_TABLE if verb == method and pattern.match(path)), "unknown")
             if self.headers.get("Authorization") != "Bearer " + TOKEN:
                 return self.fail(401, "unauthorized", "Missing or invalid bearer token")
             body = self.body() if method != "GET" else {}
@@ -372,7 +384,12 @@ def make_handler(demo):
                 simple = {"/api/status": d.status, "/api/overview": d.overview, "/api/health": d.health, "/api/addons": d.addons,
                           "/api/stack": d.stack}
                 if path in simple:
-                    return simple[path]()
+                    result = simple[path]()
+                    if path == "/api/health":
+                        result["diagnostics"] = dict(CAPABILITIES)
+                    return result
+                if path == "/api/diagnostics/support":
+                    return support_bundle(operations, {}, d.writes)
                 if path == "/api/metrics/history":
                     days = (query.get("days") or ["7"])[0]
                     if not days.isdigit() or not 1 <= int(days) <= 7:

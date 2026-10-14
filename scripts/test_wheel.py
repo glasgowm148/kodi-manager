@@ -1,5 +1,6 @@
 """Install the release wheel in a fresh venv and run the isolated local smoke check."""
 import re
+import argparse
 import subprocess
 import sys
 import tempfile
@@ -9,8 +10,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dist", type=Path, default=ROOT / "dist")
+    args = parser.parse_args()
     version = re.search(r'^VERSION = "([^"]+)"$', (ROOT / "src/kodi_manager/version.py").read_text(), re.M).group(1)
-    wheels = list((ROOT / "dist").glob("*-" + version + "-*.whl"))
+    wheels = list(args.dist.glob("*-" + version + "-*.whl"))
     if len(wheels) != 1:
         raise ValueError("Build exactly one current-version wheel first")
     with tempfile.TemporaryDirectory() as directory:

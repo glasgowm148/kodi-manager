@@ -24,6 +24,7 @@ try:
     from .addon_index import AddonIndex
     from .kodi_api import translate
     from .backup import root_scope
+    from .operation_records import CONTEXT, History, correlation, record, REFUSALS, next_step
 except ImportError:
     from version import VERSION
     from auth import authorized
@@ -33,6 +34,7 @@ except ImportError:
     from addon_index import AddonIndex
     from kodi_api import translate
     from backup import root_scope
+    from operation_records import CONTEXT, History, correlation, record, REFUSALS, next_step
 
 MAX_HANDLERS = 16
 # A request line and headers must arrive within this many seconds in total. The handler
@@ -59,6 +61,7 @@ class AdminState:
         self.web_root = web_root
         self.index = AddonIndex(kodi)
         self.logs = []
+        self.operations = History(os.path.join(data_dir or translate("special://profile/addon_data/service.kodi.addonadmin"), "operations"))
 
     def log(self, msg):
         safe = str(redact({"msg": msg})["msg"])
@@ -149,11 +152,46 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def ok(self, data=None):
-        self._send(200, {"ok": True, "data": data if data is not None else {}})
+        payload = data if data is not None else {}
+        try:
+            json.dumps(payload)
+        except (TypeError, ValueError) as exc:
+            # Answer with an error envelope rather than dropping the connection mid-request.
+            self.err(500, "server_error", "Result could not be encoded: %s" % exc)
+            return
+        meta = self._finish_operation("ok", "succeeded", data)
+        self._send(200, {"ok": True, "data": payload, **meta})
 
     def err(self, status, code, message, details=None):
+        started = getattr(self, "_action_started", False)
+        outcome = "refused" if code in REFUSALS else "failed"
+        # After a write starts, only a refusal the code raised on purpose (before the handler
+        # returned) proves nothing changed; OS errors mapped onto refusal codes leave it unknown.
+        deliberate = getattr(self, "_deliberate_refusal", False) and code != "bad_request"
+        if started and getattr(self, "_operation_write", False) and (code not in REFUSALS or not deliberate):
+            outcome = "unknown"
+        meta = self._finish_operation(code, outcome, getattr(self, "_operation_result", None))
         self._send(status, {"ok": False, "code": code,
-                            "error": {"code": code, "message": str(redact(message)), "details": redact(details or {})}})
+                            "error": {"code": code, "message": str(redact(message)), "details": redact(details or {})}, **meta})
+
+    def _finish_operation(self, code, outcome, result=None):
+        if not getattr(self, "_operation_started", None):
+            return {}
+        if outcome == "succeeded" and isinstance(result, dict) and result.get("failed"):
+            code, outcome = "operation_failed", "partial"
+        row = record(self._operation_name, self._correlation_id, self._operation_started, code, outcome, result)
+        context = CONTEXT.get()
+        if context:
+            row["backup_refs"] = list(dict.fromkeys(row["backup_refs"] + context["backup_refs"]))[:20]
+        history = getattr(self.state, "operations", None)
+        try:
+            saved = history is not None and history.append(row)
+        except Exception:
+            saved = False
+        if history is not None and not saved:
+            history.available = False
+        # Persistence is best effort. A completed action remains completed.
+        return {"operation": row, "history_recorded": bool(saved), "next_step": next_step("outcome_unknown" if outcome == "unknown" else code) if code != "ok" else ""}
 
     # --- request checks ----------------------------------------------------
 
@@ -180,12 +218,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             return True
         if _private_client(self.client_address[0]):
             return True
+        self._operation_started = None  # Outside callers must not churn the bounded history.
         self.err(403, "forbidden", "Non-private client rejected")
         return False
 
     def _host_allowed(self):
         if host_allowed(self.headers.get("Host"), self.state.config.get("host")):
             return True
+        self._operation_started = None
         self.err(403, "host_not_allowed", "Use the TV's IP address, a .local name or localhost")
         return False
 
@@ -243,12 +283,38 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._dispatch("PATCH")
 
     def _dispatch(self, method):
+        supplied = self.headers.get("X-Correlation-ID")
+        if supplied == self.state.config.get("auth_token"):
+            supplied = None
+        context = {"id": correlation(supplied), "backup_refs": []}
+        token = CONTEXT.set(context)
+        try:
+            self._dispatch_inner(method, context)
+        finally:
+            CONTEXT.reset(token)
+
+    def _dispatch_inner(self, method, context):
         self._body = None
+        self._operation_started = time.monotonic()
+        self._correlation_id = context["id"]
+        self._operation_name = "unknown"
+        self._operation_write = False
+        self._action_started = False
+        self._handler_returned = False
+        self._deliberate_refusal = False
+        self._operation_result = None
         path = self._target()
+        for route_method, pattern, name, needs_write, _ in self.route_table:
+            if method == route_method and path and pattern.match(path):
+                self._operation_name = name
+                # Read-only POST routes (needs_write False) cannot leave an unknown outcome.
+                self._operation_write = needs_write
+                break
         if path is None or not self._client_allowed() or not self._host_allowed():
             return
         is_api = path == "/api" or path.startswith("/api/")
         if not is_api:
+            self._operation_started = None
             if method != "GET":
                 self.err(404, "not_found", "Route not found")
                 return
@@ -296,14 +362,19 @@ class RequestHandler(BaseHTTPRequestHandler):
             backup_directory = getattr(self.state, "backup_directory", None)
             if backup_directory:
                 with root_scope(backup_directory):
+                    self._action_started = True
                     result = handler(**match.groupdict())
             else:
+                self._action_started = True
                 result = handler(**match.groupdict())
+            self._operation_result = result
+            self._handler_returned = True
             self._check_context()
-            self.ok(result)
         except ApiError as exc:
+            self._deliberate_refusal = not self._handler_returned
             self.err(exc.status, exc.code, str(exc), exc.details)
         except WriteRefused as exc:
+            self._deliberate_refusal = True
             self.err(403, exc.code, str(exc))
         except PermissionError as exc:
             self.err(403, "write_disabled", str(exc))
@@ -314,6 +385,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.err(404, "not_found", exc.args[0] if exc.args and isinstance(exc.args[0], str) else "Not found")
         except Exception as exc:
             self.err(500, "server_error", str(exc))
+        else:
+            # A lost response cannot undo a completed action. Never send a second envelope.
+            self.ok(result)
 
     def _check_context(self):
         if getattr(self.state, "retired", False):

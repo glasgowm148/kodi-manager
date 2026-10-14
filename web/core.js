@@ -9,12 +9,14 @@ const TOKEN_KEY = "bsa_token";
 const session = {token: "", onUnauthorized: null};
 
 class ApiError extends Error {
-  constructor(message, {status = 0, code = "", details = null} = {}) {
+  constructor(message, {status = 0, code = "", details = null, operation = null, outcome = "failed"} = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.details = details;
+    this.operation = operation;
+    this.outcome = operation?.outcome || outcome;
   }
 }
 
@@ -38,6 +40,12 @@ function dashboardLink(origin, token) {
 const REQUEST_TIMEOUT_MS = 60000;
 async function request(method, path, body, signal) {
   const headers = {"Content-Type": "application/json"};
+  let correlation = "";
+  if (globalThis.crypto?.getRandomValues) {
+    correlation = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
+    headers["X-Correlation-ID"] = correlation;
+  }
+  const mayWrite = method !== "GET";
   const sentToken = session.token;
   if (sentToken) headers.Authorization = "Bearer " + sentToken;
   const controller = new AbortController();
@@ -60,22 +68,22 @@ async function request(method, path, body, signal) {
         throw error;
       }
       storeToken("");
-      const error = new ApiError(json?.error?.message || "The access token is missing or no longer valid.", {status: 401, code: "unauthorized"});
+      const error = new ApiError(json?.error?.message || "The access token is missing or no longer valid.", {status: 401, code: "unauthorized", operation: json?.operation});
       if (typeof session.onUnauthorized === "function") session.onUnauthorized(error);
       throw error;
     }
-    if (!json || typeof json !== "object") {
-      throw new ApiError(`Kodi Manager sent an unexpected response (HTTP ${res.status}).`, {status: res.status, code: "bad_response"});
+    if (!json || typeof json !== "object" || typeof json.ok !== "boolean" || (json.ok && !("data" in json))) {
+      throw new ApiError(`Kodi Manager sent an unexpected response (HTTP ${res.status}).`, {status: res.status, code: mayWrite ? "invalid_response" : "bad_response", outcome: mayWrite ? "unknown" : "failed", operation: {correlation_id: correlation, outcome: mayWrite ? "unknown" : "failed"}});
     }
     if (!json.ok) {
-      throw new ApiError(json.error?.message || `Request failed (HTTP ${res.status}).`, {status: res.status, code: json.error?.code || "", details: json.error?.details || null});
+      throw new ApiError(json.error?.message || `Request failed (HTTP ${res.status}).`, {status: res.status, code: json.error?.code || "", details: json.error?.details || null, operation: json.operation});
     }
     return json.data;
   } catch (error) {
-    if (timedOut) throw new ApiError("Kodi Manager took too long to reply. Kodi may still be working; check the current state before trying a change again.", {code: "timeout"});
+    if (timedOut) throw new ApiError("Kodi Manager took too long to reply. Kodi may still be working; check the current state before trying a change again.", {code: mayWrite ? "outcome_unknown" : "timeout", outcome: mayWrite ? "unknown" : "failed", operation: {correlation_id: correlation, outcome: mayWrite ? "unknown" : "failed"}});
     if (error instanceof ApiError) throw error;
     if (error && error.name === "AbortError") throw error;
-    throw new ApiError("Couldn’t reach Kodi Manager. Check that Kodi is running and this device is on the same network.", {code: "network"});
+    throw new ApiError("Couldn’t reach Kodi Manager. Check that Kodi is running and this device is on the same network.", {code: mayWrite ? "outcome_unknown" : "network", outcome: mayWrite ? "unknown" : "failed", operation: {correlation_id: correlation, outcome: mayWrite ? "unknown" : "failed"}});
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", cancel);
@@ -143,7 +151,9 @@ const ERROR_TEXT = {
   forbidden: ["Only devices on your home network can use this dashboard.", ""],
   addon_not_allowed: ["Kodi Manager only edits the add-ons in your playback setup.", "To edit another add-on, add it under “Also allow editing these add-ons” in Kodi Manager’s settings on the TV."],
   trakt_unavailable: ["The Trakt add-on isn’t installed or is turned off.", "Install or enable script.trakt in Kodi, then try again."],
-  server_error: ["Kodi Manager hit a problem doing that.", "Try again. If it keeps happening, look at Advanced → Service log."],
+  server_error: ["Kodi Manager hit a problem doing that.", "Inspect current state and the support bundle before retrying a change."],
+  outcome_unknown: ["The change may already have completed.", "Inspect current state and recovery references before retrying. Do not repeat the write automatically."],
+  invalid_response: ["Manager sent an invalid reply.", "Inspect current state before retrying a change."],
   bad_response: ["The TV sent a reply the dashboard didn’t understand.", "Reload this page. If Kodi Manager was just updated, restart Kodi."]
 };
 const ERROR_ACCEPTS_DETAIL = new Set(["bad_request", "invalid_pipeline_setting", "account_write_blocked", "switch_player_blocked", "not_found"]);
@@ -156,7 +166,10 @@ function friendlyError(error) {
 }
 function friendlyMessage(error) {
   const f = friendlyError(error);
-  return f.hint ? `${f.title} ${f.hint}` : f.title;
+  const unknown = error?.outcome === "unknown" && error?.code !== "outcome_unknown" ? " The change may already have completed. Inspect current state before retrying." : "";
+  const op = error?.operation;
+  const id = /^[0-9a-f]{32}$/.test(op?.operation_id || "") ? op.operation_id : /^[0-9a-f]{32}$/.test(op?.correlation_id || "") ? op.correlation_id : "";
+  return (f.hint ? `${f.title} ${f.hint}` : f.title) + unknown + (id ? ` Operation reference: ${id}.` : "");
 }
 
 function reportError(error) {

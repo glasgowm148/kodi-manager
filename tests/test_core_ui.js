@@ -115,7 +115,8 @@ test('stalled headers or response bodies time out and release a busy button with
     assert.equal(calls, 1);
     assert.equal(cleared, 1);
     assert.equal(storage.get('bsa_token'), 'still-valid');
-    assert.match(errors[0], /Check the current state before trying a change again/);
+    assert.match(errors[0], /may already have completed/);
+    assert.match(errors[0], /Do not repeat the write automatically/);
   }
 });
 

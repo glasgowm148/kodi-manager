@@ -177,6 +177,9 @@ class MetricsHistory:
     def load(self) -> List[Dict[str, Any]]:
         """Stored samples, oldest first. A missing or damaged file is an empty history."""
         try:
+            # _bounded() caps the samples; the file adds a small wrapper around them.
+            if os.path.getsize(self.path) > self.max_bytes + 4096:
+                return []
             with open(self.path, encoding="utf-8") as handle:
                 data = json.load(handle)
         except (OSError, ValueError):

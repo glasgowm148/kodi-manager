@@ -1,2 +1,2 @@
 """Shared library, HTTP service and companion version."""
-VERSION = "0.7.34"
+VERSION = "0.7.35"

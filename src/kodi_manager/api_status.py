@@ -13,6 +13,7 @@ try:
     from .kodi_api import debug_paths, translate
     from .validation import redact
     from .metrics import HISTORY_FILE, MetricsHistory
+    from .diagnostics import CAPABILITIES, support_bundle
 except ImportError:
     from http_base import ApiError, RequestHandler
     from version import VERSION
@@ -22,6 +23,7 @@ except ImportError:
     from kodi_api import debug_paths, translate
     from validation import redact
     from metrics import HISTORY_FILE, MetricsHistory
+    from diagnostics import CAPABILITIES, support_bundle
 
 
 class StatusRoutes(RequestHandler):
@@ -58,7 +60,18 @@ class StatusRoutes(RequestHandler):
         return detect_stack(self.state.kodi, self.state.index)
 
     def api_health(self):
-        return health_summary(self.state.kodi, self.state.index, self.state.config)
+        result = health_summary(self.state.kodi, self.state.index, self.state.config)
+        result["diagnostics"] = dict(CAPABILITIES)
+        history = getattr(self.state, "operations", None)
+        result["operations"] = history.summary() if history else {"history_available": False}
+        return result
+
+    def api_diagnostics_support(self):
+        """Cached metadata only: no log scan, provider/network probe, playback or profile reads."""
+        history = getattr(self.state, "operations", None)
+        samples = MetricsHistory(translate(HISTORY_FILE)).load()
+        latest = samples[-1] if samples else {}
+        return support_bundle(history, latest, self.state.config.get("write_enabled"))
 
     def api_integrations(self):
         self.state.index.refresh()

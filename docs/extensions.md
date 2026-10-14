@@ -34,7 +34,9 @@ through files in the coordinator's master-profile `addon_data` folder:
 - Each plugin call registers `jobs/<pid>/<id>.json` (`profile`, `addon`) while it runs, and waits for
   the threads it started before removing it.
 - On exit the service waits up to 10 seconds for its own threads, then writes
-  `drained/<generation>/service.kodi.addonadmin.json` (or `drain-diagnostic.json` with thread names).
+  `drained/<generation>/service.kodi.addonadmin.json`. While threads are still pending it also writes
+  `drain-diagnostic.json` with their names, so that file can be present even after a successful drain;
+  only a missing ack means the drain did not finish.
 
 Only generation, process ID, profile paths and add-on IDs are stored. Without a coordinator none of
 these files are read or written, threads are not tagged and the monitor is a plain `xbmc.Monitor`.

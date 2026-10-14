@@ -14,10 +14,12 @@ try:
     from . import tvos_storage
     from .kodi_api import translate
     from .fsutil import atomic_write_bytes, atomic_write_json
+    from .operation_records import capture_backup
 except ImportError:
     import tvos_storage
     from kodi_api import translate
     from fsutil import atomic_write_bytes, atomic_write_json
+    from operation_records import capture_backup
 
 
 DEFAULT_RETENTION = 20
@@ -324,6 +326,7 @@ def _read_manifest(dest, strict=False):
 def finish_backup(scope, dest, manifest, protect=()):
     """Commit the snapshot before retention can discard older recovery points."""
     _write_manifest(dest, manifest)
+    capture_backup(manifest["backup_id"])
     prune(scope, keep=set(protect) | {manifest["backup_id"]})
 
 

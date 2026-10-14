@@ -111,7 +111,7 @@ class Refresher:
                 files, more, next_art = _cache.fetch_listing(self.jsonrpc, source, pages)
                 if should_stop():
                     self.cache.request(source, priority=_cache.is_progress(source))
-                    return done
+                    continue  # The loop head re-queues the rest of this claimed batch.
                 previous = self.cache.load(source)
                 if not files and previous and previous.get("files") and not _cache.is_progress(source):
                     # Many providers report a failed fetch as a successful empty directory.
@@ -124,7 +124,7 @@ class Refresher:
             except Exception as exc:
                 if should_stop():
                     self.cache.request(source, priority=_cache.is_progress(source))
-                    return done
+                    continue  # The loop head re-queues the rest of this claimed batch.
                 self.cache.record_failure(source, self.clock())
                 self.cache.request(source, priority=_cache.is_progress(source))
                 self.log("Widget refresh failed (%s); preserving cached row" % type(exc).__name__)

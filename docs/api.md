@@ -261,3 +261,10 @@ that marker's timestamp/ID, independently of pagination, filters and per-issue r
 They do not imply a current fault or a full day of observation. Check `available` and
 `catching_up` before interpreting a zero. Original totals and Health severity remain
 unchanged; the dashboard labels them as recorded history.
+
+## Optional operation diagnostics
+
+Development builds advertise operation-record/support-bundle v1 under `/api/health`'s
+`diagnostics` field. `GET /api/diagnostics/support` requires the same bearer token as other APIs.
+It adds no write permission. See [operation records](operation-records.md) for envelope fields,
+correlation, failure outcomes, limits and privacy. Existing response data remains compatible.

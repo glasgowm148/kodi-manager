@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.35 — 2026-10-14
+
+- Add private bounded operation records and authenticated support bundle v1, correlated with nvidia-MCP and exposed in Health checks when supported.
+- Preserve service reason codes and distinguish invalid replies, connection failures and ambiguous write outcomes in clients. Never automatically resend writes; completed actions stay successful when history recording fails.
+- Retain backup/undo references without arguments, credentials, paths, profiles or viewing history. Bound cached metric reads and add concurrent-storage, backend, MCP interface and browser verification.
+
 ## 0.7.34 — 2026-10-13
 
 - Cancel add-on index rebuilding between entries during nightly checkpoint preparation, preserving the last complete index instead of publishing partial results.
