@@ -447,10 +447,10 @@ class WidgetCache:
         try:
             return os.path.getmtime(path)
         except OSError:
-            return 0
+            return 0.0
 
     @staticmethod
-    def used_at(entry, mtime=0):
+    def used_at(entry, mtime=0.0):
         """Last time a row was shown. Entries written before ``used_at`` existed
         fall back to the file mtime / fetch time."""
         try:

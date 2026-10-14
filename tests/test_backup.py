@@ -357,7 +357,7 @@ def test_restoring_own_snapshot_keeps_internal_stores(storage, tmp_path, kind):
     folder = Path(storage[0], backup.SELF_ID if kind == "addon" else "_stack", snap["backup_id"],
                   "addon_data" if kind == "addon" else backup.SELF_ID)
     # Only user configuration is in Kodi Manager's own snapshot.
-    assert sorted(str(p.relative_to(folder)) for p in folder.rglob("*") if p.is_file()) == [
+    assert sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file()) == [
         "baseline.json", "settings.xml", "widget_cache/rows.json"]
     newer = {"fix_backups/fix2/settings.xml": "new fix", "operations/history.sqlite3": "new history",
              "log-history.db": "new log", "log-history.db-journal": "new journal",
