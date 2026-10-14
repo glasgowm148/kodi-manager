@@ -248,7 +248,7 @@ class History:
             finally:
                 if db is not None:
                     db.close()
-            time.sleep(0.05 * (2 ** attempt))
+            time.sleep(0.05 * (2**attempt))
 
     def _append_shared(self, row):
         def work(db):
@@ -292,13 +292,15 @@ class History:
                 if self.directory is None:
                     rows = list(reversed(self._rows))
                 else:
-                    rows = self._retry(lambda db: [
-                        json.loads(item[0])
-                        for item in db.execute(
-                            "SELECT record FROM operations WHERE at >= ? AND length(record) <= 4096 ORDER BY id DESC LIMIT ?",
-                            (int(time.time()) - RETENTION, limit),
-                        )
-                    ])
+                    rows = self._retry(
+                        lambda db: [
+                            json.loads(item[0])
+                            for item in db.execute(
+                                "SELECT record FROM operations WHERE at >= ? AND length(record) <= 4096 ORDER BY id DESC LIMIT ?",
+                                (int(time.time()) - RETENTION, limit),
+                            )
+                        ]
+                    )
             return [
                 r
                 for r in (clean(row) for row in rows)
