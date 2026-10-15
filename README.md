@@ -17,9 +17,9 @@
   <a href="#documentation">Documentation</a>
 </p>
 
-Inspect and configure Kodi from your browser. Kodi Manager is an add-on with a local dashboard
-for status, add-on settings, playback routing, backups and home-screen rows. Use it from a phone or
-computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-MCP).
+**Manage Kodi from your browser.** Search add-on settings, diagnose problems and restore backups
+from your phone or computer. Kodi Manager also covers playback routing and home-screen rows.
+Use the dashboard on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-MCP).
 
 **Set up with an agent:** [Copy the guided setup prompt](#one-prompt-for-both).
 It asks which TV you have and explains how to find its IP address.
@@ -27,6 +27,17 @@ It asks which TV you have and explains how to find its IP address.
 ![Kodi Manager overview with six device and service status cards](docs/images/dashboard.png)
 
 *Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
+
+<details>
+<summary><strong>Watch: find an add-on setting (45-second demo)</strong></summary>
+
+![Captioned Kodi Manager walkthrough: search for quality, open the matching add-on and compare the saved value with its default](docs/media/settings-demo.gif)
+
+[Download the shareable MP4](docs/media/settings-demo.mp4) · [Text walkthrough and captions](docs/demo.md)
+
+*Silent, edited capture of the real dashboard using synthetic data in view-only mode. No TV was connected.*
+
+</details>
 
 > [!NOTE]
 > Preview software. Targets Kodi 19+; cached rows need Kodi 20+. Live use is on one customized

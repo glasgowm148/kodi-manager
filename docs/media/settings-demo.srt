@@ -1,0 +1,39 @@
+1
+00:00:00,000 --> 00:00:04,000
+Kodi Manager: find an add-on setting from your browser.
+
+2
+00:00:04,000 --> 00:00:09,000
+Start with your Kodi dashboard.
+Use a browser on your phone or computer.
+
+3
+00:00:09,000 --> 00:00:15,000
+Search across your add-ons.
+Type a setting name — here, “quality”.
+
+4
+00:00:15,000 --> 00:00:21,000
+Find the setting and its add-on.
+This example finds “Highest quality” in POV.
+
+5
+00:00:21,000 --> 00:00:26,000
+Open the matching add-on.
+Inspect the settings in one browser page.
+
+6
+00:00:26,000 --> 00:00:33,000
+Narrow the list to the exact option.
+Filter by its name, description or setting ID.
+
+7
+00:00:33,000 --> 00:00:40,000
+See the saved value beside its default.
+Here: 1080p saved, with a 4K default.
+
+8
+00:00:40,000 --> 00:00:45,000
+Try Kodi Manager — browser dashboard, AI optional.
+github.com/glasgowm148/kodi-manager
+Open Quick start for TV setup or the guided agent prompt.
