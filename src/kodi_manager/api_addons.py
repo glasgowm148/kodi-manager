@@ -89,16 +89,21 @@ class AddonRoutes(RequestHandler):
         """
         playing = self._playback_started() if playback else None
 
-        def should_stop():
-            if getattr(self.state, "retired", False):
-                should_stop.reason = "stopping"
-            elif playing is not None and playing():
-                should_stop.reason = "playback"
-            else:
-                return False
-            return should_stop.reason
-        should_stop.reason = None
-        return should_stop
+        state = self.state
+
+        class ShouldStop:
+            reason = None
+
+            def __call__(self):
+                if getattr(state, "retired", False):
+                    self.reason = "stopping"
+                elif playing is not None and playing():
+                    self.reason = "playback"
+                else:
+                    return False
+                return self.reason
+
+        return ShouldStop()
 
     @staticmethod
     def _backup_aborted(exc, should_stop, what):

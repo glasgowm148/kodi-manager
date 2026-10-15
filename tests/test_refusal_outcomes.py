@@ -133,7 +133,8 @@ def test_nan_and_infinity_bodies_are_bad_requests(service, raw):
 
 # --- Wrong-typed bodies and bodies JSON cannot hold are refusals, not 500s or unknowns ----
 
-@pytest.mark.parametrize("raw", ['{"start": 1e999}', '{"x": -1e400}', '[' * 100000 + ']' * 100000])
+@pytest.mark.parametrize("raw", ['{"start": 1e999}', '{"x": -1e400}', '[' * 100000 + ']' * 100000],
+                         ids=["overflow", "negative_overflow", "deep_nesting"])
 def test_out_of_range_numbers_and_deep_nesting_are_bad_requests(service, raw):
     status, body = service.request("POST", "/api/widgets/browse", raw)
     assert status == 400 and body["code"] == "bad_request"
