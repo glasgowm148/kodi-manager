@@ -33,7 +33,7 @@ It asks which TV you have and explains how to find its IP address.
 
 ![Captioned Kodi Manager walkthrough: search for quality, open the matching add-on and compare the saved value with its default](docs/media/settings-demo.gif)
 
-[Download the shareable MP4](docs/media/settings-demo.mp4) · [Text walkthrough and captions](docs/demo.md)
+[Download the shareable MP4](https://github.com/glasgowm148/kodi-manager/raw/refs/heads/main/docs/media/settings-demo.mp4) · [Text walkthrough and captions](docs/demo.md)
 
 *Silent, edited capture of the real dashboard using synthetic data in view-only mode. No TV was connected.*
 

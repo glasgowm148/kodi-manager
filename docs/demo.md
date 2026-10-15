@@ -1,6 +1,6 @@
 # Find an add-on setting from your browser
 
-[Watch the captioned demo](media/settings-demo.gif) · [Download the MP4](media/settings-demo.mp4) · [Download captions](media/settings-demo.srt)
+[Watch the captioned demo](media/settings-demo.gif) · [Download the MP4](https://github.com/glasgowm148/kodi-manager/raw/refs/heads/main/docs/media/settings-demo.mp4) · [Download captions](https://github.com/glasgowm148/kodi-manager/raw/refs/heads/main/docs/media/settings-demo.srt)
 
 The 45-second video is silent, with captions built in. It is an edited capture of the actual
 dashboard against `scripts/demo_server.py`: synthetic data, view-only mode and no TV connection.
