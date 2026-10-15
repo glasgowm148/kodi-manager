@@ -16,10 +16,10 @@ import os
 import re
 
 try:
-    from .fsutil import atomic_write_json, atomic_write_text, path_lock
+    from .fsutil import atomic_write_json, atomic_write_text, interprocess_lock, path_lock
     from .write_policy import RequestRefused
 except ImportError:
-    from fsutil import atomic_write_json, atomic_write_text, path_lock
+    from fsutil import atomic_write_json, atomic_write_text, interprocess_lock, path_lock
     from write_policy import RequestRefused
 
 KINDS = ("addon_setting", "kodi_setting", "addon_xml")
@@ -104,17 +104,36 @@ class Baseline:
 
     # --- storage ---------------------------------------------------------------
     def items(self):
+        """The protected items; [] when baseline.json is missing or unreadable (for checks only)."""
+        try:
+            return self._read()
+        except (OSError, ValueError):
+            return []
+
+    def _read(self):
+        """The protected items: [] only when baseline.json does not exist yet; other read
+        errors and a damaged file are raised."""
         try:
             with open(self.path, encoding="utf-8") as handle:
                 data = json.load(handle)
-        except (OSError, ValueError):
+        except FileNotFoundError:
             return []
         items = data.get("items") if isinstance(data, dict) else None
         return [item for item in items if isinstance(item, dict) and item.get("kind") in KINDS] \
             if isinstance(items, list) else []
 
+    def _read_for_change(self):
+        """Items for capture/remove/apply. A read error refuses the change before anything is
+        written, so the list is never replaced by one built from an empty read."""
+        try:
+            return self._read()
+        except (OSError, ValueError) as exc:
+            raise RequestRefused("Protected settings could not be read (%s), so nothing was changed; try "
+                                 "again or fix baseline.json" % type(exc).__name__, status=409,
+                                 code="stale_revision") from None
+
     def save(self, items):
-        with path_lock(self.path):
+        with path_lock(self.path), interprocess_lock(self.path):
             atomic_write_json(self.path, {"version": 1, "items": items}, indent=2)
 
     # --- reading and writing live values -----------------------------------------
@@ -142,6 +161,9 @@ class Baseline:
         kind = item["kind"]
         if kind == "addon_setting":
             self.kodi.set_addon_setting(item["addon"], item["id"], str(item["value"]))
+            # Kodi's setSetting keeps the old value without an error when it rejects one.
+            if not _same(item["value"], self.kodi.get_addon_setting(item["addon"], item["id"])):
+                raise ValueError("Kodi rejected the value for %s" % item["id"])
             return False
         if kind == "kodi_setting":
             result = self.kodi.jsonrpc("Settings.SetSettingValue", {"setting": item["id"], "value": item["value"]})
@@ -184,20 +206,23 @@ class Baseline:
         not write, e.g. add-ons outside the write policy; those are reported as failed."""
         wanted = set(keys or [])
         applied, failed, restart = [], [], False
-        for item in self.items():
-            key = item_key(item)
-            if wanted and key not in wanted:
-                continue
-            try:
-                validate_item(dict(item))   # baseline.json may predate a rule or be hand-edited
-                if check is not None:
-                    check(item)
-                if _same(item.get("value"), self.current(item)):
+        # Held across the whole pass so a capture or removal from another thread or Kodi
+        # interpreter cannot interleave with it.
+        with path_lock(self.path), interprocess_lock(self.path):
+            for item in self._read_for_change():
+                key = item_key(item)
+                if wanted and key not in wanted:
                     continue
-                restart = self._write(item) or restart
-                applied.append(key)
-            except Exception as exc:
-                failed.append({"key": key, "error": str(exc)[:200]})
+                try:
+                    validate_item(dict(item))   # baseline.json may predate a rule or be hand-edited
+                    if check is not None:
+                        check(item)
+                    if _same(item.get("value"), self.current(item)):
+                        continue
+                    restart = self._write(item) or restart
+                    applied.append(key)
+                except Exception as exc:
+                    failed.append({"key": key, "error": str(exc)[:200]})
         return {"applied": applied, "failed": failed, "restart_required": restart}
 
     def capture(self, items, check=None):
@@ -205,8 +230,8 @@ class Baseline:
 
         ``check(item)`` (optional) raises for items the caller may not write."""
         # Held across read-modify-write so concurrent captures and removals keep each other's items.
-        with path_lock(self.path):
-            stored = {item_key(item): item for item in self.items()}
+        with path_lock(self.path), interprocess_lock(self.path):
+            stored = {item_key(item): item for item in self._read_for_change()}
             added = []
             for raw in items:
                 item = validate_item(dict(raw))
@@ -230,7 +255,7 @@ class Baseline:
             # Checked before anything is written: a refusal, not an unknown outcome.
             raise RequestRefused("keys must be a list of baseline item keys")
         drop = set(keys)
-        with path_lock(self.path):
-            kept = [item for item in self.items() if item_key(item) not in drop]
+        with path_lock(self.path), interprocess_lock(self.path):
+            kept = [item for item in self._read_for_change() if item_key(item) not in drop]
             self.save(kept)
         return {"count": len(kept)}

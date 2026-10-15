@@ -32,7 +32,10 @@ def exists(path):
         return tvos_storage.exists(translate(path))
     if xbmcvfs:
         try:
-            return bool(xbmcvfs.exists(path) or xbmcvfs.exists(translate(path)))
+            # Kodi's exists() finds a folder only when its path ends with a slash.
+            if (xbmcvfs.exists(path) or xbmcvfs.exists(translate(path))
+                    or xbmcvfs.exists(_dir_path(path)) or xbmcvfs.exists(_dir_path(translate(path)))):
+                return True
         except Exception:
             pass
     return os.path.exists(translate(path))

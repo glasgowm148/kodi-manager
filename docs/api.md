@@ -79,7 +79,7 @@ Since 0.7.25, Health's log check uses a persisted rolling 24-hour history and ea
 warning lines; `kodi_log_notices` counts evidenced startup/compatibility notices and
 `kodi_log_warning_lines` counts all raw warning lines. `recent_warnings` retains raw warnings,
 including notices. The focus-button exception applies only to active `skin.bingie` versions
-2.0.2.3 and 2.0.2.5: their intentional focus controls are unchanged. Other skins, versions and unsupported controls still raise warnings. A duplicate-message
+2.0.2.3 and later 2.0.2.N releases: their intentional focus controls are unchanged. Other skins, versions and unsupported controls still raise warnings. A duplicate-message
 notice without a known harmless original remains actionable.
 
 Fixing a cause does not remove its previous entries; each expires after 24 hours. Entries

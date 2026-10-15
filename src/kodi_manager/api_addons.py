@@ -117,6 +117,8 @@ class AddonRoutes(RequestHandler):
             return ApiError(409, "server_retired", "Manager service stopped, so the %s was stopped and discarded; "
                                                    "reconnect and inspect before retrying" % what)
         # stale_revision is a refusal: the operation record shows nothing was changed.
+        if reason == "low_storage":
+            return ApiError(409, "stale_revision", "%s. The %s was not taken; nothing changed." % (exc, what))
         if reason == "busy_database":
             return ApiError(409, "stale_revision", "An add-on was writing to its database, so the %s was discarded "
                                                    "and nothing changed. Try again in a minute." % what)

@@ -300,3 +300,29 @@ def test_checkpoints_record_their_size(tmp_path, monkeypatch):
     monkeypatch.setattr(backup, "backup_root", lambda: str(root))
     manifest = backup.create_stack_backup([{"addon_id": "plugin.video.pov", "addon_data_path": str(live)}])
     assert manifest["total_bytes"] == 300
+
+
+def test_a_sample_taken_before_the_clock_is_set_never_erases_the_history(tmp_path, monkeypatch):
+    h = history(tmp_path)
+    for i in range(96):  # a day of samples, every 15 minutes
+        t = NOW - DAY + i * 900
+        assert h.record({"t": t, "ma": 900}, now=t)
+    boot = NOW - 300 * DAY  # the TV starts with its clock months behind, before it is set
+    assert not h.record({"t": boot, "ma": 1500}, now=boot)
+    assert len(h.load()) == 96
+    assert h.series(7, now=NOW + 600)["count"] == 96
+    assert h.record({"t": NOW + 900, "ma": 800}, now=NOW + 900)  # clock set: recording resumes
+    assert len(h.load()) == 97
+
+
+def test_history_from_a_clock_that_ran_ahead_is_replaced_after_hours(tmp_path, monkeypatch):
+    h = history(tmp_path)
+    for i in range(4):
+        t = NOW + 10 * DAY + i * 900
+        h.record({"t": t, "ma": 9}, now=t)
+    ticks = [1000.0]
+    monkeypatch.setattr(metrics.time, "monotonic", lambda: ticks[0])
+    assert not h.record({"t": NOW, "ma": 1}, now=NOW)
+    ticks[0] += MetricsHistory.BEHIND_GRACE
+    assert h.record({"t": NOW + 900, "ma": 2}, now=NOW + 900)
+    assert [s["ma"] for s in h.load()] == [2]

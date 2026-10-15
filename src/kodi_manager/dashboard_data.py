@@ -167,9 +167,14 @@ def maintenance_checks(kodi):
     nightly = snap["nightly"]
     if nightly:
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(nightly["at"]))
+        if nightly["status"] == "ok":
+            detail = "Last taken %s" % when
+        elif nightly.get("error") == "low_storage":
+            detail = "Skipped %s: low storage. %s" % (when, nightly.get("detail") or "Free some space or delete old backups.")
+        else:
+            detail = "Failed %s (%s)" % (when, nightly.get("error"))
         checks.append({"id": "nightly", "label": "Nightly checkpoint",
-                       "status": "ok" if nightly["status"] == "ok" else "warning",
-                       "detail": ("Last taken %s" % when) if nightly["status"] == "ok" else "Failed %s (%s)" % (when, nightly.get("error"))})
+                       "status": "ok" if nightly["status"] == "ok" else "warning", "detail": detail})
     return checks
 
 

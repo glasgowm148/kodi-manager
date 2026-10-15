@@ -21,6 +21,9 @@ class FlakyKodi:
             raise RuntimeError("Kodi refused the setting")
         self.values[(aid, sid)] = value
 
+    def get_addon_setting(self, aid, sid):
+        return self.values.get((aid, sid))
+
     def jsonrpc(self, method, params=None):
         return {"result": []}
 

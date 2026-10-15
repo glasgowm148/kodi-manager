@@ -100,6 +100,7 @@ class FixProtection:
             backup.mkdir(parents=True, exist_ok=False)
             originals = []
             applied = []
+            temporary = None
             try:
                 # Prepare the complete backup before changing any live file.
                 for file, target, current in plan:
@@ -123,18 +124,52 @@ class FixProtection:
                     temporary = target.with_name(target.name + '.km-restore')
                     shutil.copyfile(payload, temporary)
                     os.replace(temporary, target)
+                    temporary = None
                     applied.append((file, target, current))
                 if not all(digest(target) == file['sha256'] for file, target, _ in plan):
                     raise ValueError('Restoration failed verification')
-            except Exception:
-                for file, target, current in reversed(applied):
-                    if current is None:
-                        target.unlink(missing_ok=True)
-                    else:
-                        shutil.copyfile(safe_path(backup, file['path']), target)
+            except Exception as error:
+                if temporary is not None:
+                    _unlink(temporary)
+                failed = _roll_back(backup, applied)
+                if failed:
+                    raise RuntimeError('Restoring fixes failed (%s) and %s could not be rolled back; restore '
+                                       'from %s' % (error, ', '.join(failed), backup)) from error
+                # Nothing was changed: the undo copies are not needed.
+                shutil.rmtree(str(backup), ignore_errors=True)
                 raise
             return {'restored_files': len(plan), 'backup': str(backup), 'restart_required': True,
                     'detail': 'Tested fixes restored. Restart Kodi to load them.'}
+
+
+def _unlink(path):
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def _roll_back(backup, applied):
+    """Put back the live files a failed repair replaced, newest first, each through a
+    temporary sibling so a failure cannot leave it half-written. Every file is tried;
+    returns the paths that could not be put back."""
+    failed = []
+    for file, target, current in reversed(applied):
+        temporary = target.with_name(target.name + '.km-restore')
+        try:
+            if current is None:
+                if target.exists():
+                    target.unlink()
+            else:
+                shutil.copyfile(safe_path(backup, file['path']), temporary)
+                os.replace(temporary, target)
+                if digest(target) != current:
+                    raise ValueError('Rolled-back file failed verification')
+        except Exception:
+            failed.append(file['path'])
+        finally:
+            _unlink(temporary)
+    return failed
 
 
 def protection_for_kodi():

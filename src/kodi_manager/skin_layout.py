@@ -770,13 +770,19 @@ def apply_layout(kodi, index, body, write_enabled):
             raise ValueError("Backup directory must not be a symlink")
         backup = os.path.join(backup_root, backup_id)
         os.makedirs(backup, exist_ok=False)
-        for name, original in snapshots.items():
-            if not name.startswith('default') and original is not None:
-                _atomic(os.path.join(backup, name), original)
-        _atomic(os.path.join(backup, "manifest.json"), json.dumps({"revision": preview["revision"], "files": {n: _hash(v) for n, v in snapshots.items()}}, sort_keys=True).encode())
-        prune_folder(backup_root, "skin-layout-", keep=(backup_id,))
-        _check_snapshots(root, snapshots)
         changed, staged = [], {}
+        try:
+            for name, original in snapshots.items():
+                if not name.startswith('default') and original is not None:
+                    _atomic(os.path.join(backup, name), original)
+            _atomic(os.path.join(backup, "manifest.json"), json.dumps({"revision": preview["revision"], "files": {n: _hash(v) for n, v in snapshots.items()}}, sort_keys=True).encode())
+            _check_snapshots(root, snapshots)
+        except BaseException:
+            # Nothing was written to the skin: this backup is not needed.
+            tvos_storage.rmtree(backup, ignore_errors=True)
+            raise
+        # Unfinished (manifest-less) backups do not count towards retention.
+        prune_folder(backup_root, "skin-layout-", keep=(backup_id,), manifest="manifest.json")
         try:
             for export in preview["exports"]:
                 name = export["filename"]
@@ -790,6 +796,8 @@ def apply_layout(kodi, index, body, write_enabled):
                 staged[name] = raw
             _check_snapshots(root, snapshots, staged)
         except Exception:
+            if not changed:
+                tvos_storage.rmtree(backup, ignore_errors=True)  # nothing was written
             for name in reversed(changed):
                 original = snapshots.get(name)
                 if _read(os.path.join(root, name), optional=True) != staged[name]:

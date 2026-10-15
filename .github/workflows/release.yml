@@ -2,8 +2,9 @@ name: Release
 on:
   push:
     tags: ['v*']
+# Read-only by default; only the release job may write, and only to create the release.
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -14,6 +15,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.8'
@@ -25,8 +28,13 @@ jobs:
   release:
     needs: kodi-python
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # gh release create, last step only
     steps:
+      # Project code runs below: keep the token out of .git/config so it cannot be read back.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.11'

@@ -192,18 +192,46 @@ function withErrors(fn) {
       reportError(error);
       return undefined;
     } finally {
-      if (button) button.disabled = false;
+      if (button) { button.disabled = false; restoreFocus(button); }
     }
   };
+}
+
+/* Disabling the focused button (or closing a dialog it opened while it is disabled) drops focus
+   to <body> in Chromium, which strands a TV remote. Put focus back on the button, or on the one
+   control that replaced it when the page re-rendered, unless the user has moved on. */
+function focusLost() {
+  if (!hasDocument()) return false;
+  const active = document.activeElement;
+  return !active || active === document.body || active.isConnected === false;
+}
+function replacementControl(el) {
+  if (!el || !hasDocument() || typeof document.querySelectorAll !== "function") return null;
+  if (el.id) return document.getElementById(el.id);
+  const data = Object.entries(el.dataset || {});
+  if (!data.length || !el.tagName) return null;
+  const matches = [...document.querySelectorAll(el.tagName.toLowerCase())].filter(x => data.every(([k, v]) => x.dataset?.[k] === v));
+  return matches.length === 1 ? matches[0] : null;
+}
+function restoreFocus(el) {
+  if (!el || !focusLost() || el === document.body) return false;
+  const target = el.isConnected === false ? replacementControl(el) : el;
+  if (!target || target.disabled || typeof target.focus !== "function") return false;
+  target.focus();
+  return document.activeElement === target;
 }
 
 function openDialog(markup, focusSelector) {
   const dialog = document.createElement("dialog");
   dialog.className = "km-dialog";
   dialog.innerHTML = markup;
+  const opener = document.activeElement;
   document.body.append(dialog);
   dialog.showModal();
   dialog.querySelector(focusSelector)?.focus();
+  // The browser returns focus to the opener on close; if it was re-rendered, use its replacement.
+  // A disabled opener is left to withErrors, which restores focus once the handler finishes.
+  dialog.addEventListener("close", () => restoreFocus(opener), {once: true});
   return dialog;
 }
 

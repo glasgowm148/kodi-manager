@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.39 — 2026-10-15
+
+- Backups check free storage first (2× the last comparable snapshot, at least 200 MB) and refuse or skip with a "low storage" status instead of filling the TV; the nightly prunes down before retrying; half-finished snapshot folders from old versions are cleaned up.
+- Add-on setting writes are read back: a value Kodi silently rejects is reported (and earlier writes in the batch are put back) instead of claimed as saved. v1 select/lvalues use Kodi's stored indexes; v1 numbers and int sliders take whole numbers in range; v2 strings refuse empty values unless allowed; v2 minimum/maximum are enforced.
+- Read-modify-write stores (baseline, cached rows) refuse instead of overwriting when their file can't be read, and are locked across Kodi interpreters.
+- Log history no longer writes to flash every 2 s when nothing changed (~2.1 GB/day → ~0.15 GB/day), caps events at 50,000 and reclaims space.
+- Metrics keep their history when a sample is taken before the clock is set; fix repair rolls back atomically and names the backup when it can't; failed layout applies don't leave partial backups counted by retention; Bingie 2.0.2.N focus notices stay notices; folder existence checks follow Kodi's trailing-slash rule.
+- Web UI: TV-remote focus no longer gets lost after action buttons or stuck on closed menu sections; focus isn't hidden under sticky bars; a failed TV-layout read disables the editor; "Keep editing" keeps browser history intact; header controls reachable by arrows.
+- Release workflow runs with read-only default permissions and no persisted checkout credentials.
+
 ## 0.7.38 — 2026-10-15
 
 - Backups take SQLite databases through SQLite's online backup API, so a snapshot taken while an add-on writes is always consistent (byte copies could be torn or corrupt). A busy database is retried later (nightly) or refused with "try again"; restores remove stale -wal/-journal files of restored databases.

@@ -27,6 +27,14 @@ except ImportError:  # A Python build without SQLite: databases are copied like 
 
 
 DEFAULT_RETENTION = 20
+# A snapshot is only started with at least max(2 x its expected size, this) free on the
+# backup storage: a full disk breaks Kodi itself, and a snapshot that fails part way
+# frees nothing (retention only prunes after a completed snapshot).
+LOW_STORAGE_FLOOR = 200 * 1024 * 1024
+# A snapshot folder without a manifest (one whose copy never finished, for example
+# left by an older version or a power cut) is removed once it is this old.
+ORPHAN_AGE = 24 * 3600
+_SNAPSHOT_NAME = re.compile(r"\d{8}-\d{6}(?:-[A-Za-z0-9]+)?$")
 
 
 class BackupAborted(Exception):
@@ -35,13 +43,16 @@ class BackupAborted(Exception):
     ``deferred`` tells callers to retry later. ``reason`` says why: the truthy string a
     ``should_stop`` callback returned (for example "playback" or "stopping"), "stopped"
     when it returned anything else, or "busy_database" when an add-on kept one of its
-    SQLite databases locked or changed its journal while it was being copied.
+    SQLite databases locked or changed its journal while it was being copied, or
+    "low_storage" (not deferred: retrying soon would not help) when the backup storage
+    lacks the free space a snapshot needs; that one is raised before anything is written.
     """
     deferred = True
 
-    def __init__(self, message="Snapshot stopped before it completed", reason="stopped"):
+    def __init__(self, message="Snapshot stopped before it completed", reason="stopped", deferred=True):
         super(BackupAborted, self).__init__(message)
         self.reason = reason
+        self.deferred = deferred
 
 
 def _check_stop(should_stop):
@@ -129,17 +140,36 @@ def retention():
     return _retention
 
 
-def prune_folder(folder, prefix, keep=(), limit=None):
+def prune_folder(folder, prefix, keep=(), limit=None, manifest=None):
     """Keep the newest ``limit`` (default: the retention setting) subfolders of
-    ``folder`` whose names start with ``prefix``; other folders are never touched."""
+    ``folder`` whose names start with ``prefix``; other folders are never touched.
+
+    With ``manifest`` (a file name every complete backup holds), a folder without it
+    is an unfinished backup: it does not count towards the limit, and is removed once
+    it is ORPHAN_AGE old."""
     limit = _retention if limit is None else max(1, int(limit))
     try:
         names = [n for n in os.listdir(folder) if n.startswith(prefix) and n not in keep
                  and os.path.isdir(os.path.join(folder, n)) and not os.path.islink(os.path.join(folder, n))]
     except OSError:
         return []
-    names.sort(key=lambda n: os.path.getmtime(os.path.join(folder, n)), reverse=True)
     removed = []
+    if manifest:
+        now = time.time()
+        complete = []
+        for name in names:
+            path = os.path.join(folder, name)
+            if os.path.lexists(os.path.join(path, manifest)):
+                complete.append(name)
+                continue
+            try:
+                if now - os.path.getmtime(path) >= ORPHAN_AGE:
+                    tvos_storage.rmtree(path, ignore_errors=True)
+                    removed.append(name)
+            except OSError:
+                pass
+        names = complete
+    names.sort(key=lambda n: os.path.getmtime(os.path.join(folder, n)), reverse=True)
     for name in names[max(0, limit - len(keep)):]:
         tvos_storage.rmtree(os.path.join(folder, name), ignore_errors=True)
         removed.append(name)
@@ -399,17 +429,103 @@ def discard_on_failure(dest):
         raise
 
 
-def allocate_backup(scope, protect=()):
+def free_bytes(path):
+    """Free bytes available on the filesystem holding ``path``; None when unknown
+    (no os.statvfs on this platform, or the path is not on a real filesystem)."""
+    statvfs = getattr(os, "statvfs", None)
+    if statvfs is None:
+        return None
+    try:
+        result = statvfs(path)
+        return int(result.f_bavail) * int(result.f_frsize or result.f_bsize)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def _tree_bytes(src, skip_top=(), exclude=None):
+    """Total size of the regular files a snapshot of ``src`` would copy."""
+    total = 0
+    if not src or not os.path.isdir(src):
+        return 0
+    for rel in _source_files(src, skip_top, exclude=exclude):
+        try:
+            total += tvos_storage.size(os.path.join(src, rel))
+        except OSError:
+            pass
+    return total
+
+
+def _recorded_size(scope):
+    """``total_bytes`` of the newest snapshot in ``scope`` that recorded one, or None."""
+    try:
+        snapshots = list_backups(scope)
+    except (OSError, ValueError):
+        return None
+    for manifest in snapshots:
+        size = manifest.get("total_bytes")
+        if isinstance(size, int) and not isinstance(size, bool) and size >= 0:
+            return size
+    return None
+
+
+def storage_needed(scope, estimate=None):
+    """Free bytes a new snapshot in ``scope`` needs: twice the most recent comparable
+    snapshot's size (or ``estimate()``, the size of what it would copy), at least
+    LOW_STORAGE_FLOOR."""
+    size = _recorded_size(scope)
+    if size is None and estimate is not None:
+        try:
+            size = int(estimate())
+        except (OSError, ValueError, TypeError):
+            size = None
+    return max(2 * (size or 0), LOW_STORAGE_FLOOR)
+
+
+def check_free_space(scope, estimate=None):
+    """Raise BackupAborted("low_storage") when the backup storage is too full for a new
+    snapshot in ``scope`` (see storage_needed). Skipped where free space is unknown."""
+    root = _active_root()
+    free = free_bytes(root)
+    if free is None:
+        return
+    need = storage_needed(scope, estimate) if free >= LOW_STORAGE_FLOOR else LOW_STORAGE_FLOOR
+    if free >= need:
+        return
+    if prune_orphans(scope):  # unfinished snapshots left by an older version or a power cut
+        free = free_bytes(root) or 0
+        need = storage_needed(scope, estimate)
+        if free >= need:
+            return
+    raise BackupAborted("Not enough free storage for a backup (%d MB free, %d MB needed); free some space "
+                        "or delete old backups" % (free // (1024 * 1024), -(-need // (1024 * 1024))),
+                        "low_storage", deferred=False)
+
+
+def allocate_backup(scope, protect=(), estimate=None):
     """Reserve a unique directory before copying; never reuse a prior snapshot.
 
     Allocation never prunes: only a completed snapshot may replace an older
     recovery point. Call finish_backup after all files have been copied.
+    Raises BackupAborted("low_storage") first when the backup storage is too full
+    (see check_free_space; ``estimate`` returns the expected snapshot size in bytes).
     """
+    check_free_space(scope, estimate)
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     backup_id = timestamp + "-" + uuid.uuid4().hex
     destination = _backup_path(scope, backup_id)
     os.makedirs(destination, exist_ok=False)
     return timestamp, backup_id, destination
+
+
+def _files_bytes(folder, files):
+    """Total size of the given files (relative to ``folder``) as copied."""
+    total = 0
+    for rel in files:
+        try:
+            total += tvos_storage.size(os.path.join(folder, *rel.split("/")))
+        except OSError:
+            pass
+    return total
 
 
 def _in_use_key(folder):
@@ -470,18 +586,58 @@ def prune(scope, keep=None):
     root = _backup_path(scope)
     with _PRUNE_LOCK:
         try:
-            names = [n for n in os.listdir(root) if not os.path.islink(os.path.join(root, n))
-                     and _read_manifest(os.path.join(root, n)).get("backup_id") == n]
+            entries = [n for n in os.listdir(root) if not os.path.islink(os.path.join(root, n))
+                       and os.path.isdir(os.path.join(root, n))]
         except OSError:
             return []
+        names, orphans = [], []
+        for n in entries:
+            if _read_manifest(os.path.join(root, n)).get("backup_id") == n:
+                names.append(n)
+            else:
+                orphans.append(n)
+        removed = _remove_orphans(root, orphans, keep)
         names.sort(key=lambda n: (n[:15], os.path.getmtime(os.path.join(root, n))), reverse=True)
-        removed = []
         for name in names[_retention:]:
             if name in keep or _in_use(os.path.join(root, name)):
                 continue
             tvos_storage.rmtree(os.path.join(root, name), ignore_errors=True)
             removed.append(name)
         return removed
+
+
+def _remove_orphans(root, names, keep=()):
+    """Remove snapshot folders under ``root`` that never got a manifest (their copy did
+    not finish) once they are ORPHAN_AGE old, unless kept or in use. A folder being
+    copied right now is younger than that, so it is never touched. A folder with an
+    unreadable manifest is left alone: it may be a real snapshot."""
+    removed = []
+    now = time.time()
+    for name in names:
+        folder = os.path.join(root, name)
+        if not _SNAPSHOT_NAME.match(name) or os.path.lexists(os.path.join(folder, "manifest.json")):
+            continue
+        try:
+            age = now - os.path.getmtime(folder)
+        except OSError:
+            continue
+        if age < ORPHAN_AGE or name in keep or _in_use(folder):
+            continue
+        tvos_storage.rmtree(folder, ignore_errors=True)
+        removed.append(name)
+    return removed
+
+
+def prune_orphans(scope, keep=()):
+    """Remove the old unfinished (manifest-less) snapshot folders of one scope."""
+    root = _backup_path(scope)
+    with _PRUNE_LOCK:
+        try:
+            names = [n for n in os.listdir(root) if not os.path.islink(os.path.join(root, n))
+                     and os.path.isdir(os.path.join(root, n))]
+        except OSError:
+            return []
+        return _remove_orphans(root, names, keep)
 
 
 def _replace_tree(src, dst, skip_top=(), expected_files=None, preserve_files=(), preserve=None):
@@ -589,12 +745,13 @@ def finish_backup(scope, dest, manifest, protect=()):
 def create_backup(addon_info, kodi_version="", adapter="", protect=(), should_stop=None):
     """Snapshot one add-on's addon_data. ``should_stop`` (optional) aborts and discards it."""
     aid = addon_info["addon_id"]
-    ts, backup_id, dest = allocate_backup(aid, protect)
     src = live_addon_data(addon_info)
+    skip = ("backups",) if aid == SELF_ID else ()
+    exclude = _self_state if aid == SELF_ID else None
+    ts, backup_id, dest = allocate_backup(aid, protect, estimate=lambda: _tree_bytes(src, skip, exclude))
     with discard_on_failure(dest):
-        files = _copytree(src, os.path.join(dest, "addon_data"), skip_top=("backups",) if aid == SELF_ID else (),
-                          should_stop=should_stop,
-                          exclude=_self_state if aid == SELF_ID else None, snapshot=True)
+        files = _copytree(src, os.path.join(dest, "addon_data"), skip_top=skip,
+                          should_stop=should_stop, exclude=exclude, snapshot=True)
         manifest = {
             "backup_id": backup_id,
             "addon_id": aid,
@@ -604,6 +761,7 @@ def create_backup(addon_info, kodi_version="", adapter="", protect=(), should_st
             "files_copied": len(files),
             "Kodi version": kodi_version,
             "adapter": adapter or addon_info.get("adapter_name", ""),
+            "total_bytes": _files_bytes(os.path.join(dest, "addon_data"), files),
         }
         os.makedirs(os.path.join(dest, "addon_data"), exist_ok=True)
         finish_backup(aid, dest, manifest, protect)
@@ -613,7 +771,8 @@ def create_backup(addon_info, kodi_version="", adapter="", protect=(), should_st
 @_with_backup_root
 def create_file_backup(scope, files, kodi_version="", note=""):
     """Snapshot only the given files: {relative name: absolute path}. Missing files are recorded."""
-    ts, backup_id, dest = allocate_backup(scope)
+    ts, backup_id, dest = allocate_backup(scope, estimate=lambda: sum(
+        tvos_storage.size(path) for path in files.values() if path and tvos_storage.is_file(path)))
     copied, missing = [], []
     with discard_on_failure(dest):
         for rel, path in sorted(files.items()):
@@ -626,7 +785,8 @@ def create_file_backup(scope, files, kodi_version="", note=""):
                 missing.append(rel)
         manifest = {"backup_id": backup_id, "timestamp": ts, "included_files": copied, "missing_files": missing,
                     "included_components": sorted({rel.split("/")[0] for rel in copied}),
-                    "skipped_components": [], "Kodi version": kodi_version, "note": note}
+                    "skipped_components": [], "Kodi version": kodi_version, "note": note,
+                    "total_bytes": _files_bytes(dest, copied)}
         finish_backup(scope, dest, manifest)
     return manifest
 
@@ -698,7 +858,14 @@ def _roll_back(done, error):
 @_with_backup_root
 def create_stack_backup(addons, kodi_version="", note="", should_stop=None):
     """Snapshot several add-ons' addon_data. ``should_stop`` (optional) aborts and discards it."""
-    ts, backup_id, root = allocate_backup("_stack")
+    addons = [addon for addon in addons if addon and addon.get("addon_id")]
+
+    def estimate():
+        return sum(_tree_bytes(translate(addon.get("addon_data_path") or ""),
+                               ("backups",) if addon["addon_id"] == SELF_ID else (),
+                               _self_state if addon["addon_id"] == SELF_ID else None) for addon in addons)
+
+    ts, backup_id, root = allocate_backup("_stack", estimate=estimate)
     included, skipped, counts, total_bytes = [], [], {}, 0
     with discard_on_failure(root):
         for addon in addons:
@@ -712,11 +879,7 @@ def create_stack_backup(addons, kodi_version="", note="", should_stop=None):
                                   exclude=_self_state if addon["addon_id"] == SELF_ID else None, snapshot=True)
                 os.makedirs(os.path.join(root, addon["addon_id"]), exist_ok=True)
                 counts[addon["addon_id"]] = len(files)
-                for rel in files:
-                    try:
-                        total_bytes += tvos_storage.size(os.path.join(root, addon["addon_id"], rel))
-                    except OSError:
-                        pass
+                total_bytes += _files_bytes(os.path.join(root, addon["addon_id"]), files)
                 included.append(addon["addon_id"])
             else:
                 skipped.append(addon["addon_id"])

@@ -11,7 +11,7 @@ try:
     from .backup import allocate_backup, finish_backup, discard_on_failure, create_file_backup, _copytree, _with_backup_root
     from . import fenlight_db, tvos_storage
     from .fenlight_db import DB_EDITABLE_TYPES
-    from .write_policy import check_writable, WriteRefused
+    from .write_policy import check_writable, RequestRefused, WriteRefused
 except ImportError:
     from settings_schema import parse_schema, flatten_settings, parse_user_settings, setting_description
     from stack_detector import detect_stack
@@ -22,7 +22,7 @@ except ImportError:
     import fenlight_db
     import tvos_storage
     from fenlight_db import DB_EDITABLE_TYPES
-    from write_policy import check_writable, WriteRefused
+    from write_policy import check_writable, RequestRefused, WriteRefused
 
 PLAYER_IDS = ["plugin.video.fenlight", "plugin.video.fen", "plugin.video.pov", "plugin.video.umbrella", "plugin.video.seren"]
 HELPER_IDS = ["plugin.video.tmdb.bingie.helper", "plugin.video.themoviedb.helper"]
@@ -516,31 +516,79 @@ def _backup_touched(plan, kodi_version):
     return create_file_backup("pipeline", files, kodi_version, note="Settings changed from the dashboard")
 
 
+class SettingRejected(ValueError):
+    """Kodi kept its old value for a setting written in a batch (``setSetting`` ignores an
+    invalid value without an error). The message names the setting, never the value."""
+
+    def __init__(self, setting_id, message):
+        super(SettingRejected, self).__init__(message)
+        self.setting_id = setting_id
+
+
+def stored_matches(written, stored):
+    """Whether Kodi's stored text ``stored`` is the value ``written``.
+
+    Kodi answers a number in its own format ("1" for "1.0", six significant digits) and a
+    boolean as "true"/"false".
+    """
+    if stored is None:
+        return False
+    written, stored = str(written), str(stored)
+    if written == stored:
+        return True
+    if {written.lower(), stored.lower()} <= {"true", "false"}:
+        return written.lower() == stored.lower()
+    try:
+        a, b = float(written), float(stored)
+    except ValueError:
+        return False
+    return a == b or abs(a - b) <= 1e-5 * max(abs(a), abs(b))
+
+
 def write_settings(kodi, xml_writes, db_writes=()):
     """Apply a validated batch: Kodi settings one by one, then each settings.db in one transaction.
 
     ``xml_writes`` is [(addon_id, setting_id, value, previous value)] and
-    ``db_writes`` is [(addon, [(setting_id, value)])]. When any write fails, the
-    Kodi settings already written are set back to their previous values (newest
-    first) before the error is raised, so a batch is never left half-applied.
+    ``db_writes`` is [(addon, [(setting_id, value)])]. Each Kodi setting is read back after
+    it is written: Kodi's setSetting silently keeps the old value when it rejects one. When
+    the first write is rejected nothing has changed, so the batch is refused
+    (RequestRefused). When any later write fails or is rejected, the Kodi settings already
+    written are set back to their previous values (newest first) before the error is
+    raised, so a batch is never left half-applied.
     """
     applied = []
     try:
         for aid, sid, value, previous in xml_writes:
             kodi.set_addon_setting(aid, sid, value)
+            try:
+                stored = kodi.get_addon_setting(aid, sid)
+            except Exception:
+                applied.append((aid, sid, previous))   # written but unconfirmed: put it back too
+                raise
+            if not stored_matches(value, stored):
+                if not applied:
+                    raise RequestRefused("Kodi rejected the new value for %s and kept the old one; nothing was "
+                                         "changed" % sid, setting_id=sid)
+                raise SettingRejected(sid, "%s: Kodi rejected the new value and kept the old one" % sid)
             applied.append((aid, sid, previous))
         for addon, pairs in db_writes:
             fenlight_db.write_changes(addon, pairs)
     except Exception as exc:
         stuck = []
         for aid, sid, previous in reversed(applied):
+            old = "" if previous is None else str(previous)
             try:
-                kodi.set_addon_setting(aid, sid, "" if previous is None else str(previous))
+                kodi.set_addon_setting(aid, sid, old)
+                if not stored_matches(old, kodi.get_addon_setting(aid, sid)):
+                    stuck.append("%s %s" % (aid, sid))
             except Exception:
                 stuck.append("%s %s" % (aid, sid))
         if stuck:
             raise RuntimeError("Saving settings failed (%s) and %s could not be put back; restore the backup "
                                "taken before this change" % (type(exc).__name__, ", ".join(stuck))) from exc
+        if isinstance(exc, SettingRejected):
+            raise SettingRejected(exc.setting_id, "%s; the settings already saved in this batch were put back"
+                                  % exc) from None
         raise
 
 

@@ -37,7 +37,7 @@ Download a published service ZIP and its `SHA256SUMS` into an empty folder, then
 
 ```sh
 python scripts/build_repository.py \
-  --addon release/service.kodi.addonadmin-0.7.38.zip \
+  --addon release/service.kodi.addonadmin-0.7.39.zip \
   --checksums release/SHA256SUMS --output dist/repository
 ```
 

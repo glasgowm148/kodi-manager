@@ -149,6 +149,65 @@ test('withErrors turns failures into a notice and keeps the button usable', asyn
   assert.equal(errors.length, 1);
 });
 
+test('withErrors puts focus back on the busy button, or its re-rendered replacement, once done', async () => {
+  const body = {};
+  const document = {body, activeElement:body, createElement(){ return {}; }, querySelectorAll:() => [], getElementById:() => null};
+  const {ui} = context({document});
+  const button = id => ({id, tagName:'BUTTON', disabled:false, isConnected:true, dataset:{}, focus(){ if (!this.disabled) document.activeElement = this; }});
+  // Disabling the focused button dropped focus to the page (as Chromium does).
+  const save = button('save');
+  document.activeElement = save;
+  await ui.withErrors(async () => { document.activeElement = body; })({currentTarget:save});
+  assert.equal(document.activeElement, save);
+  // The page re-rendered the button meanwhile: focus its replacement with the same id.
+  const old = button('refresh'), fresh = button('refresh');
+  document.getElementById = id => id === 'refresh' ? fresh : null;
+  await ui.withErrors(async () => { old.isConnected = false; document.activeElement = body; })({currentTarget:old});
+  assert.equal(document.activeElement, fresh);
+  // Re-rendered buttons without an id are matched by their data attributes, only when exactly one matches.
+  const range = days => ({...button(''), dataset:{range:String(days)}});
+  const before = range(1), after = [range(1), range(7)];
+  document.querySelectorAll = () => after;
+  await ui.withErrors(async () => { before.isConnected = false; document.activeElement = body; })({currentTarget:before});
+  assert.equal(document.activeElement, after[0]);
+  // The user moved on while the action ran: leave focus where it is.
+  const other = button('other'), busy = button('busy');
+  await ui.withErrors(async () => { document.activeElement = other; })({currentTarget:busy});
+  assert.equal(document.activeElement, other);
+});
+
+test('Keep editing after Back steps forward again instead of overwriting the previous history entry', async () => {
+  const location = {hash:'#/components', pathname:'/', search:''};
+  const calls = [];
+  const history = {state:{kmIndex:1}, replaceState:(...args) => calls.push(['replace', ...args]), go:delta => calls.push(['go', delta])};
+  const {ui} = withApp({location, history, document:{querySelector:() => null, querySelectorAll:() => []}});
+  vm.runInContext('state.currentHash = "#/addon/plugin.video.pov"; state.historyIndex = 2; state.dirtyChanges = {enabled:{value:"false"}}; state.dirtyAddon = "plugin.video.pov";', ui);
+  ui.confirmDialog = async () => false;
+  assert.equal(await ui.confirmLeave('#/components'), false);
+  assert.deepEqual(calls, [['go', 1]]);
+  assert.equal(vm.runInContext('Object.keys(state.dirtyChanges).length', ui), 1);
+  // Discarding returns to the entry Back asked for; that hashchange then routes normally.
+  calls.length = 0;
+  ui.confirmDialog = async () => true;
+  assert.equal(await ui.confirmLeave('#/components'), false);
+  assert.deepEqual(calls, [['go', 1], ['go', -1]]);
+  assert.equal(vm.runInContext('Object.keys(state.dirtyChanges).length', ui), 0);
+});
+
+test('routed history entries are numbered so Back and Forward can be recognised', () => {
+  const location = {hash:'#/health', pathname:'/', search:''};
+  const history = {state:null, replaceState(state, _, url){ this.state = state; location.hash = url; }};
+  const {ui} = withApp({location, history});
+  ui.markHistoryEntry();
+  assert.deepEqual({...history.state}, {kmIndex:0});
+  history.state = null; location.hash = '#/components';
+  ui.markHistoryEntry();
+  assert.deepEqual({...history.state}, {kmIndex:1});
+  history.state = {kmIndex:0}; location.hash = '#/health';
+  ui.markHistoryEntry();
+  assert.equal(vm.runInContext('state.historyIndex', ui), 0);
+});
+
 test('copyText falls back from the clipboard API to execCommand, then to manual selection', async () => {
   const appended = [];
   const document = {body:{append:node => appended.push(node)}, execCommand:() => true,

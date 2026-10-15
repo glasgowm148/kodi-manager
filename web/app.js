@@ -152,22 +152,62 @@ function ownsArrowKey(el, dir){
   if (tag === "SELECT") return !horizontal;
   if (tag !== "INPUT") return false;
   const axis = ARROW_INPUT_AXIS[String(el.type || "text").toLowerCase()] || "horizontal";
+  if (axis === "horizontal" && horizontal && caretAtEdge(el, dir)) return false;
   return axis === "horizontal" ? horizontal : axis === "vertical" ? !horizontal : false;
+}
+/* A text field gives Left back at the start of its text and Right at the end, so the header's
+   Search button and theme toggle can be reached from the search box. */
+function caretAtEdge(el, dir){
+  if (el.type === "range") return false;
+  let start, end;
+  try { start = el.selectionStart; end = el.selectionEnd; } catch (_) { return false; }
+  if (typeof start !== "number" || start !== end) return false;
+  return dir === "left" ? start === 0 : start === String(el.value ?? "").length;
 }
 const SPATIAL_FOCUSABLE ='a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
 function spatialKey(event){
   const dir = {ArrowRight:"right", ArrowLeft:"left", ArrowDown:"down", ArrowUp:"up"}[event.key];
   if (!dir || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
   const active = document.activeElement;
-  if (!active || active === document.body) return;
+  const dialog = document.querySelector("dialog[open]");
+  if (!active || active === document.body || active.isConnected === false) {
+    // Focus fell to the page (a busy button was disabled, or the control re-rendered): pick it up again.
+    const start = spatialStart(dialog);
+    if (start) { event.preventDefault(); start.focus(); }
+    return;
+  }
   if (ownsArrowKey(active, dir)) return;
-  const scope = document.querySelector("dialog[open]") || document;
-  const candidates = [...scope.querySelectorAll(SPATIAL_FOCUSABLE)].filter(el => el !== active && el.getClientRects().length && !el.closest("[hidden], .hidden")).map(el => ({el, rect:el.getBoundingClientRect()})).filter(c => c.rect.width && c.rect.height);
-  const target = spatialPick(active.getBoundingClientRect(), candidates, dir);
-  if (!target) return;
-  event.preventDefault();
-  target.el.focus({preventScroll:true});
-  target.el.scrollIntoView?.({block:"nearest", inline:"nearest"});
+  const scope = dialog || document;
+  // checkVisibility() also rules out links inside closed <details>, which still have boxes in Chromium.
+  const candidates = [...scope.querySelectorAll(SPATIAL_FOCUSABLE)].filter(el => el !== active && el.getClientRects().length && !el.closest("[hidden], .hidden") && (typeof el.checkVisibility !== "function" || el.checkVisibility())).map(el => ({el, rect:el.getBoundingClientRect()})).filter(c => c.rect.width && c.rect.height);
+  const from = active.getBoundingClientRect();
+  // Only claim the key once focus has really moved; a control that refuses focus is skipped.
+  for (let tries = 0; tries < 3; tries++) {
+    const target = spatialPick(from, candidates, dir);
+    if (!target) return;
+    target.el.focus({preventScroll:true});
+    if (document.activeElement === target.el) {
+      event.preventDefault();
+      target.el.scrollIntoView?.({block:"nearest", inline:"nearest"});
+      return;
+    }
+    candidates.splice(candidates.indexOf(target), 1);
+  }
+}
+/* Where arrows resume when nothing is focused: the open dialog's first control, else the first
+   control of the page that is on screen, else the page heading. */
+function spatialStart(dialog){
+  const usable = el => el.getClientRects().length && !el.closest("[hidden], .hidden") && (typeof el.checkVisibility !== "function" || el.checkVisibility());
+  if (dialog) return [...dialog.querySelectorAll(SPATIAL_FOCUSABLE)].find(usable) || null;
+  const content = document.querySelector("#content");
+  if (!content) return null;
+  const height = typeof innerHeight === "number" ? innerHeight : Infinity;
+  const onScreen = [...content.querySelectorAll(SPATIAL_FOCUSABLE)].find(el => {
+    if (!usable(el)) return false;
+    const r = el.getBoundingClientRect();
+    return r.width && r.height && r.top >= 0 && r.bottom <= height;
+  });
+  return onScreen || content.querySelector("h2") || null;
 }
 function themeLabel(theme){ return {auto:"Theme: automatic", light:"Theme: light", dark:"Theme: dark"}[theme] || "Theme"; }
 function renderThemeToggle(){
@@ -206,22 +246,56 @@ function updateDirtyBar(){
   btn.title = state.writeEnabled ? "" : WRITE_HINT;
   if (typeof document !== "undefined") document.body?.classList?.toggle("has-unsaved", count > 0);
 }
+/* Each routed history entry carries its position, so Back/Forward can be told apart from a new link. */
+function historyIndex(){
+  const i = typeof history !== "undefined" ? history.state?.kmIndex : undefined;
+  return Number.isInteger(i) ? i : null;
+}
+function markHistoryEntry(){
+  const i = historyIndex();
+  if (i !== null) { state.historyIndex = i; return; }
+  state.historyIndex = Number.isInteger(state.historyIndex) ? state.historyIndex + 1 : 0;
+  try { history.replaceState({kmIndex:state.historyIndex}, "", location.hash); } catch (_) {}
+}
 /* Called before leaving a route. The hash has already changed, so restore it while asking. */
 async function confirmLeave(target){
   if (!hasUnsavedChanges()) return true;
-  history.replaceState(null, "", state.currentHash || "#/dashboard");
   const n = Object.keys(state.dirtyChanges).length;
-  const ok = await confirmDialog({title:"Discard unsaved changes?", message:`You have ${n} unsaved setting change${n === 1 ? "" : "s"}. Leave this page and discard ${n === 1 ? "it" : "them"}?`, confirmLabel:"Discard changes", cancelLabel:"Keep editing", danger:true});
-  if (!ok) return false;
+  const ask = () => confirmDialog({title:"Discard unsaved changes?", message:`You have ${n} unsaved setting change${n === 1 ? "" : "s"}. Leave this page and discard ${n === 1 ? "it" : "them"}?`, confirmLabel:"Discard changes", cancelLabel:"Keep editing", danger:true});
+  const from = Number.isInteger(state.historyIndex) ? state.historyIndex : null, to = historyIndex();
+  if (from !== null && to !== null && to !== from && typeof history.go === "function") {
+    // Back or Forward: step back to the page being edited instead of overwriting an entry, so the
+    // rest of the history survives "Keep editing". Its hashchange matches the current page and is ignored.
+    history.go(from - to);
+    if (!(await ask())) return false;
+    clearDirty();
+    history.go(to - from); // the hashchange this causes routes to the page asked for
+    return false;
+  }
+  // A new link: this entry is new, so it can hold the page being edited while asking.
+  const held = holdHistoryEntry(state.currentHash || "#/dashboard");
+  if (!(await ask())) return false;
   clearDirty();
-  history.replaceState(null, "", target);
+  history.replaceState(held, "", target);
   return true;
+}
+/* A newly pushed entry that must show the current page again keeps its own position. */
+function holdHistoryEntry(hash){
+  const held = Number.isInteger(state.historyIndex) && historyIndex() === null ? {kmIndex:state.historyIndex + 1} : null;
+  history.replaceState(held, "", hash);
+  if (held) state.historyIndex = held.kmIndex;
+  return held;
+}
+/* Back/Forward between entries of the same page fire no hashchange; keep the position in step. */
+function syncHistoryIndex(){
+  const i = historyIndex();
+  if (i !== null && location.hash === state.currentHash) state.historyIndex = i;
 }
 async function onHashChange(){
   if (location.hash === state.currentHash) return;
   if (consumeUrlToken()) { await loadStatus().catch(reportError); return route(); }
   // In-page anchors (#section) are not routes: keep the current page.
-  if (location.hash && !location.hash.startsWith("#/")) { history.replaceState(null, "", state.currentHash || "#/dashboard"); return; }
+  if (location.hash && !location.hash.startsWith("#/")) { holdHistoryEntry(state.currentHash || "#/dashboard"); return; }
   if (!(await confirmLeave(location.hash))) return;
   await route();
 }
@@ -414,6 +488,7 @@ async function boot(){
   renderThemeToggle();
   $("#themeToggle")?.addEventListener("click", () => { saveTheme(nextTheme(storedTheme())); renderThemeToggle(); });
   window.addEventListener("hashchange", () => onHashChange().catch(reportError));
+  window.addEventListener("popstate", syncHistoryIndex);
   window.addEventListener("beforeunload", event => { if (hasUnsavedChanges()) { event.preventDefault(); event.returnValue = ""; } });
   setNav(navGroups(null));
   if (!location.hash) history.replaceState(null, "", location.pathname + location.search + "#/dashboard");
@@ -487,6 +562,7 @@ async function route(){
     r = "dashboard";
   }
   state.currentHash = location.hash;
+  markHistoryEntry();
   if (typeof resetCharts === "function") resetCharts();
   try {
     highlightNav();
@@ -634,6 +710,9 @@ async function componentsView(refresh=false){
   state.dashboardController?.abort();
   const controller = state.dashboardController = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
+  // Disabling the focused Check again button drops focus to the page; it is put back when done.
+  const refreshButton = refresh ? $("#dashboardRefresh") : null;
+  const refreshHadFocus = !!refreshButton && document.activeElement === refreshButton;
   if (refresh) {
     $("#dashboardRefresh").disabled = true;
     $("#dashboardRefreshNote").textContent = "Checking Kodi…";
@@ -699,6 +778,7 @@ async function componentsView(refresh=false){
     if (request === state.dashboardRequest) {
       state.dashboardLoading = false;
       if ($("#dashboardRefresh")) $("#dashboardRefresh").disabled = false;
+      if (refreshHadFocus && refreshButton) restoreFocus(refreshButton);
       if (dashboardVisible() && session.token) state.dashboardTimer = setInterval(() => { if (!document.hidden) componentsView(!!$("#dashboardRefresh")); }, 30000);
     }
   }

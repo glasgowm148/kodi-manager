@@ -441,7 +441,9 @@ def writer(tmp_path, monkeypatch):
     addons = {aid: _addon(tmp_path, aid, stack) for aid, stack in (
         ("plugin.video.pov", True), ("plugin.video.other", False), ("service.kodi.addonadmin", False),
         ("plugin.video.fenlight", True))}
-    kodi = SimpleNamespace(set_addon_setting=Mock())
+    stored = {}   # Kodi's values: write_settings reads each write back
+    kodi = SimpleNamespace(set_addon_setting=Mock(side_effect=lambda a, s, v: stored.__setitem__((a, s), v)),
+                           get_addon_setting=lambda a, s: stored.get((a, s)))
     index = SimpleNamespace(get=addons.get)
     return SimpleNamespace(kodi=kodi, index=index, addons=addons, root=root, tmp=tmp_path)
 

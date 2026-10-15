@@ -685,3 +685,20 @@ test('apply and rebuild are writes the page signal never cancels, and their outc
   assert.equal(rebuild.signal,undefined,'the rebuild POST is not tied to the page');
   assert.match(stay.h.elements.get('#bs-notice').textContent,/Rebuild requested/);
 });
+
+test('a failed layout read disables section editing, says so, and leaves handlers harmless', async () => {
+  const failure = Object.assign(new Error('Kodi JSON-RPC timed out'), {code:'server_error'});
+  const h = catalogueHarness([], {api:path => { if (path === '/api/widgets/layout') throw failure; }});
+  await settleCatalogue(h);
+  const el = id => h.elements.get(id);
+  for (const id of ['#bs-add-row', '#bs-rename-section', '#bs-preset', '#bs-import', '#bs-review', '#bs-reset']) assert.equal(el(id).disabled, true, id);
+  assert.equal(el('#bs-connection').textContent, 'Couldn’t read your TV layout');
+  assert.match(el('#bs-draft-status').textContent, /TV layout unavailable/);
+  assert.equal(el('#bs-section-name').textContent, 'TV layout unavailable');
+  let prompted = false;
+  h.context.promptDialog = async () => { prompted = true; return 'New name'; };
+  await el('#bs-rename-section').onclick();
+  await el('#bs-preset').onclick({currentTarget:el('#bs-preset')});
+  assert.equal(prompted, false);
+  assert.ok(!h.calls.some(call => call.path === '/api/widgets/suggestions'));
+});

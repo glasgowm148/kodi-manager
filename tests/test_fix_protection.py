@@ -1,12 +1,14 @@
-import importlib.util
 import json
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
-spec=importlib.util.spec_from_file_location('fix_protection',Path(__file__).parents[1]/'src/kodi_manager/fix_protection.py')
-m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+import sys
+# Imported as part of the package so its relative imports (write_policy) resolve when this
+# file runs on its own, not only after another test put src/kodi_manager on sys.path.
+sys.path.insert(0, str(Path(__file__).parents[1] / 'src'))
+from kodi_manager import fix_protection as m  # noqa: E402
 class FixTests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
@@ -48,4 +50,43 @@ class FixTests(unittest.TestCase):
   with patch.object(m.os,'replace',side_effect=fail_second):
    with self.assertRaises(OSError):self.p.repair()
   self.assertEqual(self.live.read_text(),'original');self.assertEqual((self.addon/'other.py').read_text(),'original')
+ def _three_files(self):
+  for name in ('two.py','three.py'):
+   self.p.manifest['groups'][0]['files'].append(dict(self.p.manifest['groups'][0]['files'][0],path='plugin.test/'+name))
+   (self.addon/name).write_text('original');(self.p.bundle/'files/plugin.test'/name).write_text('patched')
+  return [self.live,self.addon/'two.py',self.addon/'three.py']
+ def test_failed_rollback_keeps_files_whole_tries_every_file_and_names_the_backup(self):
+  files=self._three_files();replace=m.os.replace;copy=m.shutil.copyfile;applied=[]
+  def replace_fails_third(src,dst):
+   if str(src).endswith('.km-restore') and not str(dst).endswith('code.py') and len(applied)<3:
+    applied.append(dst)
+    if len(applied)==3:raise OSError(28,'No space left on device')
+   return replace(src,dst)
+  def copy_fails_for_two(src,dst):
+   if 'backups' in str(src) and str(src).endswith('two.py'):
+    open(dst,'wb').close();raise OSError(28,'No space left on device')
+   return copy(src,dst)
+  applied.append('code.py')
+  with patch.object(m.os,'replace',side_effect=replace_fails_third),patch.object(m.shutil,'copyfile',side_effect=copy_fails_for_two):
+   with self.assertRaises(RuntimeError) as caught:self.p.repair()
+  message=str(caught.exception);backups=list((self.root/'backups').iterdir())
+  self.assertIn('plugin.test/two.py could not be rolled back; restore from %s'%backups[0],message)
+  self.assertEqual([f.read_text() for f in files],['original','patched','original'])
+  self.assertEqual((backups[0]/'plugin.test/two.py').read_text(),'original')
+  self.assertTrue((backups[0]/'manifest.json').is_file())
+  self.assertEqual([p.name for p in self.addon.iterdir() if 'km-restore' in p.name],[])
+ def test_failed_repair_that_changed_nothing_leaves_no_backup_folder(self):
+  def fail(src,dst):
+   raise OSError(28,'No space left on device')
+  with patch.object(m.shutil,'copyfile',side_effect=fail):
+   with self.assertRaises(OSError):self.p.repair()
+  self.assertEqual(list((self.root/'backups').iterdir()),[])
+  self.test_partial_restore_rolls_back()  # rolled back completely: nothing changed either
+  self.assertEqual(list((self.root/'backups').iterdir()),[])
+  self.assertEqual([p.name for p in self.addon.iterdir() if 'km-restore' in p.name],[])
+ def test_new_addon_version_needs_review_even_when_the_fixed_files_are_in_place(self):
+  self.p.repair();self.assertTrue(self.p.status()['healthy'])
+  (self.addon/'addon.xml').write_text('<addon version="1.1"/>')
+  status=self.p.status();group=status['groups'][0]
+  self.assertEqual((group['status'],group['changed'],group['repairable'],status['healthy']),('version_changed',[],False,False))
 if __name__=='__main__':unittest.main()

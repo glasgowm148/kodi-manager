@@ -5,6 +5,18 @@ LOG_LEVEL = re.compile(r"^(?:\d{4}-\d{2}-\d{2}\s+\S+\s+T:\d+\s+)?"
                        r"(debug|info|notice|warning|warn|error|fatal)\b(?:\s*<[^>]*>)?\s*:?\s*(.*)$", re.I)
 
 
+# The household Bingie fork's releases from 2.0.2.3 on (2.0.2.N) keep the reviewed,
+# intentional focus controls unchanged (no control was added or removed since 2.0.2.3).
+# Upstream 2.0.2, earlier fork builds and any other series still warn.
+_FOCUS_REVIEWED = re.compile(r"2\.0\.2\.(\d{1,4})")
+_FOCUS_FIRST = 3
+
+
+def _reviewed_focus_version(version):
+    match = _FOCUS_REVIEWED.fullmatch(str(version or ""))
+    return bool(match) and int(match.group(1)) >= _FOCUS_FIRST
+
+
 def classify_line(line, following=(), skin=None, prior_notice=False):
     parsed = LOG_LEVEL.match(line)
     if not parsed:
@@ -18,7 +30,7 @@ def classify_line(line, following=(), skin=None, prior_notice=False):
         return ("notice" if prior_notice else "warning"), prior_notice
     skin = skin or {}
     focus_buttons = (skin.get("active") and skin.get("addon_id") == "skin.bingie"
-                     and skin.get("version") in ("2.0.2.3", "2.0.2.5", "2.0.2.6"))
+                     and _reviewed_focus_version(skin.get("version")))
     resolved_type = (message == 'JSONRPC: Could not parse type "Setting.Details.SettingList"'
                      and any("JSONRPC: Resolving incomplete types/methods referencing Setting.Details.Setting"
                              in other for other in following))

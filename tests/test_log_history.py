@@ -1,5 +1,6 @@
 """Synthetic logs only: persistence, rotation, retention and masked storage."""
 from pathlib import Path
+import json
 import sqlite3
 import sys
 import time
@@ -90,6 +91,8 @@ def test_retention_uses_log_time_not_import_time_and_expires_saved_events(histor
     assert h.snapshot()["total"] == 1
     clock[0] += 2
     assert h.snapshot()["total"] == 0
+    h.collect()  # expired entries are removed at the next maintenance (once a minute)
+    clock[0] += log_history.MAINTAIN_EVERY
     h.collect()
     with sqlite3.connect(h.path) as db:
         assert db.execute("SELECT count(*) FROM events").fetchone()[0] == 0
@@ -231,3 +234,89 @@ def test_stream_path_credentials_are_masked_in_storage_and_legacy_responses(hist
     assert all(secret not in str(snapshot) for secret in secrets)
     assert snapshot['counts']['errors'] == snapshot['total'] == 1
     assert 'stream.example.invalid' in snapshot['entries'][0]['line']
+
+
+# --- Flash writes and database size --------------------------------------------------------
+
+def _connections(h, monkeypatch):
+    opened = []
+    real = h.connect
+
+    def counting():
+        opened.append(h.clock())
+        return real()
+    monkeypatch.setattr(h, "connect", counting)
+    return opened
+
+
+def test_idle_collect_does_not_write_until_metadata_or_maintenance_is_due(history, monkeypatch):
+    h, logs, clock = history
+    (logs / "kodi.log").write_text(line(clock[0], "error", "Playback failed"))
+    h.collect()
+    opened = _connections(h, monkeypatch)
+    mtime = Path(h.path).stat().st_mtime_ns
+    for _ in range(9):  # 18 s of 2-second scans with no new log lines
+        clock[0] += 2
+        h.collect()
+    assert opened == [] and Path(h.path).stat().st_mtime_ns == mtime
+    status = h.snapshot()  # served from this process's last scan
+    assert status["available"] and status["last_scan_at"] == clock[0] and status["counts"]["errors"] == 1
+    del opened[:]
+    clock[0] += 2  # 20 s: the scan status is saved for other processes, without a full scan
+    h.collect()
+    assert len(opened) == 1
+    with sqlite3.connect(h.path) as db:
+        saved = json.loads(db.execute("SELECT value FROM metadata WHERE key='scan'").fetchone()[0])
+    assert saved["last_scan_at"] == clock[0]
+    with (logs / "kodi.log").open("a") as handle:  # a new line is read at the next scan
+        handle.write(line(clock[0], message="New warning"))
+    clock[0] += 2
+    h.collect()
+    assert h.snapshot()["counts"]["warnings"] == 1
+    clock[0] += log_history.MAINTAIN_EVERY  # maintenance runs a full scan once a minute
+    del opened[:]
+    h.collect()
+    assert opened
+
+
+def test_another_process_sees_the_saved_scan_status(history):
+    h, logs, clock = history
+    (logs / "kodi.log").write_text(line(clock[0], "info"))
+    h.collect()
+    other = LogHistory(h.path, logs, h.clock)
+    assert other.snapshot()["available"]
+    clock[0] += 31
+    assert not other.snapshot()["available"] and not h.snapshot()["available"]
+
+
+def test_events_are_capped_oldest_first_and_space_is_reclaimed(history, monkeypatch):
+    h, logs, clock = history
+    monkeypatch.setattr(log_history, "MAX_EVENTS", 50)
+    (logs / "kodi.log").write_text("".join(line(clock[0] - 100 + n / 10, "error", "burst %d %s" % (n, "x" * 400))
+                                           for n in range(400)))
+    h.collect()
+    with sqlite3.connect(h.path) as db:
+        assert db.execute("PRAGMA auto_vacuum").fetchone()[0] == 2  # incremental, set on a new database
+        assert db.execute("SELECT count(*) FROM events").fetchone()[0] == 50
+        assert db.execute("SELECT min(line) LIKE '%burst 350 %' FROM events").fetchone()[0]
+        assert db.execute("SELECT count(*) FROM issue_members").fetchone()[0] == 50
+        assert db.execute("PRAGMA freelist_count").fetchone()[0] == 0
+    assert h.snapshot()["total"] == 50
+
+
+def test_an_older_database_without_auto_vacuum_is_compacted_once(history):
+    h, logs, clock = history
+    Path(h.path).parent.mkdir(parents=True)
+    with sqlite3.connect(h.path) as db:  # as created by an older version
+        db.execute("CREATE TABLE events (id INTEGER PRIMARY KEY, source TEXT, generation INTEGER, position INTEGER,"
+                   " at REAL, level TEXT, line TEXT, UNIQUE(source,generation,position))")
+        db.executemany("INSERT INTO events(source,generation,position,at,level,line) VALUES ('s',0,?,?,'error',?)",
+                       [(n, clock[0] - RETENTION - 10, "x" * 2000) for n in range(2000)])
+    before = Path(h.path).stat().st_size
+    (logs / "kodi.log").write_text(line(clock[0], "error", "kept"))
+    h.collect()
+    with sqlite3.connect(h.path) as db:
+        assert db.execute("PRAGMA auto_vacuum").fetchone()[0] == 2
+        assert db.execute("SELECT count(*) FROM events").fetchone()[0] == 1
+    assert Path(h.path).stat().st_size < before / 10
+    assert h.snapshot()["counts"]["errors"] == 1

@@ -365,10 +365,68 @@ def test_retired_service_stops_a_copy_in_progress(storage):
 
 
 @pytest.mark.parametrize("reason,code", [("busy_database", "stale_revision"), ("playback", "playback_active"),
-                                         ("stopping", "server_retired")])
+                                         ("stopping", "server_retired"), ("low_storage", "stale_revision")])
 def test_backup_abort_reasons_map_to_api_errors(reason, code):
     from kodi_manager import api_addons, operation_records
     error = api_addons.AddonRoutes._backup_aborted(backup.BackupAborted("x", reason), None, "backup")
     assert error.status == 409 and error.code == code and code in operation_records.REASONS
     if reason == "busy_database":
         assert code in operation_records.REFUSALS and "Try again" in str(error)
+    if reason == "low_storage":
+        assert code in operation_records.REFUSALS and "nothing changed" in str(error)
+
+
+# --- Low storage --------------------------------------------------------------------------
+
+def _low_storage():
+    return backup.BackupAborted("Not enough free storage for a backup (150 MB free, 400 MB needed); free some "
+                                "space or delete old backups", "low_storage", deferred=False)
+
+
+def test_nightly_low_storage_prunes_older_nightly_checkpoints_first():
+    backups = [{"backup_id": "202610%02d-030000-x" % d, "timestamp": "202610%02d" % d, "note": "nightly"} for d in range(1, 8)]
+    backups.append({"backup_id": "manual", "timestamp": "20260101", "note": ""})
+    outcomes = [_low_storage(), {"backup_id": "new"}]
+    deleted = []
+
+    def make():
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        backups.append({"backup_id": "20261008-030000-new", "timestamp": "20261008", "note": "nightly"})
+        return outcome
+
+    def delete(backup_id):
+        deleted.append(backup_id)
+        backups[:] = [b for b in backups if b["backup_id"] != backup_id]
+    assert maintenance.nightly_checkpoint(make, lambda: list(backups), delete)["backup_id"] == "new"
+    assert deleted == ["20261001-030000-x"]  # down to 6 before, so 7 after tonight's
+    assert len([b for b in backups if b["note"] == "nightly"]) == 7 and outcomes == []
+
+
+def test_nightly_low_storage_with_nothing_to_prune_is_skipped_for_the_night():
+    clock = Clock(time.mktime((2026, 10, 11, 3, 30, 0, 0, 0, -1)))
+    runs, logs = [], []
+
+    def checkpoint():
+        runs.append(1)
+        return maintenance.nightly_checkpoint(lambda: (_ for _ in ()).throw(_low_storage()), lambda: [],
+                                              lambda backup_id: None)
+    m = Maintenance(lambda *a: None, checkpoint=checkpoint, clock=clock, log=logs.append)
+    m.tick(True)
+    nightly = maintenance.snapshot()["nightly"]
+    assert nightly["status"] == "error" and nightly["error"] == "low_storage"
+    assert "Not enough free storage" in nightly["detail"]
+    assert any("low storage" in line for line in logs)
+    for _ in range(10):  # no retry storm: not again that night
+        clock.t += Maintenance.RETRY_DEFERRED_AFTER
+        m.tick(True)
+    assert runs == [1]
+    clock.t += 24 * 3600
+    m.tick(True)
+    assert runs == [1, 1]
+    from kodi_manager import dashboard_data
+    with patch.object(dashboard_data, "make_baseline", side_effect=RuntimeError("no baseline")):
+        checks = dashboard_data.maintenance_checks(SimpleNamespace())
+    check = next(c for c in checks if c["id"] == "nightly")
+    assert check["status"] == "warning" and "low storage" in check["detail"] and "400 MB needed" in check["detail"]

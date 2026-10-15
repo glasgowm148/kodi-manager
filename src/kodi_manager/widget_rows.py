@@ -15,11 +15,11 @@ import re
 import uuid
 
 try:
-    from .fsutil import atomic_write_json, path_lock
+    from .fsutil import atomic_write_json, interprocess_lock, path_lock
     from .widget_cache import cache_url, validate_source, strip_skin_reload
     from .write_policy import RequestRefused
 except ImportError:
-    from fsutil import atomic_write_json, path_lock
+    from fsutil import atomic_write_json, interprocess_lock, path_lock
     from widget_cache import cache_url, validate_source, strip_skin_reload
     from write_policy import RequestRefused
 
@@ -39,13 +39,33 @@ class RowStore:
         self.path = os.path.join(root, "rows.json")
 
     def load(self):
+        """The saved rows; [] when rows.json is missing or unreadable (for listing only)."""
+        try:
+            return self._read()
+        except (OSError, ValueError):
+            return []
+
+    def _read(self):
+        """The saved rows for a read-modify-write: [] only when rows.json does not exist yet.
+
+        Any other read error or a damaged file is raised, so a change never replaces rows it
+        could not read."""
         try:
             with open(self.path, encoding="utf-8") as fh:
                 rows = json.load(fh)
-        except (OSError, ValueError):
+        except FileNotFoundError:
             return []
         return [r for r in rows if isinstance(r, dict) and isinstance(r.get("source"), str) and r.get("id")] \
             if isinstance(rows, list) else []
+
+    def _read_for_change(self):
+        try:
+            return self._read()
+        except (OSError, ValueError) as exc:
+            # Raised before anything is written: a refusal, not an unknown outcome.
+            raise RequestRefused("Cached rows could not be read (%s), so nothing was changed; try again or "
+                                 "fix widget_cache/rows.json" % type(exc).__name__, status=409,
+                                 code="stale_revision") from None
 
     def _save(self, rows):
         atomic_write_json(self.path, rows, indent=1)
@@ -61,9 +81,10 @@ class RowStore:
             label = _clean_label(label)
         except ValueError as exc:
             raise RequestRefused(str(exc)) from None
-        # Read-modify-write under a per-file lock so concurrent adds keep each other's rows.
-        with path_lock(self.path):
-            rows = self.load()
+        # Read-modify-write under a per-file lock (threads and other Kodi interpreters, such as the
+        # context-menu script) so concurrent changes keep each other's rows.
+        with path_lock(self.path), interprocess_lock(self.path):
+            rows = self._read_for_change()
             for row in rows:
                 if row["source"] == source:
                     row.update({"label": label, "pages": pages, "hide_watched": bool(hide_watched)})
@@ -78,8 +99,8 @@ class RowStore:
             return row
 
     def remove(self, row_id):
-        with path_lock(self.path):
-            rows = self.load()
+        with path_lock(self.path), interprocess_lock(self.path):
+            rows = self._read_for_change()
             kept = [r for r in rows if r["id"] != row_id]
             if len(kept) == len(rows):
                 raise ValueError("Unknown cached row")

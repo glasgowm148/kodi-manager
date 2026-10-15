@@ -151,7 +151,7 @@ for (const [page, button, endpoint, reply, expected] of [
 test('arrow keys leave charts, number fields, sliders and selects in the directions they do not use', () => {
   const {ctx} = appHarness(() => ({}));
   const rect = (left, top, width, height) => ({left, top, right:left + width, bottom:top + height, width, height});
-  const make = (name, r, extra = {}) => ({name, tagName:'DIV', type:'', getClientRects:() => [1], getBoundingClientRect:() => r, closest:() => null, focus(){ ctx.focused = name; }, scrollIntoView(){}, ...extra});
+  const make = (name, r, extra = {}) => ({name, tagName:'DIV', type:'', getClientRects:() => [1], getBoundingClientRect:() => r, closest:() => null, focus(){ ctx.focused = name; ctx.document.activeElement = this; }, scrollIntoView(){}, ...extra});
   const neighbours = [make('above', rect(300, 0, 100, 30)), make('below', rect(300, 400, 100, 30)), make('left', rect(0, 200, 100, 30)), make('right', rect(600, 200, 100, 30))];
   const at = rect(300, 200, 100, 30);
   const controls = {
@@ -178,6 +178,75 @@ test('arrow keys leave charts, number fields, sliders and selects in the directi
       assert.equal(prevented, !kept, `${name} ${key} default`);
     }
   }
+});
+
+/* Spatial navigation fixtures: plain objects standing in for focusable elements. */
+function spatialFixture() {
+  const {ctx} = appHarness(() => ({}));
+  const rect = (left, top, width, height) => ({left, top, right:left + width, bottom:top + height, width, height});
+  const make = (name, r, extra = {}) => ({name, tagName:'BUTTON', type:'', isConnected:true, getClientRects:() => [1], getBoundingClientRect:() => r, closest:() => null,
+    checkVisibility:() => true, focus(){ ctx.document.activeElement = this; }, scrollIntoView(){}, ...extra});
+  const press = key => { let prevented = false; ctx.spatialKey({key, defaultPrevented:false, preventDefault(){ prevented = true; }}); return prevented; };
+  return {ctx, rect, make, press};
+}
+
+test('arrow keys skip links hidden inside closed details and controls that refuse focus', () => {
+  const {ctx, rect, make, press} = spatialFixture();
+  const from = make('from', rect(0, 0, 200, 30));
+  const closedChild = make('closed child', rect(0, 40, 200, 30), {checkVisibility:() => false});
+  const refuses = make('refuses', rect(0, 80, 200, 30), {focus(){}});
+  const next = make('next', rect(0, 120, 200, 30));
+  ctx.document.querySelector = () => null;
+  ctx.document.querySelectorAll = () => [from, closedChild, refuses, next];
+  ctx.document.activeElement = from;
+  assert.equal(press('ArrowDown'), true);
+  assert.equal(ctx.document.activeElement.name, 'next');
+  // Nothing that takes focus in that direction: the key is left alone.
+  ctx.document.querySelectorAll = () => [from, closedChild, refuses];
+  ctx.document.activeElement = from;
+  assert.equal(press('ArrowDown'), false);
+  assert.equal(ctx.document.activeElement.name, 'from');
+});
+
+test('arrow keys pick focus up again after it fell to the page', () => {
+  const {ctx, rect, make, press} = spatialFixture();
+  const body = ctx.document.body;
+  const offscreen = make('offscreen', rect(0, -400, 200, 30));
+  const hidden = make('hidden', rect(0, 100, 200, 30), {checkVisibility:() => false});
+  const visible = make('visible', rect(0, 200, 200, 30));
+  const heading = make('heading', rect(0, -500, 200, 30), {tagName:'H2'});
+  const content = {querySelectorAll:() => [offscreen, hidden, visible], querySelector:s => s === 'h2' ? heading : null};
+  ctx.innerHeight = 1080;
+  ctx.document.querySelector = s => s === '#content' ? content : null;
+  ctx.document.activeElement = body;
+  assert.equal(press('ArrowDown'), true);
+  assert.equal(ctx.document.activeElement.name, 'visible');
+  // Nothing on screen: the page heading.
+  content.querySelectorAll = () => [offscreen];
+  ctx.document.activeElement = body;
+  assert.equal(press('ArrowUp'), true);
+  assert.equal(ctx.document.activeElement.name, 'heading');
+  // A detached control (re-rendered away) counts as lost focus too; an open dialog keeps focus inside it.
+  const inDialog = make('dialog button', rect(0, 0, 100, 30));
+  ctx.document.querySelector = s => s === 'dialog[open]' ? {querySelectorAll:() => [inDialog]} : s === '#content' ? content : null;
+  ctx.document.activeElement = make('gone', rect(0, 0, 1, 1), {isConnected:false});
+  assert.equal(press('ArrowRight'), true);
+  assert.equal(ctx.document.activeElement.name, 'dialog button');
+});
+
+test('a text field hands Left and Right back at the start and end of its text', () => {
+  const {ctx, rect, make, press} = spatialFixture();
+  const left = make('left', rect(0, 0, 100, 30)), right = make('right', rect(600, 0, 100, 30));
+  const field = make('search', rect(200, 0, 300, 30), {tagName:'INPUT', type:'search', value:'pov', selectionStart:0, selectionEnd:0});
+  ctx.document.querySelector = () => null;
+  ctx.document.querySelectorAll = () => [left, field, right];
+  const at = (start, end = start) => { field.selectionStart = start; field.selectionEnd = end; ctx.document.activeElement = field; };
+  at(0); assert.equal(press('ArrowLeft'), true); assert.equal(ctx.document.activeElement.name, 'left');
+  at(0); assert.equal(press('ArrowRight'), false); assert.equal(ctx.document.activeElement.name, 'search');
+  at(3); assert.equal(press('ArrowRight'), true); assert.equal(ctx.document.activeElement.name, 'right');
+  at(1); assert.equal(press('ArrowLeft'), false); assert.equal(press('ArrowRight'), false);
+  at(0, 3); assert.equal(press('ArrowLeft'), false); // a selection collapses first
+  assert.equal(ctx.ownsArrowKey({tagName:'INPUT', type:'email', get selectionStart(){ throw new Error('not supported'); }, value:''}, 'left'), true);
 });
 
 /* The add-ons page refreshes every 30 seconds; focus must stay on the same control. */

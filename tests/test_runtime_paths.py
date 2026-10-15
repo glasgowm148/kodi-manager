@@ -31,8 +31,12 @@ def kodi_fs(tmp_path, monkeypatch):
         return ([n for n in names if os.path.isdir(os.path.join(real, n))],
                 [n for n in names if not os.path.isdir(os.path.join(real, n))])
 
-    fake = types.SimpleNamespace(translatePath=translate, listdir=listdir,
-                                 exists=lambda p: os.path.exists(translate(p)))
+    def exists(path):
+        # Kodi's xbmcvfs.exists: a folder only with a trailing slash, otherwise only a file.
+        real = translate(path)
+        return os.path.isdir(real) if path.endswith(("/", "\\")) else os.path.isfile(real)
+
+    fake = types.SimpleNamespace(translatePath=translate, listdir=listdir, exists=exists)
     monkeypatch.setattr(path_probe, "xbmcvfs", fake)
     monkeypatch.setattr(kodi_api, "xbmcvfs", fake)
     monkeypatch.setattr(path_probe, "ANDROID_KODI_ROOTS", [])
@@ -126,3 +130,15 @@ def test_a_sparse_profile_never_resolves_addon_data_to_the_master_profile(kodi_f
     assert os.path.normpath(index.get(POV)["addon_data_path"]) == os.path.normpath(str(roots["special://profile/"] / "addon_data" / POV))
     # Add-ons with data only in the master profile are not attributed to this profile.
     assert index.get("skin.bingie") is None
+
+
+def test_exists_finds_folders_although_kodi_needs_a_trailing_slash_for_them(kodi_fs):
+    _, roots = kodi_fs
+    folder = roots["special://profile/"] / "addon_data" / "plugin.video.new"
+    _write(folder / "settings.xml", b"<settings/>")
+    for path in ("special://profile/addon_data/plugin.video.new", str(folder), str(folder) + "/"):
+        assert kodi_api.exists(path)
+    assert kodi_api.exists("special://profile/addon_data/plugin.video.new/settings.xml")
+    assert not kodi_api.exists("special://profile/addon_data/plugin.video.missing")
+    info = addon_index.enrich_addon({"addon_id": "plugin.video.new", "path": "", "jsonrpc_present": True})
+    assert info["addon_data_present"] and info["config_present"]

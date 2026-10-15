@@ -187,6 +187,42 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(self.main, self.read("skin.bingie-mainmenu.DATA.xml"))
         self.assertFalse(os.path.exists(target))
 
+    def backups(self):
+        folder = os.path.join(self.root, "kodi-manager-backups")
+        return sorted(os.listdir(folder)) if os.path.isdir(folder) else []
+
+    def test_failure_before_any_skin_write_leaves_no_partial_backup(self):
+        self.ready()
+        atomic = layout._atomic
+        for fail_on in ("manifest.json", "skin.bingie-mainmenu.DATA.xml"):
+            def failing(path, raw, fail_on=fail_on):
+                if path.endswith(fail_on) and ("kodi-manager-backups" in path) == (fail_on == "manifest.json"):
+                    raise OSError("simulated write failure")
+                return atomic(path, raw)
+
+            with patch.object(layout, "_atomic", side_effect=failing):
+                with self.assertRaisesRegex(OSError, "simulated"):
+                    layout.apply_layout(self.kodi, self.index, self.body, True)
+            self.assertEqual(self.backups(), [])
+            self.assertEqual(self.main, self.read("skin.bingie-mainmenu.DATA.xml"))
+
+    def test_unfinished_backups_do_not_count_towards_retention(self):
+        import backup
+        folder = os.path.join(self.root, "kodi-manager-backups")
+        for name, age, complete in (("skin-layout-done", 100, True), ("skin-layout-old", 2 * 86400, False),
+                                    ("skin-layout-new", 60, False)):
+            os.makedirs(os.path.join(folder, name))
+            if complete:
+                self.put(os.path.join("kodi-manager-backups", name, "manifest.json"), b"{}")
+            os.utime(os.path.join(folder, name), (os.path.getmtime(folder) - age,) * 2)
+        backup.set_retention(2)
+        try:
+            self.ready()
+            result = layout.apply_layout(self.kodi, self.index, self.body, True)
+        finally:
+            backup.set_retention(backup.DEFAULT_RETENTION)
+        self.assertEqual(self.backups(), sorted([result["backup_id"], "skin-layout-done", "skin-layout-new"]))
+
     def test_manager_wrapper_requires_video_extension_and_valid_source(self):
         from widget_plugin import family_directory_url
         wrapper = family_directory_url('plugin://plugin.video.test/?info=family', '12A', True)

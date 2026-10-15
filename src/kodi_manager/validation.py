@@ -104,6 +104,10 @@ def _number_text(value, whole):
     return text
 
 
+def _plain(number):
+    return str(int(number)) if float(number).is_integer() else str(number)
+
+
 def coerce_value(setting, value):
     stype = (setting.get("type") or "").lower()
     if value is None or isinstance(value, (dict, list, tuple)):
@@ -118,17 +122,24 @@ def coerce_value(setting, value):
         if val in ("false", "0", "no", "off"):
             return "false"
         raise ValueError("Expected boolean")
-    if stype in ("integer", "int"):
-        return _number_text(value, whole=True)
-    if stype in ("number", "slider"):
-        return _number_text(value, whole=False)
+    if stype in ("integer", "int", "number", "slider"):
+        # Kodi keeps a v1 "number" and an int/percent slider as integers: it silently
+        # ignores "2.5" for them (settings_schema marks them ``whole``).
+        text = _number_text(value, whole=stype in ("integer", "int") or bool(setting.get("whole")))
+        low, high = setting.get("minimum"), setting.get("maximum")
+        if low is not None and high is not None and not low <= float(text) <= high:
+            raise ValueError("Expected a number from %s to %s" % (_plain(low), _plain(high)))
+        return text
     if stype in ("select", "spinner", "enum"):
         opts = setting.get("options") or []
         if opts and str(value) not in [str(o.get("value", o)) for o in opts]:
             raise ValueError("Value not in options")
         return str(value)
     if stype in ("text", "string", "password"):
-        return str(value)
+        text = str(value)
+        if text == "" and setting.get("allow_empty") is False:
+            raise ValueError("A value is required")   # Kodi refuses "" for this setting
+        return text
     raise ValueError("Unsupported setting type")
 
 

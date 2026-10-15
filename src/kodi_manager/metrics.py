@@ -176,6 +176,11 @@ class MetricsHistory:
                  max_bytes=MAX_BYTES, clock=time.time):
         self.path, self.retention, self.resolution = path, retention, resolution
         self.max_samples, self.max_bytes, self.clock = max_samples, max_bytes, clock
+        self._behind_since = None  # time.monotonic() when this clock was first seen behind the history
+
+    # How long this clock may stay behind most of the stored history (see record) before
+    # that history is taken to be the wrong one (stamped by a clock that ran ahead).
+    BEHIND_GRACE = 6 * 3600
 
     def load(self) -> List[Dict[str, Any]]:
         """Stored samples, oldest first. A missing or damaged file is an empty history."""
@@ -208,8 +213,20 @@ class MetricsHistory:
         if not sample:
             return False
         with _lock, path_lock(self.path):
-            # Samples stamped later than now (the clock was wrong, then corrected) are dropped.
-            samples = [s for s in self.load() if s["t"] <= now + 300]
+            stored = self.load()
+            samples = [s for s in stored if s["t"] <= now + 300]
+            ahead = len(stored) - len(samples)
+            if ahead > 1 and ahead > len(samples):
+                # Most of the history is later than now: this clock is probably behind (the
+                # TV just started and has not set its clock yet). Skip this sample rather
+                # than erase the history, unless the clock has stayed behind for hours.
+                if self._behind_since is None:
+                    self._behind_since = time.monotonic()
+                if time.monotonic() - self._behind_since < self.BEHIND_GRACE:
+                    return False
+            else:
+                self._behind_since = None
+            # Otherwise samples stamped later than now (the clock was ahead, then corrected) are dropped.
             if samples and sample["t"] - samples[-1]["t"] < self.resolution * 0.9:
                 return False
             samples = self._bounded(samples + [sample], now)

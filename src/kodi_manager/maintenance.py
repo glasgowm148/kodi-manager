@@ -94,6 +94,15 @@ class Maintenance:
                     with _LOCK:
                         LAST["nightly"] = {"status": "ok", "at": int(now), "backup_id": (result or {}).get("backup_id")}
                 except Exception as exc:
+                    if getattr(exc, "reason", None) == "low_storage":
+                        # Not retried tonight: it would only fail again. Tomorrow's checkpoint
+                        # tries again (after pruning older nightly ones first).
+                        with _LOCK:
+                            LAST["nightly"] = {"status": "error", "at": int(now), "error": "low_storage",
+                                               "detail": str(exc)}
+                        self.log("Nightly checkpoint skipped: low storage. %s" % exc)
+                        ran.append("nightly")
+                        return ran
                     busy = getattr(exc, "reason", None) == "busy_database"
                     if busy and day != self.busy_day:
                         self.busy_day, self.busy_retries = day, 0
@@ -148,14 +157,34 @@ class Maintenance:
         return ran
 
 
-def nightly_checkpoint(make_backup, list_backups, delete_backup, keep=NIGHTLY_KEEP):
-    """Take a nightly stack backup and keep only the newest ``keep`` nightly ones."""
-    result = make_backup()
+def _prune_nightly(list_backups, delete_backup, keep):
     nightly = [b for b in list_backups() if b.get("note") == "nightly"]
     nightly.sort(key=lambda b: str(b.get("timestamp") or b.get("backup_id")), reverse=True)
+    removed = 0
     for old in nightly[keep:]:
         try:
-            delete_backup(old["backup_id"])
+            if delete_backup(old["backup_id"]) is not False:
+                removed += 1
         except Exception:
             pass
+    return removed
+
+
+def nightly_checkpoint(make_backup, list_backups, delete_backup, keep=NIGHTLY_KEEP):
+    """Take a nightly stack backup and keep only the newest ``keep`` nightly ones.
+
+    When the backup storage is too full for it (BackupAborted "low_storage", raised
+    before anything is written), the older nightly checkpoints are pruned down to
+    ``keep - 1`` first, making room for tonight's, and it is tried once more; if there
+    is still not enough room, the "low_storage" error is raised.
+    """
+    try:
+        result = make_backup()
+    except Exception as exc:
+        if getattr(exc, "reason", None) != "low_storage":
+            raise
+        if not _prune_nightly(list_backups, delete_backup, max(0, keep - 1)):
+            raise
+        result = make_backup()
+    _prune_nightly(list_backups, delete_backup, keep)
     return result

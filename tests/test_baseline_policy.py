@@ -13,7 +13,7 @@ OTHER = "plugin.video.notallowed"
 
 class Kodi:
     def __init__(self):
-        self.writes = []
+        self.writes, self.values = [], {}
 
     def jsonrpc(self, method, params=None):
         if method == "Settings.SetSettingValue":
@@ -24,10 +24,11 @@ class Kodi:
         return {"result": []}
 
     def get_addon_setting(self, addon, sid):
-        return "live"
+        return self.values.get((addon, sid), "live")
 
     def set_addon_setting(self, addon, sid, value):
         self.writes.append((addon, sid, value))
+        self.values[(addon, sid)] = value
 
     def get_addon_details(self, addon):
         return {}

@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 import shutil
+import time
 
 import pytest
 
@@ -531,3 +532,184 @@ def test_restore_still_fails_when_a_snapshot_file_vanishes(storage, monkeypatch)
     with pytest.raises(FileNotFoundError):
         backup.restore_backup(info, snap["backup_id"])
     assert settings.read_text() == "live"
+
+
+# --- Low storage, unfinished snapshots, side-file order, own backups folder -----------------
+
+MB = 1024 * 1024
+
+
+def _fake_free(monkeypatch, free):
+    """A fake os.statvfs reporting ``free[0]`` bytes available (a list, so tests can change it)."""
+    def statvfs(path):
+        return SimpleNamespace(f_bavail=free[0] // 4096, f_frsize=4096, f_bsize=4096)
+    monkeypatch.setattr(backup.os, "statvfs", statvfs, raising=False)
+
+
+@pytest.mark.parametrize("kind", ["backup", "files", "stack", "pipeline"])
+def test_low_storage_refuses_a_snapshot_before_writing_anything(storage, monkeypatch, kind):
+    root, settings, info = storage
+    settings.write_bytes(b"x" * 1000)
+    _fake_free(monkeypatch, [backup.LOW_STORAGE_FLOOR - 1])
+    index = SimpleNamespace(get=lambda aid: info if aid == "plugin.video.pov" else None)
+    take = {"backup": lambda: backup.create_backup(info),
+            "files": lambda: backup.create_file_backup("selected", {"settings.xml": str(settings)}),
+            "stack": lambda: backup.create_stack_backup([info]),
+            "pipeline": lambda: pipeline_backup(index)}[kind]
+    with pytest.raises(backup.BackupAborted) as caught:
+        take()
+    assert caught.value.reason == "low_storage" and not caught.value.deferred
+    assert "Not enough free storage for a backup" in str(caught.value) and "MB needed" in str(caught.value)
+    assert [p for p in root.rglob("*") if p.is_file()] == []  # nothing allocated or written
+
+
+def test_low_storage_needs_twice_the_last_comparable_snapshot(storage, monkeypatch):
+    root, settings, info = storage
+    settings.write_bytes(b"x" * 1000)
+    first = backup.create_backup(info)  # real statvfs: plenty of room in the test's filesystem
+    assert first["total_bytes"] == 1000
+    stack = backup.create_stack_backup([info])
+    assert stack["total_bytes"] == 1000
+    monkeypatch.setattr(backup, "LOW_STORAGE_FLOOR", 100)
+    free = [1999]
+    _fake_free(monkeypatch, free)
+    for take in (lambda: backup.create_backup(info), lambda: backup.create_stack_backup([info])):
+        with pytest.raises(backup.BackupAborted) as caught:
+            take()
+        assert caught.value.reason == "low_storage"
+    free[0] = 2000 + 4096  # rounded down to whole blocks by the fake
+    assert backup.create_backup(info)["files_copied"] == 1
+    assert backup.create_stack_backup([info])["file_counts"] == {info["addon_id"]: 1}
+
+
+def test_low_storage_without_a_recorded_size_estimates_from_the_source(storage, monkeypatch):
+    root, settings, info = storage
+    settings.write_bytes(b"x" * 5000)
+    monkeypatch.setattr(backup, "LOW_STORAGE_FLOOR", 100)
+    _fake_free(monkeypatch, [8192])  # less than 2 x 5000
+    with pytest.raises(backup.BackupAborted):
+        backup.create_backup(info)
+    assert backup.storage_needed(info["addon_id"], lambda: 5000) == 10000
+
+
+def test_free_space_check_is_skipped_where_statvfs_is_unavailable(storage, monkeypatch):
+    root, settings, info = storage
+    settings.write_bytes(b"x")
+    monkeypatch.delattr(backup.os, "statvfs", raising=False)
+    assert backup.free_bytes(str(root)) is None
+    assert backup.create_backup(info)["files_copied"] == 1
+
+    def broken(path):
+        raise OSError("not a real filesystem")
+    monkeypatch.setattr(backup.os, "statvfs", broken, raising=False)
+    assert backup.create_backup(info)["files_copied"] == 1
+
+
+def _orphan(folder, age):
+    folder.mkdir(parents=True)
+    (folder / "addon_data").mkdir()
+    (folder / "addon_data" / "big.db").write_bytes(b"x" * 100)
+    old = time.time() - age
+    os.utime(str(folder), (old, old))
+    return folder
+
+
+def test_unfinished_snapshot_folders_are_pruned_once_a_day_old(storage):
+    root, settings, info = storage
+    settings.write_bytes(b"x")
+    scope = root / info["addon_id"]
+    old = _orphan(scope / "20250101-120000-0123abcd", 2 * 86400)
+    recent = _orphan(scope / "20250102-120000-4567abcd", 3600)  # may be a copy still running
+    other = _orphan(scope / "not-a-snapshot", 2 * 86400)
+    unreadable = _orphan(scope / "20250103-120000-89abcdef", 2 * 86400)
+    (unreadable / "manifest.json").write_text("{damaged")  # may be a real snapshot: kept
+    snap = backup.create_backup(info)
+    assert sorted(p.name for p in scope.iterdir()) == sorted([recent.name, other.name, unreadable.name, snap["backup_id"]])
+    assert not old.exists()
+    assert [m["backup_id"] for m in backup.list_backups(info["addon_id"])] == [snap["backup_id"]]
+
+
+def test_unfinished_stack_snapshots_are_removed_when_storage_is_low(storage, monkeypatch):
+    root, settings, info = storage
+    settings.write_bytes(b"x")
+    orphan = _orphan(root / "_stack" / "20250101-120000-0123abcd", 2 * 86400)
+    monkeypatch.setattr(backup, "LOW_STORAGE_FLOOR", 1000)
+    free = [500]
+    _fake_free(monkeypatch, free)
+    real_prune = backup.prune_orphans
+
+    def prune_frees_space(scope, keep=()):
+        removed = real_prune(scope, keep)
+        free[0] += 8192 * len(removed)
+        return removed
+    monkeypatch.setattr(backup, "prune_orphans", prune_frees_space)
+    snap = backup.create_stack_backup([info])
+    assert not orphan.exists() and snap["file_counts"] == {info["addon_id"]: 1}
+
+
+def test_a_side_file_listed_before_its_database_is_not_copied_raw(storage, monkeypatch):
+    import sqlite3
+    root, settings, info = storage
+    live = settings.parent
+    db = sqlite3.connect(str(live / "cache.db"))
+    db.execute("pragma journal_mode=wal")
+    db.execute("pragma wal_autocheckpoint=0")
+    db.execute("create table t(v)")
+    db.executemany("insert into t values (?)", [(i,) for i in range(100)])
+    db.commit()
+    try:
+        assert (live / "cache.db-wal").stat().st_size > 0  # committed rows only in the -wal
+        listed = backup._source_files
+        monkeypatch.setattr(backup, "_source_files", lambda *a, **k: sorted(listed(*a, **k), reverse=True))
+        assert backup._source_files(str(live))[0] == "cache.db-wal"
+        snap = backup.create_backup(info)
+    finally:
+        db.close()
+    folder = root / info["addon_id"] / snap["backup_id"] / "addon_data"
+    assert sorted(p.name for p in folder.iterdir()) == ["cache.db"]
+    copy = sqlite3.connect(str(folder / "cache.db"))
+    assert copy.execute("select count(*) from t").fetchone()[0] == 100
+    copy.close()
+
+
+@pytest.mark.parametrize("stack", [False, True])
+def test_kodi_managers_own_backups_folder_is_never_snapshotted_or_restored(storage, tmp_path, stack):
+    root, settings, info = storage
+    live = tmp_path / "self"
+    (live / "backups" / "_stack" / "old").mkdir(parents=True)
+    (live / "backups" / "_stack" / "old" / "manifest.json").write_text("{}")
+    (live / "baseline.json").write_text("before")
+    me = {"addon_id": backup.SELF_ID, "addon_data_path": str(live)}
+    snap = backup.create_stack_backup([me]) if stack else backup.create_backup(me)
+    if stack:
+        folder = root / "_stack" / snap["backup_id"] / backup.SELF_ID
+        assert snap["file_counts"] == {backup.SELF_ID: 1}
+    else:
+        folder = root / backup.SELF_ID / snap["backup_id"] / "addon_data"
+        assert snap["files_copied"] == 1
+    assert sorted(p.name for p in folder.iterdir()) == ["baseline.json"]
+    (live / "baseline.json").write_text("after")
+    (live / "backups" / "new.json").write_text("taken since")
+    index = SimpleNamespace(get=lambda aid: me if aid == backup.SELF_ID else None)
+    if stack:
+        backup.restore_stack_backup(index, snap["backup_id"])
+    else:
+        backup.restore_backup(me, snap["backup_id"])
+    assert (live / "baseline.json").read_text() == "before"
+    assert (live / "backups" / "new.json").read_text() == "taken since"
+    assert (live / "backups" / "_stack" / "old" / "manifest.json").exists()
+
+
+def test_prune_folder_ignores_and_later_removes_unfinished_backups(tmp_path):
+    folder = tmp_path / "kodi-manager-backups"
+    for i, age in enumerate((40, 30, 20)):
+        complete = folder / ("skin-layout-c%d" % i)
+        complete.mkdir(parents=True)
+        (complete / "manifest.json").write_text("{}")
+        os.utime(str(complete), (time.time() - age, time.time() - age))
+    old = _orphan(folder / "skin-layout-old", 2 * 86400)
+    recent = _orphan(folder / "skin-layout-new", 60)
+    removed = backup.prune_folder(str(folder), "skin-layout-", limit=2, manifest="manifest.json")
+    assert sorted(removed) == ["skin-layout-c0", "skin-layout-old"]
+    assert sorted(p.name for p in folder.iterdir()) == ["skin-layout-c1", "skin-layout-c2", recent.name]
+    assert not old.exists()

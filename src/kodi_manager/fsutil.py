@@ -2,6 +2,7 @@
 
 Only stdlib imports: the widget plugin imports this on every row load.
 """
+import contextlib
 import json
 import os
 import tempfile
@@ -25,6 +26,52 @@ def path_lock(path):
         if lock is None:
             lock = _LOCKS[key] = threading.RLock()
         return lock
+
+
+_IPC_HELD = threading.local()
+
+
+@contextlib.contextmanager
+def interprocess_lock(path):
+    """Exclusive lock on ``path`` shared with other Kodi interpreters: flock on "<path>.lock".
+
+    Kodi runs each add-on script (the context menu, the service) in its own Python
+    interpreter of one process, so :func:`path_lock` alone does not serialise them. flock
+    locks belong to an open file description, so they also exclude each other inside one
+    process (lockf/fcntl locks would not). Hold :func:`path_lock` around this as well: it
+    serialises this interpreter's threads, and this lock is re-entrant per thread. Where
+    fcntl is missing (Windows, tvOS builds without it) or the lock file cannot be opened,
+    this is a no-op and only ``path_lock`` applies.
+    """
+    key = os.path.normcase(os.path.realpath(path))
+    held = getattr(_IPC_HELD, "paths", None)
+    if held is None:
+        held = _IPC_HELD.paths = {}
+    if key in held:
+        held[key] += 1
+        try:
+            yield
+        finally:
+            held[key] -= 1
+        return
+    fd = None
+    try:
+        import fcntl
+        directory = os.path.dirname(os.path.abspath(path))
+        os.makedirs(directory, exist_ok=True)
+        fd = os.open(path + ".lock", os.O_RDWR | os.O_CREAT, 0o644)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    except (ImportError, OSError, AttributeError):
+        if fd is not None:
+            os.close(fd)
+            fd = None
+    held[key] = 1
+    try:
+        yield
+    finally:
+        del held[key]
+        if fd is not None:
+            os.close(fd)   # closing the description releases the flock
 
 
 # Temporary siblings keep at most this many characters of the target's name: with
