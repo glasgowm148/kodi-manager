@@ -14,6 +14,7 @@ try:
     from .validation import redact
     from .metrics import HISTORY_FILE, MetricsHistory
     from .diagnostics import CAPABILITIES, support_bundle
+    from .search_history import HISTORY_FILE as SEARCH_HISTORY_FILE, SearchHistory, open_search
 except ImportError:
     from http_base import ApiError, RequestHandler
     from version import VERSION
@@ -24,6 +25,7 @@ except ImportError:
     from validation import redact
     from metrics import HISTORY_FILE, MetricsHistory
     from diagnostics import CAPABILITIES, support_bundle
+    from search_history import HISTORY_FILE as SEARCH_HISTORY_FILE, SearchHistory, open_search
 
 
 class StatusRoutes(RequestHandler):
@@ -158,6 +160,31 @@ class StatusRoutes(RequestHandler):
     def api_open_skin_settings(self):
         self._require_idle("Stop playback before opening skin settings on the TV")
         return {"opened": self.state.kodi.open_skin_settings()}
+
+    # --- search ----------------------------------------------------------------------
+
+    def _search_history(self):
+        return SearchHistory(translate(SEARCH_HISTORY_FILE))
+
+    def api_search_voice(self):
+        """Put spoken (or any) text into the running skin's search, e.g. from a voice helper app."""
+        query = self.body().get("query")
+        if not isinstance(query, str):
+            raise ValueError("query must be text")
+        return open_search(self.state.kodi, query, self._search_history())
+
+    def api_search_history(self):
+        return {"entries": self._search_history().entries()}
+
+    def api_search_history_remove(self):
+        body = self.body()
+        if body.get("all") is True:
+            self._search_history().clear()
+            return {"removed": "all"}
+        query = body.get("query")
+        if not isinstance(query, str):
+            raise ValueError("query must be text, or all must be true")
+        return {"removed": self._search_history().remove(query)}
 
     def api_trakt_sync(self):
         addon = self.state.index.get("script.trakt")

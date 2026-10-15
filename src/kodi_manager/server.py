@@ -110,6 +110,9 @@ ROUTES = [
     ("GET", _ADDON + r"/backups", "addon_backups", False, "bad_request"),
     ("POST", _ADDON + r"/restore", "addon_restore", True, "bad_request"),
     ("POST", r"/api/windows/open-skin-settings", "open_skin_settings", True, "bad_request"),
+    ("POST", r"/api/search/voice", "search_voice", True, "bad_request"),
+    ("GET", r"/api/search/history", "search_history", False, "bad_request"),
+    ("POST", r"/api/search/history/remove", "search_history_remove", True, "bad_request"),
     ("POST", r"/api/trakt/sync", "trakt_sync", True, "bad_request"),
 ]
 ROUTE_TABLE = [(method, re.compile(pattern + r"\Z"), name, needs_write, value_code)

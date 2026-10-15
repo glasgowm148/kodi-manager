@@ -216,6 +216,26 @@ sign-in, cache, …).
 
 See [widget cache](widget-cache.md) for how skins use these rows.
 
+## Search history and voice search
+
+Searches are kept per Kodi profile (newest first, 50 at most, repeats moved to the top) in
+`addon_data/service.kodi.addonadmin/search_history.json`.
+
+| Method and path | Writes | Request | Response `data` |
+|---|---|---|---|
+| `POST /api/search/voice` | yes | `{"query": "the traitors"}` | `{opened: true, query, how}` (`how` is `bingie`, or the TMDb Helper add-on used) or `{opened: false, reason}` (`empty_query`, `no_search_handler`). Puts the text into the running skin's search as if typed there and records it. Bingie: its search window with `Skin.String(CustomSearchTerm)`; other skins: a TMDb Helper search in Videos. For a voice helper app on the TV. |
+| `GET /api/search/history` | – | – | `{entries[{query, at}]}` |
+| `POST /api/search/history/remove` | yes | `{"query": "…"}` or `{"all": true}` | `{removed}` |
+
+Skins list suggestions and record searches through the plugin, with the typed text last and
+unencoded (`$ESCINFO[...]`):
+
+- `plugin://service.kodi.addonadmin/?mode=search_history&limit=5&target=<URL-encoded prefix>&query=…`
+  lists earlier searches that start with the text (then those with a later word that does), newest
+  first; an empty query lists the most recent. Each item has the property `search_history=true`
+  and, with `target`, the property `path` = target + the search (URL-encoded).
+- `RunPlugin(plugin://service.kodi.addonadmin/?mode=search_history_add&query=…)` records one.
+
 ## Boundaries
 
 Changes to Kodi Manager's own settings (Allow LAN access, Enable writes, port and so on) apply while

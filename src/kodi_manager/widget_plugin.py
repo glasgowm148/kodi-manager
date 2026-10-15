@@ -305,12 +305,69 @@ def focus_episode(result):
         pass
 
 
+def raw_query(options):
+    """The ``query=`` value of a plugin URL's options, taken literally to the end.
+
+    Skins append the typed text last, unencoded ($ESCINFO wraps it in quotes and escapes quotes
+    and backslashes; inside RunPlugin(...) Kodi has already removed those), so "&" or "=" in a
+    search stay part of it.
+    """
+    options = options.lstrip("?")
+    match = re.search(r"(?:^|&)query=", options)
+    if not match:
+        return ""
+    value = options[match.end():]
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        value = value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+    elif " " not in value and re.search(r"%[0-9A-Fa-f]{2}", value):
+        from urllib.parse import unquote_plus
+        value = unquote_plus(value)
+    return value
+
+
+def search_history_mode(mode, argv, xbmcgui, xbmcplugin, history):
+    """``search_history`` lists earlier searches for the typed prefix; ``search_history_add``
+    records one (RunPlugin). Other modes return False."""
+    options = argv[2] if len(argv) > 2 else ""
+    if mode == "search_history_add":
+        history.add(raw_query(options))
+        return True
+    if mode != "search_history":
+        return False
+    params = parse_qs(options.split("&query=", 1)[0].lstrip("?"))
+    try:
+        limit = min(max(int(params.get("limit", ["5"])[0]), 0), 20)
+    except ValueError:
+        limit = 5
+    target = params.get("target", [""])[0]
+    handle = int(argv[1])
+    from urllib.parse import quote_plus
+    for text in history.suggest(raw_query(options), limit):
+        li = xbmcgui.ListItem(label=text, offscreen=True)
+        li.setProperty("search_history", "true")
+        url = target + quote_plus(text) if target else ""
+        if url:
+            li.setProperty("path", url)
+        xbmcplugin.addDirectoryItem(handle, url or "plugin://service.kodi.addonadmin/?mode=search_history", li,
+                                    isFolder=bool(url))
+    xbmcplugin.endOfDirectory(handle, succeeded=True, cacheToDisc=False)
+    return True
+
+
 def main(argv=None):
     import xbmc
     import xbmcgui
     import xbmcplugin
     argv = sys.argv if argv is None else argv
-    mode = parse_qs(argv[2].lstrip("?")).get("mode", [""])[0]
+    mode = parse_qs(argv[2].lstrip("?").split("&query=", 1)[0]).get("mode", [""])[0]
+    if mode in ("search_history", "search_history_add"):
+        import xbmcvfs
+        try:
+            from .search_history import HISTORY_FILE, SearchHistory
+        except ImportError:
+            from search_history import HISTORY_FILE, SearchHistory
+        search_history_mode(mode, argv, xbmcgui, xbmcplugin, SearchHistory(xbmcvfs.translatePath(HISTORY_FILE)))
+        return
     if mode in ("", "rows", "dashboard"):
         try:
             from . import widget_rows

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.41 — 2026-10-15
+
+- Search history: searches are kept per profile (newest first, 50 at most). Skins list earlier searches matching what is typed (`plugin://service.kodi.addonadmin/?mode=search_history&query=…`) and record them (`mode=search_history_add`); the skin.bingie fork shows them first in its search suggestions.
+- Voice search API: `POST /api/search/voice {"query"}` puts text into the running skin's search as if typed (Bingie's search window; elsewhere a TMDb Helper search) and records it, for a voice helper app on the TV. `GET /api/search/history` and `POST /api/search/history/remove` manage the list.
+
 ## 0.7.40 — 2026-10-15
 
 - Restoring the active skin (on its own or in a stack backup) also applies its settings to the running skin through Kodi's `Skin.SetBool`/`Skin.SetString`/`Skin.Reset` builtins and reads them back. Before, Kodi wrote the old in-memory values over the restored settings.xml at its next save or exit. The result reports `live.skin_settings` (applied, partial with the settings Kodi did not take, or unsupported before Kodi 20).
