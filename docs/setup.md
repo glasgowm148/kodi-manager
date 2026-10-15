@@ -17,13 +17,12 @@ If you already have a customized Manager installation, [back it up](recovery.md)
 
 ## Using an AI assistant?
 
-- **Set up nvidia-MCP first.**
-  - Follow [its TV setup guide](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md).
-  - Wait for your agent to confirm the TV and Kodi connection works.
-- **Ask the agent to add Kodi Manager.**
-  - Use [the installation request](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/companion.md#ask-your-agent-to-install-kodi-manager).
-  - The agent handles preparation and connection checks. Some Kodi installer or permission screens
-    may still need your input on the TV.
+- **Copy one setup prompt.**
+  - Use [the combined nvidia-MCP and Kodi Manager prompt](../README.md#one-prompt-for-both).
+  - No editing is needed; the agent asks for missing TV details and guides preparation.
+- **Let the agent complete both stages.**
+  - It sets up and verifies nvidia-MCP first, then installs and connects Kodi Manager.
+  - You only handle credentials, TV permissions or steps its tools cannot complete.
 
 If you only want the browser dashboard, follow the remote-control steps below.
 

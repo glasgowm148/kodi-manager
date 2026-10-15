@@ -54,10 +54,9 @@ computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-
 Choose how you want to use Kodi Manager:
 
 - **With an AI assistant**
-  - Set up [nvidia-MCP first](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md).
-  - Then ask your agent: **“Install Kodi Manager and connect it to nvidia-MCP.”**
-  - Follow [agent-assisted installation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/companion.md)
-    for the copy-and-paste request and any TV prompts.
+  - Give your agent [one prompt for both](#one-prompt-for-both).
+  - It sets up nvidia-MCP first, then installs and connects Kodi Manager.
+  - You handle any TV permission prompts or steps the agent cannot complete.
 
 - **With a browser only**
   - Follow the [TV remote setup steps](docs/setup.md#1-add-the-download-source--inside-kodi).
@@ -71,6 +70,41 @@ Use the dashboard on a trusted home network and keep its access token private.
   - [Only Configure is available](docs/setup.md#only-configure-is-available).
   - [Installation or connection problems](docs/troubleshooting.md).
   - [Manual/offline ZIP installation](docs/setup-agent.md).
+
+### One prompt for both
+
+Copy this into an agent that can run commands and edit files on your computer.
+No editing is needed; it asks for missing TV details and walks you through any TV prompts.
+
+<details>
+<summary><strong>Copy the complete setup prompt</strong></summary>
+
+```text
+Set up nvidia-MCP and Kodi Manager for my TV:
+https://github.com/glasgowm148/nvidia-MCP
+https://github.com/glasgowm148/kodi-manager
+
+Read nvidia-MCP's docs/agent-setup.md and docs/companion.md first.
+Ask for missing device/connection details and guide me through any TV preparation.
+
+1. Install and configure nvidia-MCP on this computer. Verify the actual MCP
+   connection can read my TV and Kodi before continuing.
+2. Install Kodi Manager from https://glasgowm148.github.io/kodi-manager/
+   using Kodi's native installer. Reuse supported existing installations and
+   back up customizations before any replacement.
+3. Connect the active profile's Manager token privately. Enable dashboard LAN
+   access, give me its browser address, and verify read-only Manager access.
+
+Handle computer commands, downloads and supported TV navigation yourself.
+Ask me only for private credentials, pairing/permission prompts or TV steps
+that your tools cannot complete. Keep passwords, tokens and pairing codes private.
+Preserve my other MCP servers and settings. Target only my specified TV and
+never interrupt playback. Enable only writes needed for setup; finish with
+write mode and provider browsing off.
+Complete both stages without asking me to send a second setup prompt.
+```
+
+</details>
 
 ## Questions
 
