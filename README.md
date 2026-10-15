@@ -51,36 +51,26 @@ computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-
 
 ## Quick start
 
-You need Kodi and a browser on the same trusted home network. No AI agent, MCP, ADB or
-Python installation on your computer is needed for the dashboard.
+Choose how you want to use Kodi Manager:
 
-1. In **Kodi → Settings → File manager → Add source**, enter
-   `https://glasgowm148.github.io/kodi-manager/` and name it **Kodi Manager**.
-2. Enable **Settings → System → Add-ons → Unknown sources**. Open **Add-ons → the open-box icon →
-   Install from zip file → Kodi Manager → repository.kodi-manager.zip**. Wait for the repository-installed notice.
-3. Select **Install from repository → Kodi Manager Repository (preview) → Services → Kodi Manager → Install**.
-4. Open **Settings → Add-ons → My add-ons → Services → Kodi Manager → Configure → Dashboard**.
-   Turn on **Allow LAN access**, leave **Enable writes** off, then select **OK**.
-5. Return to Kodi's home screen. Open **Add-ons → Video add-ons → Kodi Manager →
-   Open the dashboard on another device**. The TV shows an address and access token.
-6. Open that address on your phone or computer, enter the token and sign in. Keep Kodi running.
+- **With an AI assistant**
+  - Set up [nvidia-MCP first](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md).
+  - Then ask your agent: **“Install Kodi Manager and connect it to nvidia-MCP.”**
+  - Follow [agent-assisted installation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/companion.md)
+    for the copy-and-paste request and any TV prompts.
 
-**[Full remote-control steps, including Firestick / Android TV](docs/setup.md).**
-The repository supplies preview releases; updates follow Kodi's update settings.
-No file transfer or ADB debugging is needed. [Manual/offline ZIP installation](docs/setup-agent.md) is also available.
+- **With a browser only**
+  - Follow the [TV remote setup steps](docs/setup.md#1-add-the-download-source--inside-kodi).
+  - Add the repository inside Kodi, install Kodi Manager, then sign in from your phone or computer.
+  - No agent, debugging or computer commands are needed.
 
-Only seeing Configure, or an unavailable Open button? The My add-ons information screen is
-separate from the home-screen video add-on menu. Follow
-[the token/setup fallback](docs/setup.md#only-configure-is-available) if the tile still will not open.
-If your browser already shows the login page, the service is reachable; you need its access token next.
+Repository installs receive preview updates through Kodi's update settings.
+Use the dashboard on a trusted home network and keep its access token private.
 
-To edit settings from the dashboard, enable Enable writes in Kodi Manager's settings for the
-active Kodi profile. “View only” means web editing is off for that profile; it does not mean
-installation failed.
-
-[Full setup guide](docs/setup.md) · [Troubleshooting](docs/troubleshooting.md).
-Keep access on a trusted LAN. Tokens travel over plain HTTP; sign-in links, settings and backups
-can contain credentials and must stay private.
+- **Need help?**
+  - [Only Configure is available](docs/setup.md#only-configure-is-available).
+  - [Installation or connection problems](docs/troubleshooting.md).
+  - [Manual/offline ZIP installation](docs/setup-agent.md).
 
 ## Questions
 

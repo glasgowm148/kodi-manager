@@ -8,15 +8,21 @@ pending; synthetic tests establish the storage/refusal contracts, not firmware c
 
 ## Installation
 
-1. Open Kodi and follow [the repository installation steps](setup.md#1-add-the-download-source--inside-kodi).
-   You enter the source address with the remote; no computer file transfer is needed.
-2. Follow [dashboard setup](setup.md#3-enable-dashboard-access) to turn on **Allow LAN access**.
-3. Open **Home → Add-ons → Video add-ons → Kodi Manager → Open the dashboard on another device**.
-4. On your phone/computer, open the displayed address and enter the token privately. Keep Kodi active.
-
-If only Configure is available, use the [Auth token fallback](setup.md#only-configure-is-available).
-Keep write mode off initially. Tokens belong to the active Kodi profile.
-For offline/pinned installation, use [a ZIP on a private network share](setup-agent.md#manual-zip-installation).
+- **Install inside Kodi.**
+  - Follow [the repository installation steps](setup.md#1-add-the-download-source--inside-kodi).
+  - Enter the source address with the remote; no computer file transfer is needed.
+- **Enable the dashboard.**
+  - Turn on **Allow LAN access** using [dashboard setup](setup.md#3-enable-dashboard-access).
+  - Open **Home → Add-ons → Video add-ons → Kodi Manager**.
+  - Select **Open the dashboard on another device**.
+- **Sign in from your phone or computer.**
+  - Open the displayed address and enter the token privately.
+  - Keep Kodi active. Keep write mode off initially.
+  - Tokens belong to the active Kodi profile.
+- **If you need another installation route:**
+  - For an assistant, [set up nvidia-MCP first](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/apple-tv.md).
+  - For offline/pinned installation, use [a ZIP on a private network share](setup-agent.md#manual-zip-installation).
+  - If only Configure is available, use the [Auth token fallback](setup.md#only-configure-is-available).
 
 There is no ADB push, Android storage root or loopback forwarding on Apple TV. Initial installation
 and Kodi security settings use Kodi's own UI. For optional assistant controls, use
