@@ -243,7 +243,8 @@ class LogHistory:
         db.execute("DELETE FROM issue_definitions WHERE id NOT IN (SELECT issue_id FROM issue_members)")
         db.execute("DELETE FROM cursors WHERE seen < ?", (now - RETENTION,))
         if db.execute("PRAGMA auto_vacuum").fetchone()[0] == 2 and db.execute("PRAGMA freelist_count").fetchone()[0]:
-            db.execute("PRAGMA incremental_vacuum").fetchall()
+            # executescript steps the pragma to completion; Python 3.11's execute() steps it once.
+            db.executescript("PRAGMA incremental_vacuum;")
 
     def _compact_once(self):
         """Compact a database created without auto_vacuum (by an older version) once most
