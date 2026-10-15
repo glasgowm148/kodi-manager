@@ -19,7 +19,8 @@ If you already have a customized Manager installation, [back it up](recovery.md)
 
 - **Copy one setup prompt.**
   - Use [the combined nvidia-MCP and Kodi Manager prompt](../README.md#one-prompt-for-both).
-  - No editing is needed; the agent asks for missing TV details and guides preparation.
+  - No editing or IP address is needed before you send it.
+  - The agent asks your TV model, explains how to find its IP and change settings, then waits for your replies.
 - **Let the agent complete both stages.**
   - It sets up and verifies nvidia-MCP first, then installs and connects Kodi Manager.
   - You only handle credentials, TV permissions or steps its tools cannot complete.

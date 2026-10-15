@@ -12,6 +12,7 @@
 <p align="center">
   <a href="#what-you-can-do">Features</a> ·
   <a href="#quick-start">Quick start</a> ·
+  <a href="#one-prompt-for-both">Agent setup prompt</a> ·
   <a href="#questions">Questions</a> ·
   <a href="#documentation">Documentation</a>
 </p>
@@ -19,6 +20,9 @@
 Inspect and configure Kodi from your browser. Kodi Manager is an add-on with a local dashboard
 for status, add-on settings, playback routing, backups and home-screen rows. Use it from a phone or
 computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-MCP).
+
+**Set up with an agent:** [Copy the guided setup prompt](#one-prompt-for-both).
+It asks which TV you have and explains how to find its IP address.
 
 ![Kodi Manager overview with six device and service status cards](docs/images/dashboard.png)
 
@@ -56,12 +60,65 @@ Choose how you want to use Kodi Manager:
 - **With an AI assistant**
   - Give your agent [one prompt for both](#one-prompt-for-both).
   - It sets up nvidia-MCP first, then installs and connects Kodi Manager.
-  - You handle any TV permission prompts or steps the agent cannot complete.
+  - The agent explains how to find your IP and prepare the TV, then waits for your replies.
 
 - **With a browser only**
   - Follow the [TV remote setup steps](docs/setup.md#1-add-the-download-source--inside-kodi).
   - Add the repository inside Kodi, install Kodi Manager, then sign in from your phone or computer.
-  - No agent, debugging or computer commands are needed.
+  - No agent, debugging or Python installation is needed.
+
+### One prompt for both
+
+Use an assistant that can run commands, edit files and use local MCP tools on your computer.
+Have Kodi installed, keep your TV remote handy, and connect the TV and computer to the same home network.
+
+- **Copy and paste.**
+  - Expand **Show the setup prompt to copy** below and copy the whole text box into your agent.
+  - No editing is needed. **You do not need to know the TV's IP address yet.**
+- **Follow the conversation.**
+  - The agent asks which TV you have, then explains the relevant settings and IP-address menus.
+  - Reply after each step. It waits for missing details and permission prompts before continuing.
+  - One prompt starts the setup; you will still answer questions and use the TV remote when needed.
+
+<details>
+<summary><strong>Show the setup prompt to copy</strong></summary>
+
+```text
+Help me set up nvidia-MCP on this computer, then install and connect
+Kodi Manager on my TV:
+https://github.com/glasgowm148/nvidia-MCP
+https://github.com/glasgowm148/kodi-manager
+
+Read nvidia-MCP's docs/agent-setup.md and docs/companion.md first.
+If not already known, first ask which TV/device I use. Do not assume I
+know its IP address or have enabled debugging. Ask one short question
+at a time. Explain the exact menus for my device, what to select and
+what information to read back. Guide my device's TV preparation, including
+debugging where applicable, finding its IP and enabling Kodi HTTP control.
+For Apple TV, use the separate tvOS instructions. If a menu differs,
+ask what I see. Wait for my reply before moving to the next TV step.
+Do not invent connection details or scan my network.
+
+Once TV preparation is ready:
+1. Install and configure nvidia-MCP. Verify the actual MCP connection
+   can read my TV and Kodi before continuing.
+2. Install Kodi Manager from https://glasgowm148.github.io/kodi-manager/
+   using Kodi's native installer. Reuse supported existing installations
+   and back up customizations before any replacement.
+3. Connect the active profile's Manager token privately. Enable dashboard
+   LAN access, give me its browser address and verify read-only Manager access.
+
+Handle computer commands, downloads and supported TV navigation yourself.
+Ask me for details or TV actions your tools cannot obtain or complete.
+Request passwords, tokens and pairing codes only through private input.
+Preserve my other MCP servers and settings. Target only my specified TV
+and never interrupt playback. Enable only writes needed for setup;
+finish with write mode and provider browsing off.
+Continue both setup stages in this conversation, waiting for my replies
+whenever information or permission is needed.
+```
+
+</details>
 
 Repository installs receive preview updates through Kodi's update settings.
 Use the dashboard on a trusted home network and keep its access token private.
@@ -71,46 +128,11 @@ Use the dashboard on a trusted home network and keep its access token private.
   - [Installation or connection problems](docs/troubleshooting.md).
   - [Manual/offline ZIP installation](docs/setup-agent.md).
 
-### One prompt for both
-
-Copy this into an agent that can run commands and edit files on your computer.
-No editing is needed; it asks for missing TV details and walks you through any TV prompts.
-
-<details>
-<summary><strong>Copy the complete setup prompt</strong></summary>
-
-```text
-Set up nvidia-MCP and Kodi Manager for my TV:
-https://github.com/glasgowm148/nvidia-MCP
-https://github.com/glasgowm148/kodi-manager
-
-Read nvidia-MCP's docs/agent-setup.md and docs/companion.md first.
-Ask for missing device/connection details and guide me through any TV preparation.
-
-1. Install and configure nvidia-MCP on this computer. Verify the actual MCP
-   connection can read my TV and Kodi before continuing.
-2. Install Kodi Manager from https://glasgowm148.github.io/kodi-manager/
-   using Kodi's native installer. Reuse supported existing installations and
-   back up customizations before any replacement.
-3. Connect the active profile's Manager token privately. Enable dashboard LAN
-   access, give me its browser address, and verify read-only Manager access.
-
-Handle computer commands, downloads and supported TV navigation yourself.
-Ask me only for private credentials, pairing/permission prompts or TV steps
-that your tools cannot complete. Keep passwords, tokens and pairing codes private.
-Preserve my other MCP servers and settings. Target only my specified TV and
-never interrupt playback. Enable only writes needed for setup; finish with
-write mode and provider browsing off.
-Complete both stages without asking me to send a second setup prompt.
-```
-
-</details>
-
 ## Questions
 
 | Question | Answer |
 | --- | --- |
-| Do I need an AI agent or ADB? | The dashboard needs only Kodi and a browser. Both are optional for setup or automation. |
+| Do I need an AI agent or ADB? | The dashboard needs only Kodi and a browser. For assistant control, use the [guided setup prompt](#one-prompt-for-both). |
 | Android boxes / Firestick? | Targets Android TV, Google TV and Android-based Fire OS. Physical validation is pending; Vega OS is unsupported. [Device guide](docs/setup.md#android-tv-and-fire-tv) |
 | Apple TV? | Experimental dashboard, settings, widgets and reviewed skin workflows while Kodi is active. Physical validation is pending. [tvOS guide](docs/apple-tv.md) |
 | Any skin or add-on? | General inspection works across skins; editing depends on the setting adapter and allowed add-ons. Home layout writes require reviewed source hashes. [FAQ](docs/faq.md) |
