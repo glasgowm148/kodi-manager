@@ -118,6 +118,36 @@ class ParserTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             coerce_value(settings["quality"], "720p")
 
+    def test_v1_enum_label_default_becomes_its_option_value(self):
+        # Some add-ons give a v1 enum's default as the label; Kodi stores the index (or the
+        # entries value) and reads any other non-integer default as index 0.
+        from validation import coerce_value
+        parsed = self.parse_inline(
+            '<settings><setting id="view" type="enum" values="list|poster" default="poster"/>'
+            '<setting id="size" type="enum" values="Small|Large" entries="10|20" default="Large"/>'
+            '<setting id="junk" type="enum" values="a|b" default="zzz"/>'
+            '<setting id="junk2" type="enum" values="a|b" entries="x|y" default="zzz"/>'
+            '<setting id="idx" type="enum" values="a|b" default="1"/>'
+            '<setting id="none" type="enum" values="a|b"/>'
+            '<setting id="lang" type="labelenum" values="en|de" default="de"/></settings>',
+            '<settings><setting id="view" value="0" /></settings>')
+        settings = flatten_settings(parsed)
+        self.assertEqual(settings["view"]["default"], "1")
+        self.assertEqual(settings["view"]["value"], "0")
+        self.assertFalse(settings["view"]["is_default"])
+        self.assertEqual(coerce_value(settings["view"], settings["view"]["default"]), "1")
+        self.assertEqual(settings["size"]["default"], "20")
+        self.assertEqual(settings["size"]["value"], "20")
+        self.assertTrue(settings["size"]["is_default"])
+        self.assertEqual(settings["junk"]["default"], "0")
+        self.assertEqual(settings["junk2"]["default"], "x")
+        self.assertEqual(settings["idx"]["default"], "1")
+        self.assertFalse(settings["none"]["default_known"])
+        self.assertEqual(settings["none"]["default"], "")
+        self.assertEqual(settings["lang"]["default"], "de")
+        for sid in ("size", "junk", "junk2", "idx"):
+            coerce_value(settings[sid], settings[sid]["default"])
+
 
 if __name__ == "__main__":
     unittest.main()

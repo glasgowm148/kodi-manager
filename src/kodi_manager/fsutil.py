@@ -27,6 +27,17 @@ def path_lock(path):
         return lock
 
 
+# Temporary siblings keep at most this many characters of the target's name: with
+# the "." prefix and mkstemp's random part and suffix, the name stays far below the
+# 255-byte limit even for a 255-byte name or a long name in a multi-byte script.
+TEMP_NAME_CHARS = 40
+
+
+def temp_prefix(path):
+    """The mkstemp prefix for a temporary sibling of ``path``: "." + its name (bounded) + "."."""
+    return "." + os.path.basename(path)[:TEMP_NAME_CHARS] + "."
+
+
 def atomic_write_bytes(path, data, fsync=True):
     """Write ``data`` to ``path`` via a unique temporary file in the same folder.
 
@@ -39,7 +50,7 @@ def atomic_write_bytes(path, data, fsync=True):
         return
     directory = os.path.dirname(os.path.abspath(path))
     os.makedirs(directory, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix="." + os.path.basename(path) + ".", suffix=".tmp", dir=directory)
+    fd, tmp = tempfile.mkstemp(prefix=temp_prefix(path), suffix=".tmp", dir=directory)
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)

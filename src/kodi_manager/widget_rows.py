@@ -17,9 +17,11 @@ import uuid
 try:
     from .fsutil import atomic_write_json, path_lock
     from .widget_cache import cache_url, validate_source, strip_skin_reload
+    from .write_policy import RequestRefused
 except ImportError:
     from fsutil import atomic_write_json, path_lock
     from widget_cache import cache_url, validate_source, strip_skin_reload
+    from write_policy import RequestRefused
 
 MAX_ROWS = 200
 
@@ -49,8 +51,16 @@ class RowStore:
         atomic_write_json(self.path, rows, indent=1)
 
     def add(self, label, source, pages=None, hide_watched=False):
-        source = validate_source(strip_skin_reload(source))
-        label = _clean_label(label)
+        # Checked before anything is written: a refusal, not an unknown outcome.
+        if not isinstance(source, str):
+            raise RequestRefused("source must be a text URL")
+        if label is not None and not isinstance(label, str):
+            raise RequestRefused("label must be text")
+        try:
+            source = validate_source(strip_skin_reload(source))
+            label = _clean_label(label)
+        except ValueError as exc:
+            raise RequestRefused(str(exc)) from None
         # Read-modify-write under a per-file lock so concurrent adds keep each other's rows.
         with path_lock(self.path):
             rows = self.load()

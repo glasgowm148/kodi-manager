@@ -223,7 +223,9 @@ repaired from the dashboard. Anyone with the bearer token can read them: keep th
 turn on LAN access only on a network you trust. The `parse_schema` library function still masks
 secret-like values by default. Account, debug and log responses and backups are private diagnostics;
 do not send them to an untrusted service. The API is plain HTTP with no encryption: use it only on a
-trusted LAN or through a secure tunnel you manage.
+trusted LAN. Clients must have private or loopback addresses. An SSH local port forward (open
+`http://localhost:PORT`) or a VPN that uses private (RFC 1918) or IPv6 ULA addresses works.
+VPN addresses in 100.64.0.0/10, such as Tailscale's IPv4 addresses, are refused.
 
 These APIs manage installed Kodi functionality. They do not create cloud accounts, migrate Trakt
 history, authorize debrid services or install third-party playback or skin patches. Family filters

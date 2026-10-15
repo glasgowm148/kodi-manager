@@ -71,14 +71,51 @@ class AddonRoutes(RequestHandler):
         # Copying addon_data competes with playback for storage, like the nightly checkpoint:
         # refuse while something plays and stop (discarding it) if playback starts.
         self._require_idle("Stop playback before taking a checkpoint", status=409)
+        should_stop = self._backup_should_stop(playback=True)
         try:
             addons = stack_backup_addons(self.state.kodi, self.state.index)
             version = self.state.kodi.get_kodi_version()
             self._check_context()
-            return create_stack_backup(addons, version,
-                                       should_stop=self._playback_started())
-        except BackupAborted:
-            raise ApiError(409, "playback_active", "Playback started, so the checkpoint was stopped and discarded") from None
+            return create_stack_backup(addons, version, should_stop=should_stop)
+        except BackupAborted as exc:
+            raise self._backup_aborted(exc, should_stop, "checkpoint") from None
+
+    def _backup_should_stop(self, playback=False):
+        """A should_stop callback for snapshots taken by a request.
+
+        Returns "stopping" once the service has retired (checked first, so no Kodi call is
+        made after that), then, with ``playback``, "playback" once a player is active.
+        The last reason is kept in ``should_stop.reason`` for _backup_aborted.
+        """
+        playing = self._playback_started() if playback else None
+
+        def should_stop():
+            if getattr(self.state, "retired", False):
+                should_stop.reason = "stopping"
+            elif playing is not None and playing():
+                should_stop.reason = "playback"
+            else:
+                return False
+            return should_stop.reason
+        should_stop.reason = None
+        return should_stop
+
+    @staticmethod
+    def _backup_aborted(exc, should_stop, what):
+        """The API error for a snapshot that was stopped and discarded (nothing changed)."""
+        reason = getattr(exc, "reason", "stopped")
+        if reason == "stopped":
+            reason = getattr(should_stop, "reason", None) or reason
+        if reason == "playback":
+            return ApiError(409, "playback_active", "Playback started, so the %s was stopped and discarded" % what)
+        if reason == "stopping":
+            return ApiError(409, "server_retired", "Manager service stopped, so the %s was stopped and discarded; "
+                                                   "reconnect and inspect before retrying" % what)
+        # stale_revision is a refusal: the operation record shows nothing was changed.
+        if reason == "busy_database":
+            return ApiError(409, "stale_revision", "An add-on was writing to its database, so the %s was discarded "
+                                                   "and nothing changed. Try again in a minute." % what)
+        return ApiError(409, "stale_revision", "The %s was stopped and discarded; nothing changed. Try again." % what)
 
     def api_baseline(self):
         rows = make_baseline(self.state.kodi).check()
@@ -118,7 +155,12 @@ class AddonRoutes(RequestHandler):
     def api_stack_restore(self):
         backup_id = self.body().get("backup_id", "")
         self._require_idle_unless_forced("Stop playback before restoring a backup")
-        return restore_stack_backup(self.state.index, backup_id)
+        should_stop = self._backup_should_stop()
+        try:
+            return restore_stack_backup(self.state.index, backup_id, should_stop=should_stop)
+        except BackupAborted as exc:
+            # Raised while taking the undo snapshots, before any live folder was touched.
+            raise self._backup_aborted(exc, should_stop, "restore's undo snapshot") from None
 
     # --- one add-on ----------------------------------------------------------------
 
@@ -156,6 +198,9 @@ class AddonRoutes(RequestHandler):
                 if not isinstance(ch, dict):
                     raise ValueError("Each change must be an object")
                 sid = ch.get("id")
+                if not isinstance(sid, str):
+                    # A list or object id would fail the lookups below with a TypeError.
+                    raise RequestRefused("Each change needs a setting id")
                 if aid == fenlight_db.FENLIGHT_ID and ch.get("source") == "settings.db":
                     db_pairs.append((sid, ch.get("value")))
                     continue
@@ -180,7 +225,10 @@ class AddonRoutes(RequestHandler):
         except ValueError as exc:
             # Raised while validating, before anything is written: a refusal, not an unknown outcome.
             raise RequestRefused(str(exc), setting_id=getattr(exc, "setting_id", None)) from exc
-        backup = create_backup(addon, self.state.kodi.get_kodi_version(), adapter.name)
+        try:
+            backup = create_backup(addon, self.state.kodi.get_kodi_version(), adapter.name)
+        except BackupAborted as exc:
+            raise self._backup_aborted(exc, None, "backup before saving") from None
         # Rolls back the settings already written if any write in the batch fails.
         # Previous values stay out of the response and the adapter's after_write hook.
         writes = [(aid, ch["id"], ch["value"], ch.pop("previous")) for ch in clean]
@@ -200,7 +248,11 @@ class AddonRoutes(RequestHandler):
         adapter = adapter_for(addon, self.state.kodi, self.state.index.addons)
         version = self.state.kodi.get_kodi_version()
         self._check_context()
-        return create_backup(addon, version, adapter.name)
+        should_stop = self._backup_should_stop()
+        try:
+            return create_backup(addon, version, adapter.name, should_stop=should_stop)
+        except BackupAborted as exc:
+            raise self._backup_aborted(exc, should_stop, "backup") from None
 
     def api_addon_backups(self, aid):
         self._addon(aid)
@@ -210,4 +262,9 @@ class AddonRoutes(RequestHandler):
         addon = self._addon(aid)
         backup_id = self.body().get("backup_id", "")
         self._require_idle_unless_forced("Stop playback before restoring a backup")
-        return restore_backup(addon, backup_id)
+        should_stop = self._backup_should_stop()
+        try:
+            return restore_backup(addon, backup_id, should_stop=should_stop)
+        except BackupAborted as exc:
+            # Raised while taking the undo snapshot, before the live folder was touched.
+            raise self._backup_aborted(exc, should_stop, "restore's undo snapshot") from None

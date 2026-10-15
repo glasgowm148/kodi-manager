@@ -104,6 +104,8 @@ async function widgetStudioView() {
   // Saved drafts of sections not opened in this visit are kept alongside the ones open now.
   function storeDrafts() { try { localStorage.setItem(storageKey, JSON.stringify({...savedDrafts,...drafts})); } catch (_) {} }
   function saveDrafts() { review = null; storeDrafts(); renderDraftStatus(); }
+  // After the page has gone (perhaps reopened since), this page's drafts are stale: drop only the applied section from what is stored now.
+  function forgetStoredDraft(id) { try { const stored=JSON.parse(localStorage.getItem(storageKey)); if (stored && typeof stored === "object" && !Array.isArray(stored) && Object.prototype.hasOwnProperty.call(stored,id)) { delete stored[id]; localStorage.setItem(storageKey, JSON.stringify(stored)); } } catch (_) {} }
   function dirty() { const current = draft(); return !!current && JSON.stringify(widgetLayoutBody(current)) !== current.base; }
   function canEdit() { return selected === "new" ? !!layout?.new_section?.available : section()?.editable === true; }
   function renderDraftStatus() {
@@ -397,7 +399,7 @@ async function widgetStudioView() {
         let applied;
         try { applied=await api("/api/widgets/layout/apply",{...pending.body,expected_revision:pending.revision}); }
         catch(error) { if (active()) $b("#bs-apply-result").textContent=error.message+" Close this preview and review again before retrying."; else reportError(error); return; }
-        review=null;delete drafts[pending.section];delete savedDrafts[pending.section];storeDrafts();
+        review=null;delete drafts[pending.section];delete savedDrafts[pending.section];if (active()) storeDrafts(); else forgetStoredDraft(pending.section);
         const message=`Section saved. Backup ${applied.backup_id}. Rebuild Bingie to show the changes on your TV.`;
         if (!active()) { toast(message+" Open Home layout to rebuild the skin menu.","ok"); return; }
         renderDraftStatus();dialog.close();

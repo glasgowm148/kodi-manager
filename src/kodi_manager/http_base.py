@@ -83,6 +83,18 @@ def _reject_constant(name):
     raise ValueError("Request body contains %s, which is not valid JSON" % name)
 
 
+def _parse_float(text):
+    # Out-of-range numbers (1e999) parse to infinity, which is no more JSON than Infinity.
+    number = float(text)
+    if number != number or number in (float("inf"), float("-inf")):
+        raise ValueError("Request body contains a number out of range")
+    return number
+
+
+class AddonNotFound(LookupError):
+    """The add-on named in the route is not installed (raised before the handler acts)."""
+
+
 class ApiError(Exception):
     def __init__(self, status, code, message, details=None):
         super(ApiError, self).__init__(message)
@@ -396,6 +408,9 @@ class RequestHandler(BaseHTTPRequestHandler):
                 status, code = exc.status, exc.code or value_code
             self.err(status, code, str(exc), {"setting_id": setting_id} if setting_id else None)
         except (LookupError, FileNotFoundError) as exc:
+            if isinstance(exc, AddonNotFound) and not self._handler_returned:
+                # The route's add-on lookup comes before any write: nothing changed.
+                self._deliberate_refusal = True
             self.err(404, "not_found", exc.args[0] if exc.args and isinstance(exc.args[0], str) else "Not found")
         except Exception as exc:
             self.err(500, "server_error", str(exc))
@@ -462,7 +477,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                 timer.cancel()
             if expired.is_set() or len(raw) != length:
                 raise ValueError("Request body is incomplete or timed out; no action performed")
-        data = json.loads(raw.decode("utf-8"), parse_constant=_reject_constant) if length else {}
+        try:
+            data = json.loads(raw.decode("utf-8"), parse_constant=_reject_constant,
+                              parse_float=_parse_float) if length else {}
+        except RecursionError:
+            raise ValueError("Request body is nested too deeply") from None
         if not isinstance(data, dict):
             raise ValueError("Expected a JSON object.")
         self._body = data
@@ -515,7 +534,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         addon = self.state.index.get(aid)
         self._check_context()
         if not addon:
-            raise LookupError("Add-on not found")
+            raise AddonNotFound("Add-on not found")
         return addon
 
 

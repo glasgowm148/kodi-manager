@@ -24,6 +24,7 @@ listing (``action=delete_list`` is refused even on ``build_movie_list``).
 Only stdlib imports: this runs in every widget invocation.
 """
 import re
+import unicodedata
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 # A word starting with one of these marks an action.
@@ -74,11 +75,17 @@ _INFLECTIONS = ("", "s", "ed", "ing", "er", "ers")
 _CAMEL = re.compile(r"([a-z0-9])([A-Z])")
 _SPLIT = re.compile(r"[^a-z0-9]+")
 _ADDON = re.compile(r"plugin\.video\.[A-Za-z0-9_.-]+")
+_PARAM_KEY = re.compile(r"[A-Za-z0-9_.-]+")
 
 
 def words(value):
-    """Lower-case words of a route value; camelCase and any punctuation separate words."""
-    return [w for w in _SPLIT.split(_CAMEL.sub(r"\1_\2", unquote(str(value or ""))).lower()) if w]
+    """Lower-case words of a route value; camelCase and any punctuation separate words.
+
+    Compatibility forms are folded first (NFKD), so full-width ``\uff50\uff4c\uff41\uff59`` and
+    ligatures read as the ASCII words an add-on that normalises them would see.
+    """
+    text = unicodedata.normalize("NFKD", unquote(str(value or "")))
+    return [w for w in _SPLIT.split(_CAMEL.sub(r"\1_\2", text).lower()) if w]
 
 
 _EXACT = frozenset(DENY_WORDS | {p + ending for p in DENY_PREFIXES for ending in _INFLECTIONS})
@@ -203,10 +210,44 @@ def _word_reason(key, value):
     return "%s=%s" % (key, word) if word else ""
 
 
+def _normalised_key(raw):
+    """A raw query key as a naive add-on parser could read it: BBC iPlayer's get_params strips
+    every '?' and splits on '&' and '='; others unquote, or keep an HTML-escaped ``&amp;``."""
+    key = raw.replace("?", "").replace("%", "").replace("+", "").lower()
+    while key.startswith("amp;"):
+        key = key[4:]
+    return key
+
+
+def _query_reason(query, routes):
+    """Why the query of a known add-on could be read differently by the add-on than by
+    parse_qsl, or ''. Such a query could name a second, unchecked route."""
+    if "?" in query:
+        return "unexpected '?' in query"
+    routing = 0
+    for piece in query.split("&"):
+        if not piece:
+            continue
+        raw = piece.split("=", 1)[0]
+        parsed_key = unquote(raw.replace("+", " "))
+        if not _PARAM_KEY.fullmatch(parsed_key):
+            return "parameter name '%s'" % parsed_key[:40]
+        if _normalised_key(raw) == routes.key.lower() or parsed_key.lower() == routes.key.lower():
+            if parsed_key != routes.key:
+                return "ambiguous %s=" % routes.key
+            routing += 1
+    if routing > 1:
+        return "repeated %s=" % routes.key
+    return ""
+
+
 def _known_reason(parsed, routes, depth):
     path = unquote(parsed.path)
     if path not in ("", "/"):
         return "path '%s'" % path.strip("/").split("/")[0][:40]
+    reason = _query_reason(parsed.query, routes)
+    if reason:
+        return reason
     params = parse_qsl(parsed.query, keep_blank_values=True)
     values = [value for key, value in params if key == routes.key]
     if len(values) > 1:
@@ -214,6 +255,8 @@ def _known_reason(parsed, routes, depth):
     route = values[0] if values else routes.default
     if route is None or (not route and routes.default is None):
         return "no %s=" % routes.key
+    if not route.isascii():
+        return "%s is not plain text" % routes.key
     if route and not routes.lists(route):
         return "%s=%s" % (routes.key, (action_word(route, dialog=True) or route)[:40])
     for key, value in params:

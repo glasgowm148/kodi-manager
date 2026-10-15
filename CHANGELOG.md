@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.38 — 2026-10-15
+
+- Backups take SQLite databases through SQLite's online backup API, so a snapshot taken while an add-on writes is always consistent (byte copies could be torn or corrupt). A busy database is retried later (nightly) or refused with "try again"; restores remove stale -wal/-journal files of restored databases.
+- Backup aborts report their real cause (playback, service stopping or a busy database); a dashboard checkpoint or restore stops without further Kodi calls once the service retires; restores are serialised and snapshots in use are never pruned; long file names no longer break backups.
+- Route guard: query tricks that BBC iPlayer's parser reads differently (`mo?de=`, duplicate or disguised routing keys) and full-width action words are refused.
+- Log redaction masks JSON/dict-quoted secret keys, prefixed names like `trakt_token`, credentials in any URL scheme and `Bearer%20` header pipes.
+- v1 enum defaults map to their option values; malformed request bodies and wrong-typed fields are refused (400) instead of 500/"outcome unknown"; a missing add-on is a refusal.
+- A late layout apply no longer overwrites drafts saved in a newer studio visit.
+
 ## 0.7.37 — 2026-10-15
 
 - Backups copy SQLite hot journals again (0.7.36 dropped them, so a backup taken mid-write could restore a corrupt database); a snapshot whose -wal/-journal vanishes mid-copy is discarded and retried instead of keeping a stale database.

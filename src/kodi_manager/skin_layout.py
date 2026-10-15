@@ -667,6 +667,9 @@ def _preview_section(kodi, index, body):
         if not isinstance(request, dict):
             raise ValueError('Invalid widget row')
         rid = request.get('id')
+        if rid is not None and not isinstance(rid, str):
+            # An unhashable id would fail the lookup below with a TypeError (500, outcome unknown).
+            raise RequestRefused('Widget row id must be text; refresh the layout')
         if rid:
             if rid not in existing or rid in seen:
                 raise ValueError('Unknown or repeated widget row identity; refresh the layout')

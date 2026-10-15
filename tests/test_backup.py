@@ -451,18 +451,39 @@ def _torn_sqlite_db(live):
     return writer
 
 
-def test_snapshot_of_a_database_mid_write_keeps_its_hot_journal(storage):
-    import sqlite3
+def test_snapshot_of_a_database_locked_mid_write_is_retried_later(storage, monkeypatch):
     root, settings, info = storage
+    monkeypatch.setattr(backup, "SQLITE_BUSY_SECONDS", 0.5)
     writer = _torn_sqlite_db(settings.parent)
     try:
         assert (settings.parent / "cache.db-journal").exists()
-        snap = backup.create_backup(info)
+        with pytest.raises(backup.BackupAborted) as caught:
+            backup.create_backup(info)
     finally:
         writer.execute("rollback")
         writer.close()
+    assert caught.value.reason == "busy_database" and caught.value.deferred
+    assert list((root / info["addon_id"]).iterdir()) == []  # the partial snapshot is discarded
+
+
+def test_snapshot_of_a_crashed_database_keeps_its_hot_journal(storage, tmp_path):
+    """A hot journal left by a crashed writer cannot be rolled back read-only: the files are kept as they are."""
+    import sqlite3
+    root, settings, info = storage
+    live = settings.parent
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    writer = _torn_sqlite_db(elsewhere)
+    try:
+        for name in ("cache.db", "cache.db-journal"):
+            (live / name).write_bytes((elsewhere / name).read_bytes())
+    finally:
+        writer.execute("rollback")
+        writer.close()
+    snap = backup.create_backup(info)
     folder = root / info["addon_id"] / snap["backup_id"] / "addon_data"
     assert sorted(p.name for p in folder.iterdir()) == ["cache.db", "cache.db-journal"]
+    assert snap["files_copied"] == 2
     conn = sqlite3.connect(str(folder / "cache.db"))
     try:
         assert conn.execute("pragma integrity_check").fetchall() == [("ok",)]

@@ -129,3 +129,78 @@ def test_nan_and_infinity_bodies_are_bad_requests(service, raw):
                                    raw.replace('{', '{"changes": [{"id": "limit", "value": 1}], ', 1))
     assert status == 400 and _outcome(body) == ("bad_request", "refused")
     assert service.writes == []
+
+
+# --- Wrong-typed bodies and bodies JSON cannot hold are refusals, not 500s or unknowns ----
+
+@pytest.mark.parametrize("raw", ['{"start": 1e999}', '{"x": -1e400}', '[' * 100000 + ']' * 100000])
+def test_out_of_range_numbers_and_deep_nesting_are_bad_requests(service, raw):
+    status, body = service.request("POST", "/api/widgets/browse", raw)
+    assert status == 400 and body["code"] == "bad_request"
+    if raw.startswith("{"):
+        patch = raw.replace('{', '{"changes": [{"id": "limit", "value": 1}], ', 1)
+    else:
+        patch = '{"changes": ' + '[' * 100000 + ']' * 100000 + '}'
+    status, body = service.request("PATCH", "/api/addons/plugin.video.pov/settings", patch)
+    assert status == 400 and _outcome(body) == ("bad_request", "refused")
+    assert service.writes == []
+
+
+@pytest.mark.parametrize("sid", [["limit"], {"id": "limit"}, None, 5])
+def test_settings_change_ids_that_are_not_text_are_refused(service, sid):
+    status, body = service.request("PATCH", "/api/addons/plugin.video.pov/settings",
+                                   {"changes": [{"id": sid, "value": "1"}]})
+    assert status == 400 and _outcome(body) == ("bad_request", "refused")
+    assert service.writes == [] and not service.backups.exists()
+    status, body = service.request("PATCH", "/api/addons/plugin.video.pov/settings",
+                                   {"changes": [{"id": sid, "value": "1", "source": "raw"}]})
+    assert status == 400 and _outcome(body) == ("bad_request", "refused")
+
+
+def test_missing_addon_on_a_write_route_is_refused(service):
+    status, body = service.request("PATCH", "/api/addons/plugin.video.missing/settings",
+                                   {"changes": [{"id": "limit", "value": "1"}]})
+    assert status == 404 and _outcome(body) == ("not_found", "refused")
+    assert body["error"]["message"] == "Add-on not found"
+
+
+def test_other_lookup_errors_after_a_write_starts_stay_unknown(service, monkeypatch):
+    def apply_layout(*args):
+        raise KeyError("rows")
+    monkeypatch.setattr(api_widgets, "apply_layout", apply_layout)
+    status, body = service.request("POST", "/api/widgets/layout/apply", {"expected_revision": "r1"})
+    assert status == 404 and _outcome(body) == ("not_found", "unknown")
+
+
+@pytest.mark.parametrize("row", [
+    {"label": "Row", "source": 5},
+    {"label": "Row", "source": ["plugin://plugin.video.pov/?mode=build_movie_list"]},
+    {"label": ["Row"], "source": "plugin://plugin.video.pov/?mode=build_movie_list"},
+    {"label": "Row", "source": "plugin://plugin.video.pov/?mode=play_media"},
+    {"label": "", "source": "plugin://plugin.video.pov/?mode=build_movie_list"},
+])
+def test_widget_row_add_input_errors_are_refused(service, monkeypatch, tmp_path, row):
+    monkeypatch.setattr(api_widgets, "translate", lambda path: str(tmp_path / "widget_cache"))
+    status, body = service.request("POST", "/api/widget-cache/rows", row)
+    assert status == 400 and _outcome(body) == ("bad_request", "refused")
+    assert not (tmp_path / "widget_cache" / "rows.json").exists()
+
+
+def test_widget_row_add_still_saves_a_listing(service, monkeypatch, tmp_path):
+    monkeypatch.setattr(api_widgets, "translate", lambda path: str(tmp_path / "widget_cache"))
+    status, body = service.request("POST", "/api/widget-cache/rows",
+                                   {"label": "Movies", "source": "plugin://plugin.video.pov/?mode=build_movie_list"})
+    assert status == 200 and body["data"]["label"] == "Movies"
+
+
+@pytest.mark.parametrize("keys", [[["setting:a:b"]], [{"k": 1}], [1], [None]])
+def test_baseline_remove_keys_that_are_not_text_are_refused(service, monkeypatch, tmp_path, keys):
+    from kodi_manager import api_addons
+    from kodi_manager.baseline import Baseline
+    path = tmp_path / "baseline.json"
+    path.write_text("[]")
+    monkeypatch.setattr(api_addons, "make_baseline", lambda kodi: Baseline(str(path), kodi))
+    status, body = service.request("POST", "/api/baseline/remove", {"keys": keys})
+    assert status == 400 and _outcome(body) == ("bad_request", "refused")
+    status, body = service.request("POST", "/api/baseline/remove", {"keys": ["setting:a:b"]})
+    assert status == 200 and body["data"] == {"count": 0}

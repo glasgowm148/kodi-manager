@@ -7,7 +7,7 @@
 Each problem raises at most one TV notification per day, and never while
 something is playing: a problem found during playback is checked again at the
 next quiet moment and shown only if it is still there. A checkpoint interrupted
-by playback is discarded and retried later.
+by playback, or by an add-on keeping a database busy, is discarded and retried later.
 """
 import threading
 import time
@@ -29,6 +29,9 @@ class Maintenance:
     ACCOUNTS_EVERY = 12 * 3600
     NOTIFY_AGAIN_AFTER = 24 * 3600
     RETRY_DEFERRED_AFTER = 10 * 60
+    # Checkpoints stopped by a busy database are retried this many times a day; then
+    # the night is recorded as failed (an add-on holding a database locked for hours).
+    BUSY_RETRIES = 6
 
     def __init__(self, notify, baseline=None, accounts=lambda: [], checkpoint=None, clock=time.time,
                  localtime=time.localtime, log=lambda msg: None, last_nightly_day=None, is_quiet=None,
@@ -46,6 +49,7 @@ class Maintenance:
         self.last_nightly_day = last_nightly_day
         self.notified = {}
         self.pending = {}
+        self.busy_day, self.busy_retries = None, 0
 
     def _quiet_now(self):
         if self.is_quiet is None:
@@ -90,16 +94,28 @@ class Maintenance:
                     with _LOCK:
                         LAST["nightly"] = {"status": "ok", "at": int(now), "backup_id": (result or {}).get("backup_id")}
                 except Exception as exc:
-                    if getattr(exc, "deferred", False):
-                        # Playback started part way: the partial checkpoint was discarded.
+                    busy = getattr(exc, "reason", None) == "busy_database"
+                    if busy and day != self.busy_day:
+                        self.busy_day, self.busy_retries = day, 0
+                    if getattr(exc, "deferred", False) and not (busy and self.busy_retries >= self.BUSY_RETRIES):
+                        # The partial checkpoint was discarded: try again later the same night.
                         self.last_nightly_day = previous_day
                         self.next_nightly = self.clock() + self.RETRY_DEFERRED_AFTER
-                        self.log("Nightly checkpoint postponed: the TV is in use")
+                        if busy:
+                            # An add-on kept writing a database while it was copied.
+                            self.busy_retries += 1
+                            with _LOCK:
+                                LAST["nightly"] = {"status": "retrying", "at": int(now), "error": "busy_database"}
+                            self.log("Nightly checkpoint postponed: an add-on was writing its database; "
+                                     "retrying in %d minutes" % (self.RETRY_DEFERRED_AFTER // 60))
+                        else:
+                            self.log("Nightly checkpoint postponed: the TV is in use")
                         ran.append("nightly")
                         return ran
+                    error = "busy_database" if busy else type(exc).__name__
                     with _LOCK:
-                        LAST["nightly"] = {"status": "error", "at": int(now), "error": type(exc).__name__}
-                    self.log("Nightly checkpoint failed: %s" % type(exc).__name__)
+                        LAST["nightly"] = {"status": "error", "at": int(now), "error": error}
+                    self.log("Nightly checkpoint failed: %s" % error)
                 ran.append("nightly")
         if self.stopping():
             return ran

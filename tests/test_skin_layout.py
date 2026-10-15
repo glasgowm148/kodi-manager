@@ -450,6 +450,15 @@ class LayoutTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             layout.preview_layout(self.kodi, self.index, dict(body, section_id='hub:../escape'))
 
+    def test_general_row_ids_that_are_not_text_are_refused(self):
+        body = self.general_fixture()
+        for rid in (['x'], {'id': 'x'}, 5, False):
+            altered = dict(body, rows=[dict(body['rows'][0], id=rid)])
+            with self.assertRaises(layout.RequestRefused):
+                layout.preview_layout(self.kodi, self.index, altered)
+            with self.assertRaises(layout.RequestRefused):
+                layout.apply_layout(self.kodi, self.index, altered, True)
+
     def test_general_detects_native_edit_during_staged_write_and_rolls_back(self):
         body = self.general_fixture()
         body['rows'][0]['label'] = 'Fresh'

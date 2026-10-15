@@ -17,8 +17,10 @@ import re
 
 try:
     from .fsutil import atomic_write_json, atomic_write_text, path_lock
+    from .write_policy import RequestRefused
 except ImportError:
     from fsutil import atomic_write_json, atomic_write_text, path_lock
+    from write_policy import RequestRefused
 
 KINDS = ("addon_setting", "kodi_setting", "addon_xml")
 _ID = re.compile(r"^[A-Za-z0-9._-]{1,120}$")
@@ -107,7 +109,9 @@ class Baseline:
                 data = json.load(handle)
         except (OSError, ValueError):
             return []
-        return [item for item in data.get("items", []) if isinstance(item, dict) and item.get("kind") in KINDS]
+        items = data.get("items") if isinstance(data, dict) else None
+        return [item for item in items if isinstance(item, dict) and item.get("kind") in KINDS] \
+            if isinstance(items, list) else []
 
     def save(self, items):
         with path_lock(self.path):
@@ -222,7 +226,11 @@ class Baseline:
         return {"protected": added, "count": len(stored)}
 
     def remove(self, keys):
+        if not isinstance(keys, (list, tuple)) or not all(isinstance(key, str) for key in keys):
+            # Checked before anything is written: a refusal, not an unknown outcome.
+            raise RequestRefused("keys must be a list of baseline item keys")
+        drop = set(keys)
         with path_lock(self.path):
-            kept = [item for item in self.items() if item_key(item) not in set(keys)]
+            kept = [item for item in self.items() if item_key(item) not in drop]
             self.save(kept)
         return {"count": len(kept)}

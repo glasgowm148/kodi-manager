@@ -130,7 +130,7 @@ def load_config(addon):
 
 def write_private_file(path, data):
     """Replace ``path`` atomically with an owner-only file (it may hold the access token)."""
-    fd, temp = tempfile.mkstemp(prefix="." + os.path.basename(path) + ".", suffix=".tmp",
+    fd, temp = tempfile.mkstemp(prefix="." + os.path.basename(path)[:40] + ".", suffix=".tmp",
                                 dir=os.path.dirname(os.path.abspath(path)))
     try:
         with os.fdopen(fd, "wb") as handle:

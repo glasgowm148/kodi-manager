@@ -45,10 +45,12 @@ or JSON editing tasks. Ask only for missing connection information or unavoidabl
 
 1. Check for an existing Manager installation and inspect its version/profile before replacing it.
    Preserve local changes and create an appropriate private backup for an authorized upgrade.
-2. Download `service.kodi.addonadmin-0.7.37.zip` and `SHA256SUMS` from the release's Assets at
-   [v0.7.37](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.37). Verify the ZIP checksum.
+2. Download `service.kodi.addonadmin-0.7.38.zip` and `SHA256SUMS` from the release's Assets at
+   [v0.7.38](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.38). Verify the ZIP checksum.
    GitHub's Source code ZIP, Python wheel and tar.gz cannot be installed through Kodi.
-   nvidia-MCP users can instead export the pinned bundle with `nvidia-mcp --export-manager DIRECTORY`.
+   nvidia-MCP users can instead export its pinned older bundle (currently 0.7.23) with
+   `nvidia-mcp --export-manager DIRECTORY`. That command checks the ZIP itself and creates no
+   `SHA256SUMS`, so skip the check below. Never install it over a newer Manager.
 3. Transfer the verified ZIP to a Kodi-accessible folder using authorized ADB, a mounted share or
    local storage. Use only the configured device, not a LAN scan. Give the user the exact folder and
    file name to select. If no transfer route is available, explain the specific manual copy needed.
@@ -63,7 +65,7 @@ to that asset's filename. A missing entry or mismatched digest means stop and do
 import hashlib
 from pathlib import Path
 
-name = "service.kodi.addonadmin-0.7.37.zip"
+name = "service.kodi.addonadmin-0.7.38.zip"
 entries = [line.split() for line in Path("SHA256SUMS").read_text().splitlines() if line.strip()]
 matches = [parts[0] for parts in entries if len(parts) == 2 and parts[1] == name]
 if len(matches) != 1:
@@ -93,7 +95,9 @@ Checksums detect changed bytes; they are not an independent publisher signature.
    environment, preserve other servers and reload the connection. Follow
    [companion setup](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/companion.md).
 
-Use this bearer-authenticated HTTP service only on a trusted LAN or a user-managed secure tunnel.
+Use this bearer-authenticated HTTP service only on a trusted LAN. Remote clients need private or
+loopback addresses: an SSH local port forward to `localhost`, or a VPN using private (RFC 1918) or
+IPv6 ULA addresses. 100.64.0.0/10 VPN addresses, such as Tailscale's IPv4 addresses, are refused.
 It has no transport encryption. Do not expose it to the internet. Backups/account/log diagnostics
 can contain credentials; keep them private.
 

@@ -140,6 +140,26 @@ def _parse_options(elem, resolver=None):
     return opts
 
 
+def _enum_default(elem, default, options):
+    """A v1 ``enum`` default as the stored value its options use.
+
+    Kodi stores a v1 enum as an index (or the matching ``entries`` value), but some add-ons give
+    the label as the default (``default="poster"``). Kodi reads a non-integer default as index 0,
+    so a label default becomes its option's value and anything else unmatched becomes the first
+    option's.
+    """
+    if elem.get("type") != "enum" or not options or default in [o["value"] for o in options]:
+        return default
+    raw = elem.get("values") or elem.get("lvalues") or elem.get("entries")
+    if not raw:
+        return default
+    raw_labels = raw.split("|")
+    for idx, option in enumerate(options):
+        if default == option["label"] or (idx < len(raw_labels) and default == raw_labels[idx]):
+            return option["value"]
+    return options[0]["value"]
+
+
 def parse_schema(schema_path, addon_path=None, user_settings_path=None, allow_secret_replacement=False) -> Dict[str, Any]:
     resolver = LanguageResolver(addon_path)
     user_values = parse_user_settings(user_settings_path)
@@ -160,9 +180,11 @@ def parse_schema(schema_path, addon_path=None, user_settings_path=None, allow_se
         default = elem.get("default") if elem.get("default") is not None else elem.findtext("default")
         default_known = default is not None
         default = default if default_known else ""
+        options = _parse_options(elem, resolver)
+        if default_known:
+            default = _enum_default(elem, default, options)
         value = user_values.get(sid, default)
         masked = False if allow_secret_replacement else (is_secret_like(sid, label) or elem.get("option") == "hidden" or elem.get("visible") == "false")
-        options = _parse_options(elem, resolver)
         editable = setting_editable({"id": sid, "label": label, "type": stype, "options": options}, allow_secret_replacement)
         if masked:
             editable = bool(allow_secret_replacement) and editable

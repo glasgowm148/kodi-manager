@@ -222,3 +222,54 @@ def test_every_allowlisted_route_is_accepted_on_its_own():
             if routes.nested:
                 continue
             assert route_guard.blocked_reason(source) == "", source
+
+
+# --- Queries an add-on's own parser reads differently ------------------------------------
+
+@pytest.mark.parametrize("source", [
+    # BBC iPlayer's get_params strips every '?', so "mo?de" is a second mode= (119 signs out).
+    IPLAYER + "101&url=x&mo?de=119",
+    IPLAYER + "101&url=x?&mode=119",
+    IPLAYER + "101&url=x&?mode=119",
+    POV + "build_movie_list&mo?de=play_media",
+    # Parameter names outside [A-Za-z0-9_.-] (HTML-escaped '&', '+', spaces, percent signs).
+    IPLAYER + "101&amp;mode=119",
+    IPLAYER + "101&mo+de=119",
+    IPLAYER + "101&mo%3Fde=119",
+    IPLAYER + "101&%mode=119",
+    IPLAYER + "101&=119",
+    # Another spelling of the routing key.
+    IPLAYER + "101&MODE=119",
+    HELPER + "popular&Info=play",
+    # A percent-encoded routing key is the same key, so it is a repeat.
+    IPLAYER + "101&m%6Fde=119",
+])
+def test_queries_parsed_differently_by_the_addon_are_refused(source):
+    assert route_guard.blocked_reason(source)
+    with pytest.raises(ValueError):
+        route_guard.check_directory(source)
+
+
+def test_full_width_and_non_ascii_routes_are_refused():
+    full_width_play = "ｐｌａｙ"
+    assert route_guard.words(full_width_play) == ["play"]
+    assert route_guard.action_word(full_width_play + "_media") == "play"
+    # Unknown add-ons: the action-word fallback sees the folded word.
+    assert route_guard.blocked_reason("plugin://plugin.video.example/?mode=" + full_width_play)
+    assert route_guard.blocked_reason("plugin://plugin.video.example/?mode=" + quote(full_width_play))
+    # Known add-ons: a routing value must be plain ASCII, even inside a listing family.
+    assert route_guard.blocked_reason(POV + "build_trakt_" + full_width_play)
+    assert route_guard.blocked_reason(HELPER + "trakt_é")
+    assert route_guard.blocked_reason(IPLAYER + "１０１")  # full-width 101
+    # Other parameters of a known listing are folded too.
+    assert route_guard.blocked_reason(POV + "build_movie_list&action=" + full_width_play + "_media")
+
+
+def test_listing_routes_with_plain_keys_still_pass_after_query_checks():
+    for source in SKIN_AND_CACHE_LISTINGS + [
+            IPLAYER + "101&url=x", IPLAYER + "101&url=x&", IPLAYER + "101&&url=x",
+            HELPER + "popular&tmdb_type=movie&with_genres=16&page=2",
+            POV + "build_movie_list&action=tmdb_movies_collection&key_id=10&iconImage=x.png"]:
+        assert route_guard.blocked_reason(source) == "", source
+    # Non-ASCII display text is still fine.
+    assert route_guard.blocked_reason(IPLAYER + "128&url=x&name=Caf%C3%A9") == ""

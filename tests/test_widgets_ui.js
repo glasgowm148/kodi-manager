@@ -607,6 +607,40 @@ test('review and apply stay with the section the review was opened for when anot
   assert.deepEqual(JSON.parse(JSON.stringify(sent[0].body.rows.map(row=>row.id))),['a2','a1']);
 });
 
+test('a late apply after leaving and reopening the page keeps the newer saved drafts', async () => {
+  const listeners=[], toasts=[];
+  let releaseApply;
+  const applyReply=new Promise(resolve=>{releaseApply=resolve;});
+  const rows=[{id:'row-a',label:'Popular',path:'special://videoplaylists/a'},{id:'row-b',label:'Latest',path:'special://videoplaylists/b'}];
+  const h=catalogueHarness(rows,{sources:[],rowPreview:{status:'ok',items:[]},api:path=>{
+    if(path==='/api/widgets/layout/preview')return {revision:'revision-1',can_apply:true,reasons:[]};
+    if(path==='/api/widgets/layout/apply')return applyReply;
+  }});
+  h.context.window={addEventListener:(name,handler)=>listeners.push({name,handler}),removeEventListener(){}};
+  h.context.location={hash:'#/widgets'};
+  h.context.currentRoute=()=>h.context.location.hash.split('?')[0];
+  h.context.toast=(message,tone)=>toasts.push({message,tone});
+  h.context.reportError=error=>toasts.push({message:error.message,tone:'error'});
+  await settleCatalogue(h);
+  await h.click({moveRow:'0,1'});
+  const review=h.elements.get('#bs-review');
+  await review.onclick({currentTarget:review});
+  const apply=h.elements.get('#bs-apply');
+  const applying=apply.onclick({currentTarget:apply});
+  h.context.location.hash='#/backups';
+  listeners.filter(l=>l.name==='hashchange').forEach(l=>l.handler());
+  // Meanwhile the user came back and saved newer drafts (another section edited, and this one again).
+  const newer={'section-2':{label:'Kids',rows:[{label:'New',path:'special://videoplaylists/n'}]},'section-1':{label:'Movies',rows:[]}};
+  h.storage.set('bingie_studio_drafts_v2',JSON.stringify(newer));
+  releaseApply({backup_id:'skin-layout-4'});
+  await applying;
+  assert.equal(toasts.length,1);
+  const stored=JSON.parse(h.storage.get('bingie_studio_drafts_v2'));
+  assert.equal(stored['section-1'],undefined,'the applied section is cleared');
+  assert.deepEqual(stored['section-2'],newer['section-2'],'newer drafts of other sections survive');
+  assert.deepEqual(Object.keys(stored),['section-2'],'the old page did not write its own drafts back');
+});
+
 test('apply and rebuild are writes the page signal never cancels, and their outcome survives leaving the page', async () => {
   const listeners=[], toasts=[];
   let releaseApply;

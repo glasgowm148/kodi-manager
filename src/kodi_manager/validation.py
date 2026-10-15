@@ -30,11 +30,19 @@ _QUERY_SECRET = re.compile(
 # IPTV providers put credentials in path segments, not just query parameters.
 _STREAM_CREDENTIALS = re.compile(
     r"(https?://[^/\s<>\"']+/(?:live|movie|series)/)([^/?#\s<>\"']+)/([^/?#\s<>\"']+)(?=/)", re.I)
-_URL_USERINFO = re.compile(r"(https?://)[^/\s<>\"']+@", re.I)
-_BEARER = re.compile(r"\b(Bearer)\s+[A-Za-z0-9._~+/=-]+", re.I)
+# Credentials in any URL scheme (smb://user:pass@nas/, ftp://u:p@h/), not only http. The
+# look-behind starts the scheme at the beginning of a word, so a long run of letters is scanned
+# once rather than once per letter.
+_URL_USERINFO = re.compile(r"(?<![a-z0-9+.-])([a-z][a-z0-9+.-]{0,31}://)[^/\s<>\"']+@", re.I)
+# ``Bearer X``, and the URL-encoded form Kodi header suffixes use (``|Authorization=Bearer%20X``).
+_BEARER = re.compile(r"\b(Bearer)(?:\s+|%20|\+)[A-Za-z0-9._~+/=-]+", re.I)
+# ``token=X``, ``trakt_token=X``, ``tmdb.api_key: X``, ``"access_token": "X"``, ``{'api_key': 'X'}``.
+# The name must start a word and end right at the separator, so ``keyboard``, ``keymap`` and
+# ``monkey=`` are not secrets. Prefix parts are bounded so adversarial input stays linear.
 _ASSIGNED_SECRET = re.compile(
-    r"\b((?:access_|refresh_|auth_|client_|api_)?(?:token|secret|password|passwd|api_?key|apikey|key))"
-    r"(\s*[=:]\s*[\"']?)([^\s&\"',;]+)", re.I)
+    r"(?<![A-Za-z0-9])((?:[A-Za-z0-9]{1,40}[_.-]){0,6}"
+    r"(?:token|secret|password|passwd|api_?key|apikey|key))"
+    r"([\"']?\s*[=:]\s*[\"']?)([^\s&\"',;]+)", re.I)
 MASK = "••••••••"
 
 
