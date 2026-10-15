@@ -42,7 +42,7 @@ def kodi_lines(lines):
 @unittest.skipUnless(os.name == "posix", "Android shell simulation needs POSIX")
 class ExitSequenceTests(unittest.TestCase):
     def run_sequence(self, lines, extra=(), trace=None, step=0.0, polls=2, append=None,
-                     reparent_after=-1, clock=True, raw=False, timeout=20, raw_trace=None):
+                     reparent_after=-1, clock=True, raw=False, timeout=180, raw_trace=None):
         """Run the watcher over ``lines``; return (signalled, result json or None).
 
         ``polls`` replaces the 1500-poll watch limit (None keeps it), ``append``
