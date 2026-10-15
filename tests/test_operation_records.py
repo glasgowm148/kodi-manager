@@ -106,7 +106,9 @@ def operations_service(tmp_path, monkeypatch):
     thread.start()
     def request(path, method="GET", token="synthetic-token"):
         conn = http.client.HTTPConnection(*httpd.server_address, timeout=3)
-        conn.request(method, path, body="{}" if method != "GET" else None,
+        # These actions take no body fields. A separate body send can race an early
+        # refusal and abort the response connection on Windows (WinError 10053).
+        conn.request(method, path,
                      headers={"Authorization": "Bearer " + token, "X-Correlation-ID": CORRELATION})
         response = conn.getresponse()
         result = response.status, json.loads(response.read())
