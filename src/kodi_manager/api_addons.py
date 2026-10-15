@@ -187,7 +187,9 @@ class AddonRoutes(RequestHandler):
             with open(path, encoding="utf-8") as handle:
                 wanted = parse_skin_settings(handle.read())
         except FileNotFoundError:
-            wanted = {}   # a snapshot without settings.xml: the skin had only its defaults
+            # Nothing to apply: resetting every live setting from a snapshot that never held the
+            # file (or lost it) would wipe the skin's configuration.
+            return {"skin_settings": {"status": "no_settings_file", "changed": 0, "failed": [], "skin": skin}}
         result = apply_live(self.state.kodi, skin, wanted)
         return {"skin_settings": dict(result, skin=skin)}
 

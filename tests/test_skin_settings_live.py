@@ -100,20 +100,44 @@ def test_quoting_survives_random_strings():
 class FakeSkinKodi:
     """Kodi's skin settings in memory, changed only through the Skin.* builtins as Kodi runs them."""
 
-    def __init__(self, skin="skin.bingie", settings=None, supported=True, ignore=()):
-        self.skin, self.supported, self.ignore = skin, supported, set(ignore)
+    def __init__(self, skin="skin.bingie", settings=None, supported=True, ignore=(), rpc_set=True):
+        self.skin, self.supported, self.ignore, self.rpc_set = skin, supported, set(ignore), rpc_set
         self.memory = dict(settings or {})   # name -> (type, value)
-        self.builtins, self.saves = [], 0
+        self.builtins, self.saves, self.rpc_sets = [], 0, []
+        self.unlisted = set()   # registered at runtime (TranslateString): not in GetSkinSettings
 
     def _find(self, name):
         return next((k for k in self.memory if k.lower() == name.lower()), None)
 
     def jsonrpc(self, method, params=None):
+        if method == "Settings.SetSkinSettingValue":
+            # SettingsOperations.cpp: registered settings only, the right JSON type, no save.
+            name = self._find(params["setting"])
+            if not self.rpc_set or name is None or name in self.ignore or name in self.unlisted:
+                return {"error": {"code": -32602, "message": "Invalid params."}}
+            kind = self.memory[name][0]
+            if (kind == "bool") != isinstance(params["value"], bool):
+                return {"error": {"code": -32602, "message": "Invalid params."}}
+            self.memory[name] = (kind, params["value"])
+            self.rpc_sets.append(name)
+            return {"result": params["value"]}
+        if method in ("XBMC.GetInfoLabels", "XBMC.GetInfoBooleans"):
+            out = {}
+            for label in params["labels" if method == "XBMC.GetInfoLabels" else "booleans"]:
+                name = label[label.index("(") + 1:-1]
+                found = self._find(name)
+                kind, value = self.memory[found] if found else (None, None)
+                if method == "XBMC.GetInfoLabels":
+                    out[label] = value if kind == "string" else ""
+                else:
+                    out[label] = bool(value) if kind == "bool" else False
+            return {"result": out}
         if method == "Settings.GetSkinSettings":
             if not self.supported:
                 return {"error": {"code": -32601, "message": "Method not found."}}
             return {"result": {"skin": self.skin, "settings": [
-                {"id": k, "type": "boolean" if t == "bool" else "string", "value": v} for k, (t, v) in self.memory.items()]}}
+                {"id": k, "type": "boolean" if t == "bool" else "string", "value": v}
+                for k, (t, v) in self.memory.items() if k not in self.unlisted]}}
         raise AssertionError(method)
 
     def get_active_skin(self):
@@ -166,6 +190,10 @@ def test_apply_live_sets_changed_values_resets_extras_and_reads_back():
                                   "flag.later": ("bool", True)})
     result = apply_live(kodi, "skin.bingie", parse_skin_settings(SETTINGS_XML))
     assert result == {"status": "applied", "changed": 5, "failed": []}
+    # Registered settings went through JSON-RPC; only the new one ("legacy") needed a builtin,
+    # plus one builtin that re-sets the last JSON-RPC value so Kodi saves settings.xml.
+    assert sorted(kodi.rpc_sets) == ["added.later", "flag.later", "home.widget1", "show.clock"]
+    assert kodi.saves == 2
     assert kodi.memory == {"home.widget1": ("string", "plugin://x/?a=1,b=(2)"), "show.clock": ("bool", True),
                            "hide.rating": ("bool", False), "added.later": ("string", ""),
                            "flag.later": ("bool", False), "legacy": ("string", "old style")}
@@ -180,6 +208,24 @@ def test_an_empty_string_is_reset_never_set_with_one_parameter():
     kodi = FakeSkinKodi(settings={"a": ("string", "x")})
     assert apply_live(kodi, "skin.bingie", {"a": ("string", "")})["status"] == "applied"
     assert kodi.memory["a"] == ("string", "")
+
+
+def test_settings_registered_at_runtime_are_checked_through_info_labels():
+    kodi = FakeSkinKodi(settings={"a": ("string", "x")})
+    # CustomSearchTerm first set after start-up: Kodi saves it, but GetSkinSettings never lists it.
+    kodi.unlisted = {"CustomSearchTerm", "flag"}
+    result = apply_live(kodi, "skin.bingie", {"a": ("string", "x"), "CustomSearchTerm": ("string", "the traitors"),
+                                              "flag": ("bool", True)})
+    assert result == {"status": "applied", "changed": 2, "failed": []}
+    assert kodi.memory["CustomSearchTerm"] == ("string", "the traitors") and kodi.memory["flag"] == ("bool", True)
+    kodi.ignore = {"CustomSearchTerm"}
+    assert apply_live(kodi, "skin.bingie", {"CustomSearchTerm": ("string", "bluey")})["failed"] == ["CustomSearchTerm"]
+
+
+def test_without_json_rpc_setting_falls_back_to_builtins():
+    kodi = FakeSkinKodi(settings={"a": ("string", "x"), "b": ("bool", False)}, rpc_set=False)
+    assert apply_live(kodi, "skin.bingie", {"a": ("string", "y, z"), "b": ("bool", True)})["status"] == "applied"
+    assert kodi.memory == {"a": ("string", "y, z"), "b": ("bool", True)} and kodi.saves == 2
 
 
 def test_a_value_kodi_did_not_take_is_reported():
@@ -233,6 +279,18 @@ def test_restoring_the_active_skin_applies_its_settings_to_the_running_skin(stor
     index = SimpleNamespace(get={"skin.bingie": info, "plugin.video.pov": other}.get)
     result = backup.restore_stack_backup(index, stack["backup_id"], after_restore=handler._apply_active_skin)
     assert result["live"]["skin_settings"]["status"] == "applied" and kodi.memory["show.clock"] == ("bool", True)
+
+
+def test_a_skin_snapshot_without_settings_xml_leaves_live_settings_alone(storage):
+    live = storage / "skin.bingie"
+    live.mkdir()
+    (live / "other.json").write_text("{}")
+    info = {"addon_id": "skin.bingie", "addon_data_path": str(live)}
+    snapshot = backup.create_backup(info)
+    kodi = FakeSkinKodi(settings={"a": ("string", "x"), "b": ("bool", True)})
+    result = backup.restore_backup(info, snapshot["backup_id"], after_restore=_routes(kodi)._apply_active_skin)
+    assert result["live"]["skin_settings"]["status"] == "no_settings_file"
+    assert kodi.memory == {"a": ("string", "x"), "b": ("bool", True)} and kodi.builtins == []
 
 
 def test_restoring_another_add_on_does_not_touch_the_skin(storage):

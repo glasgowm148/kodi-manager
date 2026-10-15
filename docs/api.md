@@ -35,7 +35,8 @@ For service installation and profile tokens, use [setup](setup.md).
   replaced the file would be undone. When a restore includes the active skin, its settings are also
   set through the `Skin.SetBool`/`Skin.SetString`/`Skin.Reset` builtins and read back:
   `live: {skin_settings: {skin, status, changed, failed[]}}`, where `status` is `applied`, `partial`
-  (`failed` names the settings Kodi did not take), `not_active` or `unsupported` (Kodi before 20).
+  (`failed` names the settings Kodi did not take), `not_active`, `unsupported` (Kodi before 20) or
+  `no_settings_file` (the snapshot has no settings.xml, so live settings are left as they are).
   `live: {error, detail}` means the files were restored but the live step failed.
 - Bodies are JSON objects of at most 1 MB with a fixed `Content-Length` and no transfer encoding.
   The complete body must arrive within 20 seconds; incomplete or malformed bodies never reach

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.42 — 2026-10-15
+
+- Restoring the active skin: a snapshot without the skin's settings.xml no longer resets every live skin setting (it now leaves them alone and reports `no_settings_file`). Settings Kodi already has are set through JSON-RPC and saved once, instead of one Skin.* builtin each — every builtin also rewrites guisettings.xml on Kodi's GUI thread, so a large restore could freeze the TV. Settings the skin registered while running (not listed by `Settings.GetSkinSettings`) are checked through `Skin.String`/`Skin.HasSetting`, so they are no longer reported as failed after being applied.
+- Voice search closes any dialog over the search screen (an info dialog would hide the new results).
+
 ## 0.7.41 — 2026-10-15
 
 - Search history: searches are kept per profile (newest first, 50 at most). Skins list earlier searches matching what is typed (`plugin://service.kodi.addonadmin/?mode=search_history&query=…`) and record them (`mode=search_history_add`); the skin.bingie fork shows them first in its search suggestions.

@@ -128,8 +128,9 @@ def open_search(kodi, query, history=None):
         return {"opened": False, "reason": "empty_query"}
     skin = (kodi.get_active_skin() or {}).get("addon_id", "")
     if skin == BINGIE:
-        # An open keyboard would write its own text over the term when it closes.
-        kodi.execute_builtin("Dialog.Close(virtualkeyboard,true)")
+        # An open keyboard would write its own text over the term when it closes, and an info
+        # dialog over the search window would hide the new results.
+        kodi.execute_builtin("Dialog.Close(all,true)")
         kodi.execute_builtin("Skin.SetString(CustomSearchTerm,%s)" % quote_param(text))
         kodi.execute_builtin("SetProperty(CustomSearch,1,home)")
         if not _bool(kodi, "Window.IsActive(%s)" % BINGIE_SEARCH_WINDOW):

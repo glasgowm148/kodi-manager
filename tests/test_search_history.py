@@ -128,7 +128,7 @@ class FakeKodi:
 def test_open_search_in_bingie_sets_the_term_and_opens_its_window(history):
     kodi = FakeKodi()
     assert open_search(kodi, ' the "office", US ', history) == {"opened": True, "query": 'the "office", US', "how": "bingie"}
-    assert kodi.builtins == [("dialog.close", ["virtualkeyboard", "true"]),
+    assert kodi.builtins == [("dialog.close", ["all", "true"]),
                              ("skin.setstring", ["CustomSearchTerm", 'the "office", US']),
                              ("setproperty", ["CustomSearch", "1", "home"]),
                              ("activatewindow", ["1109"])]

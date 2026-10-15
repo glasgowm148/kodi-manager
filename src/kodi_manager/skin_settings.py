@@ -88,7 +88,8 @@ def apply_live(kodi, skin_id, wanted):
     """Make the running skin's settings equal ``wanted`` ({id: (type, value)}).
 
     Settings the skin has that ``wanted`` lacks are reset (that is what their absence from
-    settings.xml means). Returns {"status": "applied"|"partial"|"not_active"|"unsupported",
+    settings.xml means). Settings Kodi already has are set through JSON-RPC and saved with one
+    builtin at the end; new ones through the builtins. Returns {"status": "applied"|"partial"|"not_active"|"unsupported",
     "changed": n, "failed": [ids]} after reading every value back.
     """
     active, live = _live(kodi)
@@ -102,25 +103,58 @@ def apply_live(kodi, skin_id, wanted):
     for key, (sid, kind, _value) in live.items():
         if key not in target:
             target[key] = (sid, kind, _default(kind))
-    changed = 0
+    changed, last_set = 0, None
     for key, (sid, kind, value) in sorted(target.items()):
         now = live.get(key)
         if now is not None and now[1] == kind and now[2] == value:
             continue
         if now is None and value == _default(kind):
             continue   # absent and default: nothing in memory to change
-        kodi.execute_builtin(builtin_for(sid, kind, value))
         changed += 1
+        # A setting Kodi already has: JSON-RPC changes it in memory only. Each Skin.* builtin
+        # also writes guisettings.xml on the GUI thread, which hundreds of them would freeze.
+        if now is not None and now[1] == kind:
+            reply = kodi.jsonrpc("Settings.SetSkinSettingValue", {"setting": now[0], "value": value})
+            if isinstance(reply, dict) and "error" not in reply:
+                last_set = (now[0], kind, value)
+                continue
+        kodi.execute_builtin(builtin_for(sid, kind, value))
+        last_set = None
+    if last_set is not None:
+        # JSON-RPC does not save: one builtin (same value) makes Kodi write settings.xml now.
+        kodi.execute_builtin(builtin_for(*last_set))
     failed = []
     if changed:
         _active, after = _live(kodi)
         after = after or {}
+        unlisted = {}
         for key, (sid, kind, value) in sorted(target.items()):
             now = after.get(key)
-            got = now[2] if now is not None and now[1] == kind else _default(kind) if now is None else None
-            if got != value:
+            if now is None:
+                # Settings the skin registered while running (Skin.String in its XML) are not in
+                # Settings.GetSkinSettings; ask the skin's info labels instead.
+                unlisted[key] = (sid, kind, value)
+            elif now[1] != kind or now[2] != value:
                 failed.append(sid)
-    return {"status": "partial" if failed else "applied", "changed": changed, "failed": failed}
+        failed += _check_unlisted(kodi, unlisted)
+    return {"status": "partial" if failed else "applied", "changed": changed, "failed": sorted(failed)}
+
+
+def _check_unlisted(kodi, settings):
+    """Names in ``settings`` ({key: (id, type, value)}) whose value the skin does not report."""
+    strings = {"Skin.String(%s)" % sid: (sid, value) for sid, kind, value in settings.values() if kind == "string"}
+    bools = {"Skin.HasSetting(%s)" % sid: (sid, value) for sid, kind, value in settings.values() if kind == "bool"}
+    failed = []
+    for method, key, labels in (("XBMC.GetInfoLabels", "labels", strings), ("XBMC.GetInfoBooleans", "booleans", bools)):
+        if not labels:
+            continue
+        reply = kodi.jsonrpc(method, {key: sorted(labels)})
+        result = reply.get("result") if isinstance(reply, dict) else None
+        for label, (sid, value) in labels.items():
+            got = result.get(label) if isinstance(result, dict) else None
+            if got is None or (bool(got) if isinstance(value, bool) else str(got)) != value:
+                failed.append(sid)
+    return failed
 
 
 def save_core_settings(kodi):
