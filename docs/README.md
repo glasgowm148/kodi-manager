@@ -5,7 +5,7 @@ computers; installing that library does not install the service.
 
 ## Start here
 
-1. [Setup](setup.md): choose the installable ZIP, install in Kodi, enable LAN access and sign in.
+1. [Setup with your TV remote](setup.md): add the repository, install Kodi Manager, enable dashboard access and sign in.
    Only Configure is available? Use the [token/setup fallback](setup.md#only-configure-is-available).
 2. [FAQ](faq.md): skins, devices, write behavior, privacy and removal.
 3. [Troubleshooting](troubleshooting.md): installation, network, tokens and missing features.
@@ -32,3 +32,6 @@ Apple TV support is experimental: read [tvOS setup and recovery limits](apple-tv
 | [Browser tests](../e2e/README.md) | Synthetic fixtures and platform-specific screenshot baselines |
 
 [Changelog](../CHANGELOG.md) · [Security and private reports](../SECURITY.md) · [Back to the project](../README.md).
+
+For advanced installation, see [agent/manual ZIP setup](setup-agent.md).
+Repository maintainers: [publishing and recovery](repository.md).

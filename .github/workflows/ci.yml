@@ -49,7 +49,9 @@ jobs:
       - run: python scripts/build_addon.py
       - run: python scripts/test_wheel.py
       # Inspects all three archives and checks each one's version against version.py.
-      - run: python scripts/check_release.py dist/*.whl dist/*.tar.gz dist/service.kodi.addonadmin-*.zip
+      - run: python scripts/check_release.py dist/*.whl dist/*.tar.gz dist/service.kodi.addonadmin-*.zip --write-checksums dist/SHA256SUMS
+        shell: bash
+      - run: python scripts/build_repository.py --addon dist/service.kodi.addonadmin-*.zip --checksums dist/SHA256SUMS --output dist/repository
         shell: bash
 
   # A separate job records portable-path/body-deadline results even if the full

@@ -5,6 +5,8 @@ Python installation. Use the [setup guide](setup.md) first; nvidia-MCP is option
 
 | Symptom | Likely cause and next step |
 | --- | --- |
+| The source is empty or cannot connect | Enter `https://glasgowm148.github.io/kodi-manager/` exactly; check the TV has internet access. A GitHub project URL is not a Kodi download source. |
+| Repository installed, but dashboard is missing | Installing the repository is only the first part. Select Install from repository → Kodi Manager Repository (preview) → Services → Kodi Manager → Install. |
 | Kodi says the ZIP has an invalid structure or dependencies fail | Under release Assets, select `service.kodi.addonadmin-<version>.zip`, not Source code, a wheel or tar.gz. Kodi 19+ is required. Enable Unknown sources if Kodi asks. |
 | Only Configure is available, or Open is disabled | Exit My add-ons and try Home -> Add-ons -> Video add-ons -> Kodi Manager. If the tile still will not open, [set a private Auth token in Configure](setup.md#only-configure-is-available) and use it in your browser. |
 | Browser shows the login page, but I cannot find the token | The service is reachable. There is no extra “open dashboard” setting to enable. Use the token display or [Configure fallback](setup.md#only-configure-is-available). |
@@ -21,8 +23,10 @@ Python installation. Use the [setup guide](setup.md) first; nvidia-MCP is option
 | A request times out | Kodi may still be working, especially on a change. Inspect the current setting/row/backup before trying again. Manager never automatically repeats a timed-out change. |
 | Old-looking dashboard after an upgrade | Reload the browser. Confirm Connection shows the expected service version; Kodi may need restarting after installation, when viewing has finished. Settings changes themselves apply without a restart. |
 
-Updates are manual: download the new service ZIP, verify its checksum and install it through
-Kodi's native installer. These GitHub releases do not register an auto-updating Kodi repository.
+Repository installations update through Kodi's add-on update settings. To check now, open
+**Add-ons → open-box icon → left sidebar → Check for updates**. If Kodi Manager's **Auto-update**
+is off, choose updates manually. See [repository installation](setup.md).
+Standalone/offline ZIP installations still need a new ZIP unless you also add the repository.
 Back up a customized installation first; see [recovery](recovery.md).
 
 If it still fails, [open an issue](https://github.com/glasgowm148/kodi-manager/issues/new/choose) with

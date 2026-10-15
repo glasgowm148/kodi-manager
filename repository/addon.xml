@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="repository.kodi-manager" name="Kodi Manager Repository (preview)" version="1.0.0" provider-name="Kodi Manager contributors">
+  <extension point="xbmc.addon.repository">
+    <dir minversion="19.0.0">
+      <info>https://glasgowm148.github.io/kodi-manager/addons.xml</info>
+      <checksum>https://glasgowm148.github.io/kodi-manager/addons.xml.sha256</checksum>
+      <datadir zip="true">https://glasgowm148.github.io/kodi-manager/</datadir>
+      <hashes>false</hashes>
+    </dir>
+  </extension>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Install and update Kodi Manager inside Kodi</summary>
+    <description lang="en_GB">Preview releases of Kodi Manager. Add this repository once, then install Kodi Manager and receive updates through Kodi's add-on manager.</description>
+    <disclaimer lang="en_GB">Kodi Manager is prerelease software. Repository updates follow your Kodi update settings.</disclaimer>
+    <platform>all</platform>
+    <license>MIT</license>
+    <website>https://github.com/glasgowm148/kodi-manager</website>
+    <source>https://github.com/glasgowm148/kodi-manager</source>
+  </extension>
+</addon>

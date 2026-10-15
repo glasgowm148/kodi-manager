@@ -1,231 +1,124 @@
 # Install Kodi Manager
 
-Kodi Manager has a TV service, browser dashboard and computer-side Python library.
-For the dashboard, all you need is Kodi and a browser. Install the service ZIP inside Kodi.
-Installing the library on your computer alone does not install or start the TV service.
+Use your TV remote to install Kodi Manager, then open its dashboard on your phone or computer.
+These steps work inside Kodi on Shield, Android TV, Google TV and Android-based Fire TV / Firestick.
+Kodi must already be installed. Apple TV uses the same installation steps, but support is
+[experimental](apple-tv.md).
 
-The instructions below use release 0.7.31, marked prerelease; check [Releases](https://github.com/glasgowm148/kodi-manager/releases) for newer service ZIPs. See [compatibility](compatibility.md)
-for remaining live checks. Back up an existing customized installation before upgrading: public
-releases deliberately omit household settings and separate third-party patch bundles.
+You need:
 
-For Apple TV, follow [tvOS installation and recovery](apple-tv.md). Install from a Kodi-readable network source, enable LAN access, enter the token privately and keep Kodi active. Android transfer/forwarding instructions below do not apply.
+- Kodi 19 or newer, with internet access.
+- A phone or computer on the same home network as the TV.
+- A few minutes with nobody watching anything on the TV.
 
-## Before you start on the TV
+No computer commands or debugging settings are needed for this dashboard.
+Kodi Manager is currently preview software; this repository supplies preview updates.
+If you already have a customized Manager installation, [back it up](recovery.md) before upgrading.
 
-1. Open Kodi on the device you want to manage. The TV and computer should be on the same home network.
-2. Find its local IPv4 address. On a Shield: Home -> Settings gear -> Device Preferences -> About ->
-   Status -> IP address. Older firmware may put About directly under Settings. On Fire OS use Settings -> My Fire TV ->
-   About -> Network; on Google TV use the connected Network & Internet entry or About/Status.
-3. If an agent will transfer files or read the token through ADB, enable the device’s Network
-   debugging, ADB Debugging (Fire OS), or paired Wireless debugging (Google TV).
-   Follow [Android TV / Fire TV preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/android-tv.md)
-   for device-specific menus and pairing/connection ports. Approve the debugging prompt
-   when the agent connects. A mounted/local Kodi storage path is another option.
-4. Confirm viewing has finished before TV navigation, installation or restarting Kodi.
+## 1. Add the download source — inside Kodi
 
-Kodi's separate HTTP control service is needed for nvidia-MCP's Kodi RPC tools, but is not required
-for the Manager dashboard alone.
+1. Open **Kodi**, then **Settings** (the gear icon).
+2. Open **File manager** → **Add source**. You may need to select Add source twice.
+3. Select **<None>** and enter this address exactly, including `https://`:
 
-## Download and transfer the ZIP
+   ```text
+   https://glasgowm148.github.io/kodi-manager/
+   ```
 
-On your computer or phone, open [Releases](https://github.com/glasgowm148/kodi-manager/releases)
-and expand Assets on the newest release, including prereleases. Download
-`service.kodi.addonadmin-<version>.zip` and `SHA256SUMS`. The Source code ZIP, wheel and tar.gz
-are not installable Kodi add-ons. See [checksum verification](#verify-the-download).
+4. Select **OK**. For the source name, enter **Kodi Manager**, then select **OK** again.
 
-Put the ZIP somewhere Kodi can browse, such as local Downloads, a supported USB drive or a
-private network share. Transfer methods depend on your device; see [Android/Fire TV](#android-tv-and-fire-tv)
-or [Apple TV](apple-tv.md). You do not need an assistant or ADB if you can transfer the file yourself.
+This gives Kodi a place to download the repository installer. You do not need to copy a file
+onto the TV. A GitHub project address is different from the source address above.
 
-## Install and configure inside Kodi
+## 2. Install the repository, then Kodi Manager — inside Kodi
 
-1. Open Settings -> System -> Add-ons and enable Unknown sources if needed. If the option is
-   hidden, select the Standard/Expert settings level.
-2. Go to Add-ons -> Install from zip file and select the transferred ZIP. Use Kodi's native
-   installer; do not copy an unpacked add-on behind Kodi's database.
-3. Open Settings -> Add-ons -> My add-ons -> Services -> Kodi Manager -> Configure.
-4. To open the dashboard from another device, turn on Allow LAN access (under Dashboard). The
-   default port is `8765`; without LAN access the service only listens on the Kodi device itself.
-   Leave Enable writes off for first setup. Select OK to save the settings. Changes apply
-   without restarting Kodi.
+1. Open **Settings** → **System** → **Add-ons**.
+2. Turn on **Unknown sources** and accept Kodi's warning. If the option is hidden, select the
+   settings level at the bottom left until it says **Standard** or **Expert**.
+3. Return to Kodi's home screen. Open **Add-ons**, then select the **open-box icon** at the top left.
+   This opens the add-on browser. Menu positions can vary with your skin.
+4. Select **Install from zip file**. Accept the update notice if shown.
+5. Select **Kodi Manager**, then **repository.kodi-manager.zip**.
+6. Wait for the **repository installed** notification.
+7. Select **Install from repository** → **Kodi Manager Repository (preview)** → **Services** →
+   **Kodi Manager** → **Install**. Accept the dependency list if Kodi shows one.
+8. Wait for the **Kodi Manager installed** notification.
 
-An authorized agent can perform TV navigation through its supported tools where available. The
-native installation and service permissions still need to be applied inside Kodi.
+The ZIP in step 5 installs the repository once. Step 7 installs the actual dashboard add-on.
+Future updates follow Kodi's add-on update settings. To choose updates yourself, open Kodi Manager's
+add-on information page and turn **Auto-update** off.
+
+## 3. Enable dashboard access
+
+1. In Kodi, open **Settings** → **Add-ons** → **My add-ons** → **Services** → **Kodi Manager**.
+2. Select **Configure**, then the **Dashboard** tab.
+3. Turn on **Allow LAN access**. This lets your phone or computer reach the dashboard.
+4. Leave **Enable writes** off for now. You can turn it on later to edit settings.
+5. Select **OK** to save. You do not need to restart Kodi.
+
+## 4. Open the dashboard on your phone or computer
 
 <a id="connect--on-the-tv"></a>
 
-## Find the token and sign in
+1. Return to **Kodi's home screen**.
+2. Open **Add-ons** → **Video add-ons** → **Kodi Manager**. Select the tile directly.
+3. Select **Open the dashboard on another device**. The TV shows an address and an access token.
+4. On your phone or computer, open a browser and enter the displayed address, starting with `http://`.
+   Use the address on your TV, not an example from a guide.
+5. Enter the displayed access token and sign in. Keep the token private, like a password.
 
-1. Back out to Kodi's home screen. Open Add-ons -> Video add-ons and select the Kodi Manager
-   tile directly, rather than opening its information or configuration screen through My add-ons.
-   The exact location can vary with your skin.
-2. In Kodi Manager's menu, select “Open the dashboard on another device”. It displays the address
-   and full access token, or asks you to enable LAN access first. It does not launch a browser on
-   the TV and is not a switch in Configure.
-3. Open that address on your phone or computer on the same network. The default is
-   `http://YOUR_KODI_IP:8765`. Use your device's actual IP and configured port, with `http://`, not `https://`.
-4. Enter the displayed token in the browser's access-token field and sign in. This token is
-   separate from Kodi's HTTP password, Trakt and debrid credentials. Keep Kodi running.
+Keep Kodi open while using the dashboard. Seeing its login page means the dashboard is reachable.
+You can now inspect your setup. To make changes, return to step 3 and turn on **Enable writes**.
 
-Reaching the browser login page confirms the service is reachable. You do not need to enable
-another dashboard setting before signing in. If you cannot find the token, use the fallback below.
+## Only Configure is available
 
-### Only Configure is available
+The add-on information page under **My add-ons** is different from Kodi Manager's menu.
+First return to the home screen and follow step 4 above.
 
-Kodi Manager includes both a background service and a video plugin. In My add-ons, its information
-screen can show Configure with no usable Open button. That screen is not the plugin's menu.
-First try the home-screen route above. If that still fails, use the fallback below and report your setup details.
+If the tile is missing or still will not open:
 
-If the tile is absent or still will not open, you can sign in through settings alone:
+1. Open **Settings** → **Add-ons** → **My add-ons** → **Services** → **Kodi Manager** → **Configure**.
+2. Under **Dashboard**, select **Auth token**. Replace the masked value with your own private,
+   random token, preferably at least 32 letters and digits from a password manager. Keep a private copy.
+3. Turn on **Allow LAN access**, leave **Enable writes** off, then select **OK**.
+4. Find the TV's IP address in its network settings. The [device guide](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/android-tv.md)
+   shows where to look; you only need its “Find the IP address” step for this dashboard.
+5. Open `http://YOUR_TV_IP:8765` in your browser, replacing `YOUR_TV_IP` with that address.
+   If you changed Dashboard's port, use that port instead. Sign in with the token you saved.
 
-1. Open Settings -> Add-ons -> My add-ons -> Services -> Kodi Manager -> Configure -> Dashboard.
-2. Select Auth token. The existing value is masked. Replace it with your own private random
-   token, preferably generated by a password manager with at least 32 letters and digits.
-   Keep a private copy to enter on your phone/computer. Do not use an example from documentation.
-3. Keep Allow LAN access on, leave Enable writes off, and select OK to save.
-4. Open `http://YOUR_KODI_IP:8765` (or your configured port) in the browser and sign in with
-   exactly the token you just saved. No Kodi restart is required for this setting change.
+Changing the token signs out clients using the old token. Leaving it blank generates a new one;
+you would still need to find its value. If this fails, report your device, Kodi version, skin
+and the menu step that failed. Exclude the token from screenshots.
 
-Changing Auth token invalidates the old token for this profile. Existing browser and MCP clients
-must use the replacement. Leaving it blank generates a new token whose value you will still need
-to retrieve, so blanking it is not a workaround for an inaccessible token display.
+## Everyday use and updates
 
-If this still fails, report Kodi Manager version, Kodi version, skin, device, exact menu route and
-what happens. A screenshot of the Configure/information screen can help, but exclude the token
-and account details.
+- **Another browser:** once signed in, use **Advanced** → **Connection** → **Copy sign-in link**.
+  Treat that link like a password. Use **Forget token in this browser** on a shared device.
+- **Kodi profiles:** each profile can have its own access token and write setting. After switching,
+  sign in with the token for the profile now open on the TV.
+- **Updates:** repository installations use Kodi's update settings. To check manually, open the
+  add-on browser's left sidebar and select **Check for updates**.
+- **Existing ZIP installation:** install the repository using steps 1–2, then select Kodi Manager
+  from that repository. Back up private modifications first; public updates replace add-on code.
 
-### Profiles, web editing and additional browsers
-
-The token, LAN access and Enable writes belong to the active Kodi profile. Switching profiles
-can require signing in again with that profile's token. Enable writes controls changes through
-the web dashboard; “View only” does not stop changes through Kodi's own controls.
-
-Once signed in, Advanced -> Connection offers Copy sign-in link. The link has the form
-`http://KODI_IP:8765/#token=…`: opening it on another device signs that browser in. The fragment
-is omitted from the initial HTTP request; the dashboard consumes it, removes it from the address
-bar and sends the token in the Authorization header. It saves the token in that browser's local
-storage. Use Forget token in this browser on a shared device, and treat sign-in links like passwords.
-
-## Let an AI agent handle the computer side
-
-This section is optional. Manual setup above does not require an assistant.
-
-You handle the TV and Kodi's installer; the agent downloads, verifies and transfers the ZIP and
-connects to the dashboard. If using ADB for transfer on Android TV or Fire OS, complete the
-[device debugging preparation](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/android-tv.md) first.
-Manual installation or transfer through a Kodi-readable share does not require ADB or nvidia-MCP.
-
-```text
-Set up https://github.com/glasgowm148/kodi-manager for my Kodi device.
-Read docs/setup.md and handle the computer steps automatically.
-Kodi IP: YOUR_KODI_IP
-Check for an existing installation and preserve customizations.
-Download and verify the companion ZIP, transfer it using authorized access,
-and tell me where to select it in Kodi's native installer.
-Retrieve the Manager token privately and verify read-only dashboard/API access.
-Keep Enable writes off. Do not interrupt playback.
-```
-
-## Prepare the release for an agent
-
-An agent with terminal/file access should perform these steps rather than handing the user commands
-or JSON editing tasks. Ask only for missing connection information or unavoidable TV actions.
-
-1. Check for an existing Manager installation and inspect its version/profile before replacing it.
-   Preserve local changes and create an appropriate private backup for an authorized upgrade.
-2. Download `service.kodi.addonadmin-0.7.31.zip` and `SHA256SUMS` from the release's Assets at
-   [v0.7.31](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.31). Verify the ZIP checksum.
-   GitHub's Source code ZIP, Python wheel and tar.gz cannot be installed through Kodi.
-   nvidia-MCP users can instead export the pinned bundle with `nvidia-mcp --export-manager DIRECTORY`.
-3. Transfer the verified ZIP to a Kodi-accessible folder using authorized ADB, a mounted share or
-   local storage. Use only the configured device, not a LAN scan. Give the user the exact folder and
-   file name to select. If no transfer route is available, explain the specific manual copy needed.
-
-## Verify the download
-
-On the computer, save both release assets in one folder and run this Python snippet from that folder.
-An agent should perform this check before transferring the ZIP. To check a wheel instead, change `name`
-to that asset's filename. A missing entry or mismatched digest means stop and download again.
-
-```python
-import hashlib
-from pathlib import Path
-
-name = "service.kodi.addonadmin-0.7.31.zip"
-entries = [line.split() for line in Path("SHA256SUMS").read_text().splitlines() if line.strip()]
-matches = [parts[0] for parts in entries if len(parts) == 2 and parts[1] == name]
-if len(matches) != 1:
-    raise SystemExit("Missing or duplicate checksum entry")
-if hashlib.sha256(Path(name).read_bytes()).hexdigest() != matches[0]:
-    raise SystemExit("Checksum mismatch: do not install")
-print("Verified", name)
-```
-
-Checksums detect changed bytes; they are not an independent publisher signature.
-
-## Connect and verify from an agent/computer
-
-1. Privately read `auth_token` from the active profile's
-   `addon_data/service.kodi.addonadmin/settings.xml` through local/mounted/authorized ADB storage.
-   Parse it in a local process without printing it into tool output. It is separate from Kodi's HTTP
-   username/password. A library install or HTTP password does not generate this token.
-   If storage is inaccessible, use the full token displayed by Video add-ons -> Kodi Manager ->
-   Open the dashboard on another device and private input; the settings field may be masked.
-2. Open `http://YOUR_KODI_IP:8765` using the actual IP/port. Enter the generated token in the
-   dashboard's sign-in form, privately. Do not share a filled config, token-bearing URL or
-   diagnostics. A manual installer can read and enter the same token through private local access.
-3. Verify `/api/status`, `/api/overview` (active profile), `/api/addons` and `/api/pipeline` with
-   the bearer token. Start with read-only
-   requests; provider folder previews execute installed add-on code and can make network requests.
-4. For nvidia-MCP, merge `KODI_MANAGER_TOKEN` and `KODI_MANAGER_PORT` into the client's private
-   environment, preserve other servers and reload the connection. Follow
-   [companion setup](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/companion.md).
-
-Use this bearer-authenticated HTTP service only on a trusted LAN or a user-managed secure tunnel.
-It has no transport encryption. Do not expose it to the internet. Backups/account/log diagnostics
-can contain credentials; keep them private.
-
-## Connection troubleshooting
-
-| Symptom | Check |
-| --- | --- |
-| Browser cannot connect | Kodi and the service are running; the device's current IP and port; Allow LAN access is on |
-| Works on the Kodi device only | Allow LAN access is off |
-| Only Configure is available | Follow [the token/setup fallback](#only-configure-is-available); the browser login page already confirms reachability |
-| Authentication error | Active-profile `auth_token`, not Kodi HTTP credentials or another profile's token |
-| `host_not_allowed` (403) | Open the dashboard by IP address (`http://192.168.x.y:8765`), a `.local` name or `localhost`; other host names are refused as a DNS-rebinding defence |
-| Connected but changes disabled | Enable writes in the add-on settings; Python/MCP clients have their own write opt-in too |
-| Home layout missing or view-only | It appears only for reviewed skin and Skin Shortcuts versions and source hashes |
-| Provider preview empty/fails | Provider enabled, accounts configured and route available; see provider logs |
-| Agent cannot read Kodi files | Android scoped storage may block ADB; use an available mounted/local route |
-
-The general dashboard works across skins. Add-on settings need a supported schema/adapter, editing
-needs an allowed add-on, and cached rows need a supported listing route and compatible skin picker. The Home layout
-editor currently recognises reviewed Bingie 2.0.2 / Skin Shortcuts 2.0.3 sources; other skins and
-unknown forks do not get it.
-For backups/restores and safe upgrades, see [recovery](recovery.md). For clients, see [API](api.md).
-For download mistakes, network isolation, missing features and updates, see
-[troubleshooting](troubleshooting.md).
+Use a trusted home network. The dashboard uses plain HTTP; keep tokens, links and backups private.
 
 ## Android TV and Fire TV
 
-The same service ZIP runs inside official Kodi 19+ on Android TV, Google TV and Android-based
-Fire OS. It uses Kodi’s public Python API and resolved `special://` storage paths; there is no
-NVIDIA-specific connector. The dashboard alone does not require ADB or Kodi HTTP control.
+The installation above is the same on Shield, Google TV, Android TV and Android-based Fire OS.
+You do not need ADB debugging, Android's “Install unknown apps” permission or a file-transfer app
+for repository installation. **Unknown sources inside Kodi** is the setting used here.
 
-Check [Amazon’s device/OS table](https://developer.amazon.com/docs/fire-tv/fire-os-overview.html):
-Vega OS Firesticks use different tooling and are outside this Android support. No Vega port
-or live Firestick/Google TV validation is claimed. [Compatibility](compatibility.md) separates
-protocol/fixture evidence from the single Shield used live.
+Some newer Fire TV devices use **Vega OS**. These Android instructions do not support Vega OS;
+check your model in [Amazon's device/OS table](https://developer.amazon.com/docs/fire-tv/fire-os-overview.html).
+Fire OS and Google TV hardware validation is still pending; see [compatibility](compatibility.md).
+On low-memory sticks, start with a few cached rows and manual refresh.
 
-For agent file transfer, follow nvidia-MCP’s [Android TV / Fire OS guide](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/android-tv.md).
-A Fire OS network-debugging port is normally 5555; Google TV Wireless debugging can require a
-six-digit code and different pairing/connection ports. The Manager token, Kodi HTTP credentials
-and temporary ADB pairing code are separate. Install ZIPs through Kodi’s native installer even
-when Android restricts direct access to `Android/data`. If needed, transfer to Download and select
-that folder in Kodi instead; do not bypass Android permissions.
+## Optional assistant setup or manual installation
 
-On lower-memory boxes/sticks, start with a few cached rows/pages and manual refresh. The cache
-still runs providers during refresh, so it cannot remove their CPU/network cost. Performance on
-these devices is unverified. The opt-in Shield exit workaround checks NVIDIA’s driver and stays
-disabled on Fire OS and generic Android boxes, including when that option was copied from a Shield.
+For an assistant to control or diagnose the TV, follow
+[nvidia-MCP's TV setup](https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/setup.md).
+That separate setup needs debugging and Kodi remote control.
+
+For offline/pinned ZIPs, checksums, file transfer and agent connection details, use
+[advanced installation](setup-agent.md). For problems, use [troubleshooting](troubleshooting.md).

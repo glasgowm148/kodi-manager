@@ -34,3 +34,6 @@ prerelease until the documented live-install/recovery checks pass. Checksums det
 they are not an independent publisher signature. Inspect GitHub CI results before announcing support.
 
 See the [documentation index](docs/README.md) for user and integration guides.
+The [Kodi repository publishing guide](docs/repository.md) covers Pages deployment, release
+checksums, the repository installer and recovery. No service version bump is needed for docs
+or repository infrastructure alone.

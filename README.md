@@ -25,7 +25,7 @@ computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-
 *Captured with synthetic demo data. No personal accounts, watch history or TV screenshots are included.*
 
 > [!NOTE]
-> 0.7.30 prerelease. Targets Kodi 19+; cached rows need Kodi 20+. Live use is on one customized
+> Preview software. Targets Kodi 19+; cached rows need Kodi 20+. Live use is on one customized
 > NVIDIA Shield. The current public ZIP and other hardware still need live validation;
 > see [compatibility](docs/compatibility.md).
 
@@ -54,17 +54,20 @@ computer, on its own or with [nvidia-MCP](https://github.com/glasgowm148/nvidia-
 You need Kodi and a browser on the same trusted home network. No AI agent, MCP, ADB or
 Python installation on your computer is needed for the dashboard.
 
-1. Download `service.kodi.addonadmin-<version>.zip` from the newest
-   [release](https://github.com/glasgowm148/kodi-manager/releases), under Assets. Releases are
-   currently marked prerelease. Choose the service ZIP, not Source code, a wheel or tar.gz.
-2. In Kodi, choose Add-ons -> Install from zip file and pick the ZIP. Allow unknown sources if asked.
-3. Open Settings -> Add-ons -> My add-ons -> Services -> Kodi Manager -> Configure.
-   Under Dashboard, turn on Allow LAN access, then select OK to save. Leave Enable writes off initially.
-4. Return to Kodi's home screen. Go to Add-ons -> Video add-ons and select the Kodi Manager
-   tile directly. Inside its menu, select “Open the dashboard on another device” to display
-   the address and access token. This is a menu item, not a setting to enable.
-5. On your phone or computer, open the displayed `http://` address and enter the token.
-   Keep Kodi running. Once signed in, Advanced -> Connection offers Copy sign-in link for another browser.
+1. In **Kodi → Settings → File manager → Add source**, enter
+   `https://glasgowm148.github.io/kodi-manager/` and name it **Kodi Manager**.
+2. Enable **Settings → System → Add-ons → Unknown sources**. Open **Add-ons → the open-box icon →
+   Install from zip file → Kodi Manager → repository.kodi-manager.zip**. Wait for the repository-installed notice.
+3. Select **Install from repository → Kodi Manager Repository (preview) → Services → Kodi Manager → Install**.
+4. Open **Settings → Add-ons → My add-ons → Services → Kodi Manager → Configure → Dashboard**.
+   Turn on **Allow LAN access**, leave **Enable writes** off, then select **OK**.
+5. Return to Kodi's home screen. Open **Add-ons → Video add-ons → Kodi Manager →
+   Open the dashboard on another device**. The TV shows an address and access token.
+6. Open that address on your phone or computer, enter the token and sign in. Keep Kodi running.
+
+**[Full remote-control steps, including Firestick / Android TV](docs/setup.md).**
+The repository supplies preview releases; updates follow Kodi's update settings.
+No file transfer or ADB debugging is needed. [Manual/offline ZIP installation](docs/setup-agent.md) is also available.
 
 Only seeing Configure, or an unavailable Open button? The My add-ons information screen is
 separate from the home-screen video add-on menu. Follow

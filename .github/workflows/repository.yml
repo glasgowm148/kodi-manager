@@ -1,0 +1,88 @@
+name: Publish Kodi repository
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - repository/**
+      - scripts/build_repository.py
+      - .github/workflows/repository.yml
+permissions:
+  contents: read
+concurrency:
+  group: kodi-repository-pages
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      - name: Fetch newest published release, including previews
+        id: published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate repos/glasgowm148/kodi-manager/releases > releases.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.build_repository import latest_release
+          text = open("releases.json", encoding="utf-8").read()
+          decoder = json.JSONDecoder()
+          releases = []
+          while text.strip():
+              page, end = decoder.raw_decode(text.lstrip())
+              releases.extend(page)
+              text = text.lstrip()[end:]
+          tag = latest_release(releases)
+          Path("latest-tag.txt").write_text(tag)
+          tags = [tag]
+          for release in releases:
+              candidate = release["tag_name"]
+              names = {asset["name"] for asset in release.get("assets", [])}
+              expected = "service.kodi.addonadmin-" + candidate.removeprefix("v") + ".zip"
+              if (candidate != tag and not release.get("draft")
+                      and "SHA256SUMS" in names and expected in names):
+                  try:
+                      latest_release([release])
+                  except ValueError:
+                      continue
+                  tags.append(candidate)
+          Path("release-tags.txt").write_text("\n".join(tags) + "\n")
+          PY
+          echo "tag=$(cat latest-tag.txt)" >> "$GITHUB_OUTPUT"
+          while IFS= read -r tag; do
+            gh release download "$tag" --repo glasgowm148/kodi-manager --dir "release/$tag" \
+              --pattern 'service.kodi.addonadmin-*.zip' --pattern SHA256SUMS
+          done < release-tags.txt
+      - name: Verify release checksum and build repository
+        env:
+          RELEASE_TAG: ${{ steps.published.outputs.tag }}
+        run: |
+          python scripts/build_repository.py --addon "release/$RELEASE_TAG/"service.kodi.addonadmin-*.zip \
+            --checksums "release/$RELEASE_TAG/SHA256SUMS" --archive-dir release --output site
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy repository
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
