@@ -8,6 +8,7 @@ import json
 import os
 import re
 import time
+from urllib.parse import quote_plus
 
 try:
     from .fsutil import atomic_write_json, interprocess_lock, path_lock
@@ -138,10 +139,6 @@ def open_search(kodi, query, history=None):
         helper = next((aid for aid in TMDB_HELPERS if (kodi.get_addon_details(aid) or {}).get("enabled")), "")
         if not helper:
             return {"opened": False, "reason": "no_search_handler", "skin": skin}
-        try:
-            from urllib.parse import quote_plus
-        except ImportError:  # pragma: no cover
-            from urllib import quote_plus
         url = "plugin://%s/?info=search&tmdb_type=both&query=%s" % (helper, quote_plus(text))
         kodi.execute_builtin("ActivateWindow(Videos,%s,return)" % quote_param(url))
         how = helper
