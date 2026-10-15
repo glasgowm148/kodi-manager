@@ -130,7 +130,7 @@ def _parse_options(elem, resolver=None):
             # ``entries`` value when given; ``labelenum`` stores the label.
             entries = (elem.get("entries") or "").split("|")
             values = entries if elem.get("entries") and len(entries) == len(labels) else [str(i) for i in range(len(labels))]
-        return [{"value": value, "label": resolver.resolve(part) if localized else part} for value, part in zip(values, labels)]
+        return [{"value": value, "label": resolver.resolve(part) if localized and resolver else part} for value, part in zip(values, labels)]
     opts = []
     for child in list(elem) + elem.findall("./constraints/options/option"):
         if child.tag in ("option", "value"):
