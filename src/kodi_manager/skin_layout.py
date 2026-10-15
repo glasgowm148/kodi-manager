@@ -24,11 +24,13 @@ try:
     from .kodi_api import translate
     from .fsutil import atomic_write_bytes
     from .backup import prune_folder
+    from .write_policy import RequestRefused
 except ImportError:
     import tvos_storage
     from kodi_api import translate
     from fsutil import atomic_write_bytes
     from backup import prune_folder
+    from write_policy import RequestRefused
 
 SKIN = "skin.bingie"
 SHORTCUTS = "script.skinshortcuts"
@@ -511,6 +513,25 @@ def _preview(kodi, index, body):
         state["reasons"].append("A menu with this label already points elsewhere; change its action in Kodi first")
     new_menu = _shortcut(label, "ActivateWindow(1113,return)")
     main_raw = snapshots.get("skin.bingie-mainmenu.DATA.xml") or snapshots.get("default-mainmenu")
+    try:
+        props = ast.literal_eval(snapshots["skin.bingie.properties"].decode()) if snapshots.get("skin.bingie.properties") else []
+    except (ValueError, SyntaxError, UnicodeError):
+        props = []  # _context already refused the unreadable file.
+    if not any(e["label"].casefold() == label.casefold() for e in state["menu"]):
+        # Like repurpose: a new menu identity must not inherit stale linked files or properties.
+        try:
+            new_id = _label_ids((_xml(main_raw).findall("shortcut") if main_raw else []) + [ET.fromstring(new_menu)])[-1]
+        except (ValueError, ET.ParseError):
+            new_id = ""
+        linked = []
+        for suffix in ("", "-1") if new_id and root else ():
+            name = "skin.bingie-%s%s.DATA.xml" % (new_id, suffix)
+            snapshots.setdefault(name, _read(os.path.join(root, name), optional=True))
+            linked.append(snapshots[name])
+        if not new_id or any(raw is not None for raw in linked) or any(
+                p[0] in (new_id, new_id + ".1") or p[0] == "mainmenu" and p[1] == new_id for p in props):
+            state["can_apply"] = False
+            state["reasons"].append("%s menu identity, linked files or properties already exist; native review is required" % label)
     if main_raw and not any(e["label"].casefold() == label.casefold() for e in state["menu"]):
         text = main_raw.decode("utf-8")
         end = text.rfind("</shortcuts>")
@@ -523,6 +544,11 @@ def _preview(kodi, index, body):
         menu_xml = '<shortcuts>\n%s\n</shortcuts>' % new_menu
     hub_xml = '<?xml version="1.0" encoding="utf-8"?>\n<shortcuts>\n' + "\n".join(_shortcut(r["label"], "ActivateWindow(Videos,%s,return)" % r["path"]) for r in rows) + '\n</shortcuts>\n'
     exports = [{"filename": "skin.bingie-mainmenu.DATA.xml", "xml": menu_xml}, {"filename": "skin.bingie-customhub.DATA.xml", "xml": hub_xml}]
+    # Every custom hub row is new: drop the old rows' properties so a new row whose
+    # label ID matches an old one does not inherit its settings (as in _preview_section).
+    kept = [list(p) for p in props if p[0] != "customhub"]
+    if len(kept) != len(props):
+        exports.append({"filename": "skin.bingie.properties", "xml": repr(kept), "format": "python-literal"})
     state.update({"label": label, "rows": rows, "exports": exports, "replace_customhub": replace,
                   "export_complete": main_raw is not None, "rebuild_required": True, "rebuild_command": REBUILD,
                   "rebuild_instructions": "After applying, set the Home window property skinshortcuts-reloadmainmenu to True, then run the rebuild command; Skin Shortcuts reloads the skin after rebuilding. Reopening Kodi also checks changed shortcut hashes."})
@@ -722,16 +748,17 @@ def apply_layout(kodi, index, body, write_enabled):
     with _LOCK:
         preview, root, snapshots = _preview(kodi, index, body)
         if not preview["can_apply"]:
-            raise ValueError("; ".join(preview["reasons"]))
+            raise RequestRefused("; ".join(preview["reasons"]))
         if not body.get("expected_revision") or body["expected_revision"] != preview["revision"]:
-            raise ValueError("Layout changed since preview; refresh and preview again")
+            raise RequestRefused("Layout changed since preview; refresh and preview again",
+                                 code="stale_revision", status=409)
         for row in preview["rows"]:
             if row.get('validate_source') is False:
                 continue
             _validate_destination(index, row["path"])
             res = kodi.jsonrpc("Files.GetDirectory", {"directory": row["path"], "media": "video"})
             if res.get("error") or not isinstance(res.get("result", {}).get("files"), list):
-                raise ValueError("Widget source could not be verified: %s" % row["label"])
+                raise RequestRefused("Widget source could not be verified: %s" % row["label"])
         # Check every original, including unrelated properties, immediately before writing.
         _check_snapshots(root, snapshots)
         backup_id = "skin-layout-" + uuid.uuid4().hex
@@ -786,13 +813,13 @@ def request_rebuild(kodi, index):
     with _LOCK:
         state, _, _ = _context(kodi, index)
         if not state['can_apply']:
-            raise ValueError('; '.join(state['reasons']))
+            raise RequestRefused('; '.join(state['reasons']))
         try:
             from .kodi_api import xbmc, xbmcgui
         except ImportError:
             from kodi_api import xbmc, xbmcgui
         if xbmc is None or xbmcgui is None:
-            raise ValueError('Rebuild must run inside the Kodi Manager service on Kodi')
+            raise RequestRefused('Rebuild must run inside the Kodi Manager service on Kodi')
         xbmcgui.Window(10000).setProperty('skinshortcuts-reloadmainmenu', 'True')
         xbmc.executebuiltin(REBUILD)
         return {'started': True}

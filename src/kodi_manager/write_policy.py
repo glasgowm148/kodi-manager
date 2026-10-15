@@ -18,6 +18,18 @@ class WriteRefused(PermissionError):
         self.code = code
 
 
+class RequestRefused(ValueError):
+    """A request refused on purpose before anything was written.
+
+    Answered like any ValueError (400 with the route's code) unless ``code`` and ``status``
+    name another refusal, but recorded as outcome ``refused`` rather than ``unknown``.
+    """
+
+    def __init__(self, message, code=None, status=400, setting_id=None):
+        super(RequestRefused, self).__init__(message)
+        self.code, self.status, self.setting_id = code, status, setting_id
+
+
 def allowed_addons(config_or_csv):
     csv = config_or_csv.get("allowed_addons_csv") if isinstance(config_or_csv, dict) else config_or_csv
     return {part.strip() for part in str(csv or "").split(",") if part.strip()}

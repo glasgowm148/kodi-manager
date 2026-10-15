@@ -10,7 +10,7 @@ try:
     from .pipeline import write_settings
     from .validation import coerce_setting
     from . import fenlight_db
-    from .write_policy import check_writable, read_only_reason
+    from .write_policy import RequestRefused, check_writable, read_only_reason
 except ImportError:
     from http_base import ApiError, RequestHandler
     from adapters import adapter_for
@@ -20,7 +20,7 @@ except ImportError:
     from pipeline import write_settings
     from validation import coerce_setting
     import fenlight_db
-    from write_policy import check_writable, read_only_reason
+    from write_policy import RequestRefused, check_writable, read_only_reason
 
 
 class AddonRoutes(RequestHandler):
@@ -151,29 +151,35 @@ class AddonRoutes(RequestHandler):
             raise ValueError("changes must be a list")
         settings = flatten_settings(parse_schema(addon.get("settings_schema_path"), addon.get("path"), addon.get("user_settings_path"), True))
         clean, db_pairs = [], []
-        for ch in changes:
-            if not isinstance(ch, dict):
-                raise ValueError("Each change must be an object")
-            sid = ch.get("id")
-            if aid == fenlight_db.FENLIGHT_ID and ch.get("source") == "settings.db":
-                db_pairs.append((sid, ch.get("value")))
-                continue
-            if ch.get("source") == "raw":
-                raw = parse_user_settings(addon.get("user_settings_path"))
-                if sid not in raw:
-                    raise ValueError("Unknown raw setting: %s" % sid)
-                if ch.get("value") is None or isinstance(ch.get("value"), (dict, list)):
-                    raise ValueError("Expected a single value: %s" % sid)
-                clean.append({"id": sid, "value": str(ch.get("value")), "source": "raw", "previous": raw[sid]})
-                continue
-            if sid not in settings:
-                raise ValueError("Unknown setting: %s" % sid)
-            setting = settings[sid]
-            if not setting.get("editable"):
-                raise ValueError("Setting not editable: %s" % sid)
-            clean.append({"id": sid, "value": coerce_setting(sid, setting, ch.get("value")), "previous": setting.get("value") or ""})
-        # The whole batch is validated (including settings.db types) before anything is written.
-        db_clean = fenlight_db.validate_changes(addon, db_pairs) if db_pairs else []
+        try:
+            for ch in changes:
+                if not isinstance(ch, dict):
+                    raise ValueError("Each change must be an object")
+                sid = ch.get("id")
+                if aid == fenlight_db.FENLIGHT_ID and ch.get("source") == "settings.db":
+                    db_pairs.append((sid, ch.get("value")))
+                    continue
+                if ch.get("source") == "raw":
+                    raw = parse_user_settings(addon.get("user_settings_path"))
+                    if sid not in raw:
+                        raise RequestRefused("Unknown raw setting: %s" % sid)
+                    if ch.get("value") is None or isinstance(ch.get("value"), (dict, list)):
+                        raise ValueError("Expected a single value: %s" % sid)
+                    clean.append({"id": sid, "value": str(ch.get("value")), "source": "raw", "previous": raw[sid]})
+                    continue
+                if sid not in settings:
+                    raise RequestRefused("Unknown setting: %s" % sid)
+                setting = settings[sid]
+                if not setting.get("editable"):
+                    raise RequestRefused("Setting not editable: %s" % sid)
+                clean.append({"id": sid, "value": coerce_setting(sid, setting, ch.get("value")), "previous": setting.get("value") or ""})
+            # The whole batch is validated (including settings.db types) before anything is written.
+            db_clean = fenlight_db.validate_changes(addon, db_pairs) if db_pairs else []
+        except RequestRefused:
+            raise
+        except ValueError as exc:
+            # Raised while validating, before anything is written: a refusal, not an unknown outcome.
+            raise RequestRefused(str(exc), setting_id=getattr(exc, "setting_id", None)) from exc
         backup = create_backup(addon, self.state.kodi.get_kodi_version(), adapter.name)
         # Rolls back the settings already written if any write in the batch fails.
         # Previous values stay out of the response and the adapter's after_write hook.

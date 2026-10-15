@@ -8,7 +8,22 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  # Same as ci.yml's kodi-python job: Kodi 19-21 on Android embeds Python 3.8, which runs the
+  # service code, so a tag must not publish code that only works on 3.9+. (3.8 needs ubuntu-22.04.)
+  kodi-python:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.8'
+      - run: python -m pip install "pytest>=8,<8.4"
+      - run: python -m pytest -q
+        env:
+          PYTHONPATH: src
+
   release:
+    needs: kodi-python
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -28,6 +43,7 @@ jobs:
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
       - run: python -m pip install -e ".[dev]"
+      - run: ruff check .
       - run: pytest -q
       - run: node --test tests/*.js
       - run: python -m build

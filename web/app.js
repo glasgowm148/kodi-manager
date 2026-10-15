@@ -140,15 +140,27 @@ function spatialPick(from, candidates, dir){
   }
   return best;
 }
-const SPATIAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
+/* Arrow keys the focused control uses itself; the others move focus, so a TV remote is never stuck.
+   Charts read values with Left/Right; a number field steps with Up/Down, a slider with Left/Right;
+   a select changes option with Up/Down; text fields move the caret with Left/Right. */
+const ARROW_INPUT_AXIS = {number:"vertical", range:"horizontal", checkbox:"none", button:"none", submit:"none", reset:"none", color:"none", file:"none", image:"none"};
+function ownsArrowKey(el, dir){
+  const horizontal = dir === "left" || dir === "right";
+  if (el.closest?.("[data-chart-plot]")) return horizontal;
+  const tag = el.tagName;
+  if (tag === "TEXTAREA" || el.isContentEditable) return true;
+  if (tag === "SELECT") return !horizontal;
+  if (tag !== "INPUT") return false;
+  const axis = ARROW_INPUT_AXIS[String(el.type || "text").toLowerCase()] || "horizontal";
+  return axis === "horizontal" ? horizontal : axis === "vertical" ? !horizontal : false;
+}
+const SPATIAL_FOCUSABLE ='a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
 function spatialKey(event){
   const dir = {ArrowRight:"right", ArrowLeft:"left", ArrowDown:"down", ArrowUp:"up"}[event.key];
   if (!dir || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
   const active = document.activeElement;
-  if (!active || active === document.body || active.closest?.("[data-chart-plot]")) return;
-  const tag = active.tagName;
-  if (tag === "SELECT" || tag === "TEXTAREA" || active.isContentEditable) return;
-  if (tag === "INPUT" && (dir === "left" || dir === "right" || ["number", "range"].includes(active.type))) return;
+  if (!active || active === document.body) return;
+  if (ownsArrowKey(active, dir)) return;
   const scope = document.querySelector("dialog[open]") || document;
   const candidates = [...scope.querySelectorAll(SPATIAL_FOCUSABLE)].filter(el => el !== active && el.getClientRects().length && !el.closest("[hidden], .hidden")).map(el => ({el, rect:el.getBoundingClientRect()})).filter(c => c.rect.width && c.rect.height);
   const target = spatialPick(active.getBoundingClientRect(), candidates, dir);
@@ -448,6 +460,9 @@ const ROUTES = {
 };
 /* Each route() is one generation with its own AbortController (api()'s default signal for reads).
    Starting another route ends the previous one, so a slow page can never render over the current one. */
+/* For a handler that writes and then redraws: true while the user is still on the page that started it.
+   After they move on, the write's outcome goes to a toast and the new page is left alone. */
+function stillOnPage(){ const generation = state.routeGeneration; return () => generation === state.routeGeneration; }
 function endRoute(){
   state.routeGeneration = (state.routeGeneration || 0) + 1;
   state.routeController?.abort();
@@ -579,7 +594,7 @@ function dashboardRow(row){
     const integration = row.integration || {};
     const providers = (integration.providers || []).filter(p=>p.status === "configured").map(p=>p.name || p.addon_id).join(", ");
     const credentialStatus = integration.status === "configured" ? "Credentials present" : "Account unknown";
-    return `<tr data-component="trakt" data-state="${esc(row.status.kind)}" data-search="${esc(`trakt ${providers}`.toLowerCase())}"><th scope="row"><div class="dash-identity"><span class="dash-avatar dash-avatar--trakt">${dashboardIcon("history")}</span><span><span class="dash-name">Trakt integration</span><span class="dash-detail">${esc(providers || "Stored account settings")} · unverified</span></span></div></th><td data-label="Version">—</td><td data-label="Status">${dashboardPill("info", credentialStatus, "history", "Local credentials only; account access has not been verified")}</td><td data-label="Installation">${a.installed === true ? dashboardPill("muted", "Optional scrobbler installed", "check") : dashboardPill("muted", "Optional scrobbler absent", "minus")}</td><td data-label="Enabled">${a.installed === true ? dashboardFlag(a.enabled,"On","Off","warn") : "—"}</td><td data-label="Saved config">${esc(integration.refs_found ?? "—")} auth fields</td><td class="dash-action-cell"><a class="dash-settings" href="#/trakt" aria-label="Open Trakt integration">${dashboardIcon("settings")}<span>Integration</span></a></td></tr>`;
+    return `<tr data-component="trakt" data-state="${esc(row.status.kind)}" data-search="${esc(`trakt ${providers}`.toLowerCase())}"><th scope="row"><div class="dash-identity"><span class="dash-avatar dash-avatar--trakt">${dashboardIcon("history")}</span><span><span class="dash-name">Trakt integration</span><span class="dash-detail">${esc(providers || "Stored account settings")} · unverified</span></span></div></th><td data-label="Version">—</td><td data-label="Status">${dashboardPill("info", credentialStatus, "history", "Local credentials only; account access has not been verified")}</td><td data-label="Installation">${a.installed === true ? dashboardPill("muted", "Optional scrobbler installed", "check") : dashboardPill("muted", "Optional scrobbler absent", "minus")}</td><td data-label="Enabled">${a.installed === true ? dashboardFlag(a.enabled,"On","Off","warn") : "—"}</td><td data-label="Saved config">${esc(integration.refs_found ?? "—")} auth fields</td><td class="dash-action-cell"><a class="dash-settings" href="#/trakt" data-dash-focus="row:trakt" aria-label="Open Trakt integration">${dashboardIcon("settings")}<span>Integration</span></a></td></tr>`;
   }
   return `<tr data-component="${esc(row.key)}" data-state="${esc(row.status.kind)}" data-search="${esc(`${row.label} ${a.name || ""} ${a.addon_id || ""}`.toLowerCase())}">
     <th scope="row"><div class="dash-identity"><span class="dash-avatar dash-avatar--${esc(row.key)}">${dashboardIcon(row.icon)}</span><span><span class="dash-name" title="${esc(a.addon_id || row.label)}">${esc(row.label)}</span><span class="dash-detail">${esc(row.key === "skin" && a.name ? a.name : row.detail)}</span></span></div></th>
@@ -588,7 +603,7 @@ function dashboardRow(row){
     <td data-label="Installation">${dashboardFlag(a.installed, "Installed", "Not found")}</td>
     <td data-label="Enabled">${dashboardFlag(a.enabled, "On", "Off", "warn")}</td>
     <td data-label="Saved config">${dashboardFlag(a.config_present, "Found", "Not found")}</td>
-    <td class="dash-action-cell">${canOpen ? `<a class="dash-settings" href="#/addon/${esc(encodeURIComponent(a.addon_id))}" aria-label="Open ${esc(row.label)} settings">${dashboardIcon("settings")}<span>Settings</span></a>` : '<span class="dash-no-action" title="No detected add-on to configure">—</span>'}</td>
+    <td class="dash-action-cell">${canOpen ? `<a class="dash-settings" href="#/addon/${esc(encodeURIComponent(a.addon_id))}" data-dash-focus="row:${esc(row.key)}" aria-label="Open ${esc(row.label)} settings">${dashboardIcon("settings")}<span>Settings</span></a>` : '<span class="dash-no-action" title="No detected add-on to configure">—</span>'}</td>
   </tr>`;
 }
 function filterDashboard(){
@@ -609,7 +624,7 @@ function dashboardVisible(){ return location.hash === "#/components"; }
 function dashboardFixNotice(fixes){
   if (!fixes || typeof fixes.healthy !== 'boolean') return '';
   const label = fixes.healthy ? 'Custom fixes intact' : 'Custom fixes need attention';
-  return `<div class="dash-table-panel dash-fix-notice">${dashboardPill(fixes.healthy?'ok':'warn',label,fixes.healthy?'check':'alert')} <a class="dash-settings" href="#/fixes">Check custom fixes</a></div>`;
+  return `<div class="dash-table-panel dash-fix-notice">${dashboardPill(fixes.healthy?'ok':'warn',label,fixes.healthy?'check':'alert')} <a class="dash-settings" href="#/fixes" data-dash-focus="fixes">Check custom fixes</a></div>`;
 }
 async function componentsView(refresh=false){
   if (refresh && (state.dashboardLoading || !dashboardVisible())) return;
@@ -632,6 +647,8 @@ async function componentsView(refresh=false){
     ]);
     if (request !== state.dashboardRequest) return;
     const focused = document.activeElement;
+    // Row links, the table and notices have no id: find them again by their data-dash-focus key.
+    const focusKey = focused?.dataset?.dashFocus;
     const focusId = focused?.id;
     const selection = focused?.selectionStart;
     const scrollLeft = document.querySelector(".dash-table-scroll")?.scrollLeft || 0;
@@ -651,11 +668,11 @@ async function componentsView(refresh=false){
         <div><span class="dash-metric-label">Checkpoints</span><strong>${backups ? (backups.backups || []).length : "—"}</strong><span class="dash-metric-detail">${backups ? "Saved config backups" : "Backup status unavailable"}</span></div>
         <div><span class="dash-metric-label">Changes</span><strong class="dash-metric-mode">${dashboardIcon(s.write_enabled === true ? "settings" : s.write_enabled === false ? "eye" : "help")}${writeLabel}</strong><span class="dash-metric-detail">${s.write_enabled === true ? "A backup is made before every change" : s.write_enabled === false ? "Turn on “Enable writes” to edit" : "Write permission unconfirmed"}</span></div>
       </div>
-      ${warnings.length ? `<details class="dash-notices" ${noticesOpen ? "open" : ""}><summary>${dashboardIcon("alert")}<span>${warnings.length} setup notice${warnings.length === 1 ? "" : "s"}</span><span class="dash-notice-hint">View details</span></summary><ul>${warnings.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></details>` : ""}
+      ${warnings.length ? `<details class="dash-notices" ${noticesOpen ? "open" : ""}><summary data-dash-focus="notices">${dashboardIcon("alert")}<span>${warnings.length} setup notice${warnings.length === 1 ? "" : "s"}</span><span class="dash-notice-hint">View details</span></summary><ul>${warnings.map(w=>`<li>${esc(w)}</li>`).join("")}</ul></details>` : ""}
       ${dashboardFixNotice(fixes)}
       <div class="dash-table-panel"><div class="dash-table-heading"><div><h3>Core components</h3><span id="dashboardMatches" class="dash-detail" aria-live="polite"></span></div><div class="dash-filters"><label class="dash-search">${dashboardIcon("search")}<span class="sr-only">Filter components</span><input id="dashboardFilter" type="search" placeholder="Filter components…" value="${esc(state.dashboardFilter || "")}"></label><label><span class="sr-only">Filter by state</span><select id="dashboardState"><option value="all">All states</option><option value="installed">Installed</option><option value="config">Config only</option><option value="missing">Not found</option><option value="unknown">Unknown</option></select></label></div></div>
-      <div class="dash-table-scroll" tabindex="0" role="region" aria-label="Core component statuses"><table class="dash-table"><caption class="sr-only">Installation, enabled and saved configuration states from the most recent Kodi check.</caption><thead><tr><th scope="col">Component</th><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Installation</th><th scope="col">Enabled</th><th scope="col">Saved config</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody id="dashboardRows">${rows.map(dashboardRow).join("")}<tr id="dashboardEmpty" hidden><td colspan="7" class="dash-empty">No components match your filters.</td></tr></tbody></table></div>
-      <div class="dash-table-footer"><span id="dashboardRefreshNote" role="status">Checked ${esc(checkedAt)}. Refreshes every 30 seconds.</span><a href="#/addons">View all add-ons ${dashboardIcon("arrow")}</a></div></div>
+      <div class="dash-table-scroll" tabindex="0" data-dash-focus="table" role="region" aria-label="Core component statuses"><table class="dash-table"><caption class="sr-only">Installation, enabled and saved configuration states from the most recent Kodi check.</caption><thead><tr><th scope="col">Component</th><th scope="col">Version</th><th scope="col">Status</th><th scope="col">Installation</th><th scope="col">Enabled</th><th scope="col">Saved config</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody id="dashboardRows">${rows.map(dashboardRow).join("")}<tr id="dashboardEmpty" hidden><td colspan="7" class="dash-empty">No components match your filters.</td></tr></tbody></table></div>
+      <div class="dash-table-footer"><span id="dashboardRefreshNote" role="status">Checked ${esc(checkedAt)}. Refreshes every 30 seconds.</span><a href="#/addons" data-dash-focus="all-addons">View all add-ons ${dashboardIcon("arrow")}</a></div></div>
       <p class="dash-legend">${dashboardIcon("help")}<span><b>Unknown</b> means Kodi hasn’t confirmed that state. <b>Config only</b> means saved settings were found, but installation isn’t confirmed. Player rows show whether the add-on is enabled.</span></p>
     </div>`);
     $("#dashboardState").value = state.dashboardState || "all";
@@ -664,8 +681,8 @@ async function componentsView(refresh=false){
     $("#dashboardState").onchange = filterDashboard;
     $("#dashboardRefresh").onclick = () => componentsView(true);
     document.querySelector(".dash-table-scroll").scrollLeft = scrollLeft;
-    if (refresh && focusId) {
-      const target = document.getElementById(focusId);
+    if (refresh && (focusKey || focusId)) {
+      const target = focusKey ? document.querySelector(`[data-dash-focus="${focusKey}"]`) : document.getElementById(focusId);
       target?.focus({preventScroll:true});
       if (typeof selection === "number" && target?.setSelectionRange) target.setSelectionRange(selection, selection);
     }
@@ -730,12 +747,13 @@ function healthAction(check){
 }
 function bindHealthActions(){
   document.querySelectorAll("[data-health-action]").forEach(button => button.onclick = withErrors(async () => {
+    const here = stillOnPage();
     if (!(await confirmDialog({title:`${button.textContent || "Fix"}: ${button.dataset.healthLabel || "this check"}?`, message:"The current values in the affected add-ons are overwritten with the expected ones. Stop playback first.", detail:button.dataset.healthDetail || "", confirmLabel:button.textContent || "Fix"}))) return;
     const r = await api(button.dataset.healthAction, {});
     const applied = (r && r.applied) ? r.applied.length : 0;
     const failed = (r && r.failed) ? r.failed.length : 0;
     toast(`${applied} setting${applied === 1 ? "" : "s"} re-applied${failed ? `, ${failed} failed` : ""}.${r && r.restart_required ? " Restart Kodi for add-on changes to take effect." : ""}`, failed ? "warn" : "ok");
-    await healthView();
+    if (here()) await healthView();
   }));
 }
 function logBlock(lines){ return (lines || []).slice().reverse().join("\n") || "None"; }
@@ -813,13 +831,14 @@ async function pipelineView(){
   });
   $("#copyPipe").onclick = withErrors(() => copyWithNotice(JSON.stringify(redactObj(p), null, 2), "Debug report"));
   document.querySelectorAll("[data-pipe-setting]").forEach(el => el.onchange = withErrors(async () => {
+    const here = stillOnPage();
     const preview = changePreview(el.dataset.pipeSetting, el.dataset.original, el.value, el.type === "password" || appSecretSetting({id:el.dataset.pipeSetting}));
     if (!(await confirmDialog({title:"Save this setting?", message:"A backup is created first.", detail:preview, confirmLabel:"Save"}))) { el.value = el.dataset.original; return; }
     try {
       const r = await apiMethod("PATCH", "/api/pipeline/settings", {changes:[{component:el.dataset.pipeComponent,setting_id:el.dataset.pipeSetting,source:el.dataset.pipeSource,value:el.value}]});
       toast(`Saved. Backup ${r.backup_id}.`, "ok");
     } catch (error) { el.value = el.dataset.original; throw error; }
-    await pipelineView();
+    if (here()) await pipelineView();
   }));
   wireFilterTabs();
 }
@@ -847,6 +866,7 @@ async function accountsView(){
   setWriteState($("#saveAccounts"));
   $("#saveAccounts").onclick = withErrors(async () => {
     if (!state.writeEnabled) return;
+    const here = stillOnPage();
     const changes = [...document.querySelectorAll("[data-account-setting]")].filter(i=>!i.disabled).filter(i=>String(i.value) !== String(i.dataset.original ?? "")).map(i=>({component:i.dataset.accountComponent,setting_id:i.dataset.accountSetting,source:i.dataset.accountSource,value:i.value}));
     if (!changes.length) return toast("No account changes entered.", "info");
     const preview = changes.map(ch => {
@@ -856,7 +876,7 @@ async function accountsView(){
     if (!(await confirmDialog({title:`Replace ${changes.length} account value${changes.length === 1 ? "" : "s"}?`, message:"A backup is created first.", detail:preview, confirmLabel:"Save"}))) return;
     const r = await apiMethod("PATCH","/api/accounts/settings",{changes});
     toast(`Saved ${r.changed_count}. Backup ${r.backup_id}.`, "ok");
-    await accountsView();
+    if (here()) await accountsView();
   });
   wireFilterTabs();
 }
@@ -954,7 +974,7 @@ async function renderAddonBackups(addonId, container){
   container.querySelector("[data-addon-backup]").onclick = withErrors(async () => {
     const r = await api(`/api/addons/${encodeURIComponent(addonId)}/backup`, {});
     toast(`Backup ${r.backup_id} created.`, "ok");
-    await renderAddonBackups(addonId, container);
+    if (container.isConnected !== false) await renderAddonBackups(addonId, container);
   });
 }
 function backupKind(item){
@@ -998,15 +1018,17 @@ async function backups(){
   <section class="panel"><h3>Single add-on backups</h3><p class="muted">Kodi Manager backs up an add-on’s settings before every change it makes.</p><label for="backupAddon">Add-on<select id="backupAddon"><option value="">Choose an add-on…</option>${withConfig.map(a => `<option value="${esc(a.addon_id)}">${esc(a.name || a.addon_id)}</option>`).join("")}</select></label><div id="addonBackups"></div></section>`);
   mountCharts(document);
   $("#stackBackup").onclick = withErrors(async () => {
+    const here = stillOnPage();
     const r = await api("/api/stack/backup", {});
     toast(`Checkpoint ${r.backup_id} created.`, "ok");
-    await backups();
+    if (here()) await backups();
   });
   document.querySelectorAll("[data-restore]").forEach(b => b.onclick = withErrors(async () => {
+    const here = stillOnPage();
     if (!(await confirmDialog({title:"Restore this checkpoint?", message:"Each add-on’s current settings are backed up first, so you can undo this.", detail:b.dataset.restore, confirmLabel:"Restore"}))) return;
     const r = await postWithForce("/api/stack/restore", {backup_id:b.dataset.restore});
     announceRestore(r);
-    if (r) await backups();
+    if (r && here()) await backups();
   }));
   $("#backupAddon").onchange = withErrors(async () => {
     const id = $("#backupAddon").value;
@@ -1057,9 +1079,10 @@ async function cachedRowsView(){
   <table class="addon-table cached-rows"><thead><tr><th scope="col">Row</th><th scope="col">Status</th><th scope="col">Items</th><th scope="col">Updated</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>${rows.map((row, i) => cachedRowMarkup(row, entries.get(row.source), i)).join("") || `<tr><td colspan="5" class="muted">${others.length ? "No rows added here yet. Your skin's cached widgets are listed below." : "No cached rows yet."}</td></tr>`}</tbody></table></div>${othersPanel}
   <div class="panel"><h3>Add a row</h3><p>Paste an add-on folder path (it starts with <code>plugin://</code>). In Kodi you can also open any video add-on folder and choose <b>Add to Kodi Manager cached rows</b> from its context menu.</p><form id="cacheAdd" class="grid"><label>Name<input id="cacheLabel" required maxlength="80"></label><label>Add-on folder path<input id="cacheSource" required placeholder="plugin://plugin.video.example/?mode=…" spellcheck="false"></label><label>Pages to cache<input id="cachePages" type="number" min="1" max="5" placeholder="Automatic"></label><label class="check-label"><span><input id="cacheHideWatched" type="checkbox"> Hide watched items</span></label><div><button class="primary" type="submit" ${writeAttrs()}>Add row</button></div></form></div>`);
   $("#cacheRefresh").onclick = withErrors(async () => {
+    const here = stillOnPage();
     const r = await api("/api/widget-cache/refresh", {});
     toast(`${r.queued ?? 0} row${r.queued === 1 ? "" : "s"} queued for refresh.`, "ok");
-    await cachedRowsView();
+    if (here()) await cachedRowsView();
   });
   document.querySelectorAll("[data-copy-row]").forEach(button => button.onclick = withErrors(async () => {
     const row = rows[Number(button.dataset.copyRow)];
@@ -1068,18 +1091,20 @@ async function cachedRowsView(){
     await copyWithNotice(url, "Cached URL");
   }));
   document.querySelectorAll("[data-remove-row]").forEach(button => button.onclick = withErrors(async () => {
+    const here = stillOnPage();
     if (!(await confirmDialog({title:"Remove this cached row?", message:"Widgets that use its cached URL will show the add-on folder directly again.", confirmLabel:"Remove", danger:true}))) return;
     await api("/api/widget-cache/rows/remove", {id:button.dataset.removeRow});
     toast("Cached row removed.", "ok");
-    await cachedRowsView();
+    if (here()) await cachedRowsView();
   }));
   $("#cacheAdd").onsubmit = withErrors(async event => {
     event.preventDefault();
     if (!state.writeEnabled) return;
+    const here = stillOnPage();
     const pages = $("#cachePages").value.trim();
     await api("/api/widget-cache/rows", {label:$("#cacheLabel").value.trim(), source:$("#cacheSource").value.trim(), ...(pages ? {pages:Number(pages)} : {}), hide_watched:$("#cacheHideWatched").checked});
     toast("Cached row added. It fills in the background.", "ok");
-    await cachedRowsView();
+    if (here()) await cachedRowsView();
   });
 }
 
@@ -1088,7 +1113,12 @@ async function playbackTestView(){
   const players = [pipe.summary.primary_player, ...(pipe.summary.secondary_players || [])].filter(x=>x && x.addon_id);
   out(`${pageHead("Playback test", "A safe dry run: checks routing, the player, the scraper module and whether something is playing. It never starts playback.")}<div class="panel"><div class="grid"><label>Target player<select id="testPlayer">${players.map(p=>`<option value="${esc(p.addon_id)}">${esc(p.name || p.addon_id)}</option>`).join("")}</select></label><label>Optional plugin URL<input id="testUrl" placeholder="plugin://..."></label></div><button class="primary" id="runPlaybackTest">Run test</button><div id="playbackSteps"></div><pre id="playbackOut" hidden></pre></div>`);
   $("#runPlaybackTest").onclick = withErrors(async () => {
+    const here = stillOnPage();
     const r = await api("/api/playback/test", {target_player_addon_id:$("#testPlayer").value, plugin_url:$("#testUrl").value});
+    if (!here()) {
+      const steps = r.steps || [], passed = steps.filter(step => step.ok).length;
+      return toast(`Playback test finished: ${passed} of ${steps.length} check${steps.length === 1 ? "" : "s"} passed. Open Playback test to run it again with details.`, passed === steps.length ? "ok" : "warn");
+    }
     $("#playbackSteps").innerHTML = `<ul class="steps">${(r.steps || []).map(step => `<li class="${step.ok ? "ok" : "bad"}">${step.ok ? "✓" : "✗"} ${esc(step.step)} <span class="muted">${esc(step.detail ?? "")}</span></li>`).join("")}</ul>`;
     $("#playbackOut").hidden = false;
     $("#playbackOut").textContent = JSON.stringify(r, null, 2);
@@ -1235,8 +1265,11 @@ async function allAddons(){
 async function installAddonView(){
   out(`${pageHead("Install an add-on", "Opens Kodi’s own Install from zip file dialog on the TV. Choose the ZIP there with the remote.")}<div class="panel"><p>Kodi has no way to install a ZIP from a path, so this opens the dialog on the TV, and Kodi applies its normal unknown-sources check. Nothing opens while something is playing.</p><button class="primary" id="installZip" ${writeAttrs()}>Open “Install from zip file” on the TV</button><p id="installOut" role="status"></p></div>`);
   $("#installZip").onclick = withErrors(async () => {
+    const here = stillOnPage();
     const r = await api("/api/addons/install", {});
-    $("#installOut").textContent = r.opened ? r.next_step : (r.error || "Kodi did not open the dialog.");
+    const message = r.opened ? r.next_step : (r.error || "Kodi did not open the dialog.");
+    if (here()) $("#installOut").textContent = message;
+    else toast(message, r.opened ? "ok" : "warn");
   });
 }
 function isLoopbackHost(host){ return /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|::1)$/i.test(String(host || "")); }
@@ -1291,9 +1324,11 @@ async function fixesView(){
     ${fixes.healthy?'<p>All custom fixes are intact.</p>':'<p>Known older files can be restored from the verified copy. A new version or an unrecognised change needs review.</p>'}
     <button id="restoreFixes" class="primary" ${!state.writeEnabled ? writeAttrs() : fixes.repairable ? '' : 'disabled title="Nothing here can be restored automatically."'}>Restore tested fixes</button><p class="muted">Creates a backup before restoring. Stop playback first; restart Kodi afterwards.</p><p id="fixResult" role="status"></p></div>`);
   $('#restoreFixes').onclick = withErrors(async () => {
+    const here = stillOnPage();
     if (!(await confirmDialog({title:"Restore tested fixes?", message:"Changed add-on files are overwritten with their tested copies. A backup is created first. Stop playback first; restart Kodi afterwards.", detail:(fixes.groups || []).filter(g => g.status !== "ok").map(g => g.label).join("\n"), confirmLabel:"Restore fixes"}))) return;
     const result = await api('/api/fixes/repair', {});
-    $('#fixResult').textContent = result.detail;
+    if (here()) $('#fixResult').textContent = result.detail;
+    else toast(result.detail || "Custom fixes restored.", "ok");
   });
 }
 boot().catch(e => out(`<div class="panel bad" role="alert"><h2>Couldn’t start</h2><p>${esc(e.message)}</p></div>`));

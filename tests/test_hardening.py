@@ -84,6 +84,41 @@ def test_addon_xml_values_cannot_inject_markup(setup):
     assert (addon_dir / "addon.xml").read_text() == original
 
 
+def test_captured_values_must_be_plain_json_scalars(setup):
+    kodi, base, _ = setup
+    before = base.items()
+    for bad in ({"on": True}, [1], float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError):
+            base.capture([{"kind": "addon_setting", "addon": "plugin.video.pov", "id": "auto_play", "value": bad}])
+    assert base.items() == before
+    for good in ("true", True, 3, 2.5):
+        base.capture([{"kind": "kodi_setting", "id": "videoplayer.seekdelay", "value": good}])
+        assert [i["value"] for i in base.items() if i.get("id") == "videoplayer.seekdelay"] == [good]
+
+
+def test_concurrent_captures_and_removals_keep_each_others_items(tmp_path):
+    import threading
+
+    class SlowKodi:
+        def get_addon_setting(self, addon, sid):
+            time.sleep(0.05)   # a Kodi round trip while another request saves
+            return "true"
+
+    path = str(tmp_path / "baseline.json")
+    Baseline(path, SlowKodi()).capture([{"kind": "addon_setting", "addon": "plugin.video.pov", "id": "gone"}])
+
+    def capture(sid):
+        Baseline(path, SlowKodi()).capture([{"kind": "addon_setting", "addon": "plugin.video.pov", "id": sid}])
+
+    threads = [threading.Thread(target=capture, args=(sid,)) for sid in ("auto_play", "autoplay_next")]
+    threads.append(threading.Thread(target=Baseline(path, SlowKodi()).remove, args=(["setting:plugin.video.pov:gone"],)))
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(i["id"] for i in Baseline(path, SlowKodi()).items()) == ["auto_play", "autoplay_next"]
+
+
 def test_missing_items_are_not_reported_as_drift(setup):
     _, base, _ = setup
     base.capture([{"kind": "addon_xml", "addon": "plugin.video.gone", "tag": "x", "value": "1"}])
@@ -136,6 +171,34 @@ def test_drift_and_account_problems_notify_once_a_day(setup):
     clock.t += 7 * 3600
     m.tick(True)
     assert notes == ["Settings changed", "TorBox subscription"]
+
+
+def test_maintenance_makes_no_kodi_calls_once_the_service_is_stopping(setup):
+    kodi, base, _ = setup
+    kodi.kodi["general.addonupdates"] = 0
+    clock, notes, calls, stopping = Clock(10 ** 9), [], [], []
+
+    class StoppingBaseline:
+        def check(self):
+            rows = base.check()
+            stopping.append(True)   # the service retires during the baseline check
+            return rows
+
+    def accounts():
+        calls.append("accounts")
+        return []
+
+    m = Maintenance(lambda title, msg: notes.append(title), baseline=StoppingBaseline(), clock=clock,
+                    accounts=accounts, is_quiet=lambda: calls.append("is_quiet") or True,
+                    stopping=lambda: bool(stopping))
+    clock.t += 200
+    m.tick(True)
+    assert notes == [] and calls == []
+    stopping.clear()
+    m = Maintenance(lambda title, msg: notes.append(title), clock=clock, accounts=accounts,
+                    stopping=lambda: True)
+    clock.t += 200
+    assert m.tick(True) == [] and calls == []
 
 
 def test_trakt_status():

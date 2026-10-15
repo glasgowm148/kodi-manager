@@ -417,18 +417,79 @@ def test_backup_skips_transient_and_vanished_files(storage, monkeypatch):
     monkeypatch.setattr(backup, "_copy_file", racing_copy)
     snap = backup.create_backup(info)
     folder = root / info["addon_id"] / snap["backup_id"] / "addon_data"
-    assert sorted(p.name for p in folder.iterdir()) == ["settings.xml"]
-    assert snap["files_copied"] == 1
+    # A hot rollback journal is needed to recover a half-written cache.db: kept.
+    assert sorted(p.name for p in folder.iterdir()) == ["cache.db-journal", "settings.xml"]
+    assert snap["files_copied"] == 2
     (live / "cache.db-wal").write_text("committed pages")  # may hold data not yet in cache.db: kept
     snap = backup.create_backup(info)
     folder = root / info["addon_id"] / snap["backup_id"] / "addon_data"
-    assert sorted(p.name for p in folder.iterdir()) == ["cache.db-wal", "settings.xml"]
-    assert snap["files_copied"] == 2
+    assert sorted(p.name for p in folder.iterdir()) == ["cache.db-journal", "cache.db-wal", "settings.xml"]
+    assert snap["files_copied"] == 3
     stack = backup.create_stack_backup([info])
-    assert stack["file_counts"] == {info["addon_id"]: 2}
+    assert stack["file_counts"] == {info["addon_id"]: 3}
     settings.write_text("changed")
     backup.restore_backup(info, snap["backup_id"])
     assert settings.read_text() == "settings"
+
+
+def _torn_sqlite_db(live):
+    import sqlite3
+    db = str(live / "cache.db")
+    conn = sqlite3.connect(db)
+    conn.execute("pragma journal_mode=delete")
+    conn.execute("create table t(id integer primary key, v text)")
+    conn.executemany("insert into t(v) values (?)", [("a" * 500,) for _ in range(2000)])
+    conn.commit()
+    conn.close()
+    # A writer mid-transaction whose cache spilled: cache.db already holds
+    # uncommitted pages and cache.db-journal is hot.
+    writer = sqlite3.connect(db, isolation_level=None)
+    writer.execute("pragma cache_size=1")
+    writer.execute("begin")
+    writer.execute("update t set v=?", ("b" * 500,))
+    writer.execute("delete from t where id>1000")
+    return writer
+
+
+def test_snapshot_of_a_database_mid_write_keeps_its_hot_journal(storage):
+    import sqlite3
+    root, settings, info = storage
+    writer = _torn_sqlite_db(settings.parent)
+    try:
+        assert (settings.parent / "cache.db-journal").exists()
+        snap = backup.create_backup(info)
+    finally:
+        writer.execute("rollback")
+        writer.close()
+    folder = root / info["addon_id"] / snap["backup_id"] / "addon_data"
+    assert sorted(p.name for p in folder.iterdir()) == ["cache.db", "cache.db-journal"]
+    conn = sqlite3.connect(str(folder / "cache.db"))
+    try:
+        assert conn.execute("pragma integrity_check").fetchall() == [("ok",)]
+        assert conn.execute("select count(*), sum(v like 'b%') from t").fetchone() == (2000, 0)
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("side", ["cache.db-wal", "cache.db-journal"])
+def test_snapshot_is_aborted_when_a_sqlite_side_file_vanishes(storage, monkeypatch, side):
+    root, settings, info = storage
+    live = settings.parent
+    settings.write_text("settings")
+    (live / "cache.db").write_text("db")
+    (live / side).write_text("pages")
+    real_copy = backup._copy_file
+
+    def racing_copy(src, dst, *args, **kwargs):
+        if src.endswith(side):
+            os.remove(src)  # SQLite checkpointed or rolled back after cache.db was copied.
+        return real_copy(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(backup, "_copy_file", racing_copy)
+    with pytest.raises(backup.BackupAborted) as caught:
+        backup.create_backup(info)
+    assert caught.value.deferred
+    assert list((root / info["addon_id"]).iterdir()) == []  # the partial snapshot is discarded
 
 
 def test_restore_still_fails_when_a_snapshot_file_vanishes(storage, monkeypatch):

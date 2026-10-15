@@ -122,8 +122,15 @@ def parse_user_settings(path):
 def _parse_options(elem, resolver=None):
     raw = elem.get("values") or elem.get("lvalues") or elem.get("entries")
     if raw:
-        indexed = elem.get("type") == "enum" and str(elem.get("default", "")).isdigit()
-        return [{"value": str(i) if indexed else part, "label": resolver.resolve(part) if resolver and elem.get("lvalues") else part} for i, part in enumerate(raw.split("|"))]
+        labels = raw.split("|")
+        localized = bool(resolver and not elem.get("values") and elem.get("lvalues"))
+        values = labels
+        if elem.get("type") == "enum":
+            # Kodi stores a v1 enum as the chosen index, or as the matching
+            # ``entries`` value when given; ``labelenum`` stores the label.
+            entries = (elem.get("entries") or "").split("|")
+            values = entries if elem.get("entries") and len(entries) == len(labels) else [str(i) for i in range(len(labels))]
+        return [{"value": value, "label": resolver.resolve(part) if localized else part} for value, part in zip(values, labels)]
     opts = []
     for child in list(elem) + elem.findall("./constraints/options/option"):
         if child.tag in ("option", "value"):

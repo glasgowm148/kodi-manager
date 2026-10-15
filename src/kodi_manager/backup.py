@@ -46,10 +46,13 @@ SELF_STATE_DIRS = ("fix_backups", "operations", "widget_cache")
 SELF_STATE_FILES = ("log-history.db", "metrics_history.json", "installer_seed.json", "installer_seed.applied",
                     "installer_result.json", "allow_lan_first_run.flag")
 SELF_RESTORED = ("widget_cache/rows.json",)
-# Files that only exist while something is being written: SQLite journals and the
-# temporary siblings of atomic writes (fsutil, _copy_file, profile_transition).
-# A SQLite -wal file can hold committed data not yet in the database, so it is kept.
-_TRANSIENT = re.compile(r"(?:-journal|-shm)$|^\..+\.[a-z0-9_]{8}\.(?:tmp|km-tmp)$|\.[0-9a-f]{32}\.tmp$")
+# Files that only exist while something is being written: SQLite shared-memory
+# indexes and the temporary siblings of atomic writes (fsutil, _copy_file,
+# profile_transition). A SQLite -wal file can hold committed data not yet in the
+# database, and a hot -journal is needed to roll back a half-written one, so both
+# are kept.
+_TRANSIENT = re.compile(r"-shm$|^\..+\.[a-z0-9_]{8}\.(?:tmp|km-tmp)$|\.[0-9a-f]{32}\.tmp$")
+_SQLITE_SIDE = re.compile(r"-(?:wal|journal)$")
 _ROOT = threading.local()
 
 
@@ -220,8 +223,9 @@ def _copytree(src, dst, skip_top=(), should_stop=None, preserve_files=(), exclud
     Each file is replaced atomically. ``should_stop`` is asked during traversal and copying;
     when it returns true the copy raises BackupAborted. Files for which ``exclude`` is true
     are not copied. With ``snapshot`` (taking a backup of a live folder), transient files
-    (SQLite journals, atomic-write temporaries) are left out, and a file removed between
-    listing and copying is skipped rather than failing the whole backup."""
+    (SQLite -shm indexes, atomic-write temporaries) are left out, and a file removed between
+    listing and copying is skipped rather than failing the whole backup, except a SQLite
+    -wal or -journal, whose loss raises BackupAborted so the snapshot is retried later."""
     files = []
     if not src or not os.path.isdir(src):
         if src and tvos_storage.userdata(src):
@@ -252,6 +256,10 @@ def _copytree(src, dst, skip_top=(), should_stop=None, preserve_files=(), exclud
                 _copy_file(os.path.join(src, rel_file), d, should_stop=should_stop)
         except FileNotFoundError:
             if snapshot and not os.path.lexists(os.path.join(src, rel_file)):
+                if _SQLITE_SIDE.search(rel_file):
+                    # SQLite folded it into (or rolled back) its database after the
+                    # database was copied: that copy may be stale or torn. Retry later.
+                    raise BackupAborted("A database changed while the snapshot was taken") from None
                 continue  # Deleted after it was listed: it is simply not in this snapshot.
             raise
         files.append(rel_file)

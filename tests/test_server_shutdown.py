@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 import sys
 import threading
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -105,6 +106,22 @@ class ServerShutdownTests(unittest.TestCase):
         finally:
             release.set()
             client.join(3)
+
+    def test_port_can_be_rebound_immediately_after_stop(self):
+        # Allow LAN toggles restart the server on the same port without joining the old
+        # thread: a select() still polling the old socket must not keep the port bound.
+        for attempt in range(10):
+            service = self.create_server(BaseHTTPRequestHandler)
+            port = service.httpd.server_address[1]
+            service.start()
+            time.sleep(0.02 + (attempt % 5) * 0.03)
+            service.stop()
+            try:
+                replacement = server.BoundedThreadingHTTPServer(('127.0.0.1', port), BaseHTTPRequestHandler)
+                replacement.server_close()
+            finally:
+                service.join(3)
+            self.assertFalse(service.is_alive())
 
 
 if __name__ == '__main__':

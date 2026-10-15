@@ -67,3 +67,17 @@ def test_helper_rows_follow_only_resolve_strm(monkeypatch):
     wc.render(SimpleNamespace(), SimpleNamespace(ListItem=FakeListItem), plugin, 1,
               {"source": TMDB, "files": [tmdb_item()], "content": "movies"}, helper_playable=False)
     assert "IsPlayable" not in plugin.items[0][1].props
+
+
+def test_queryless_plugin_rows_keep_their_skin_shortcuts_label_id(tmp_path):
+    import skin_layout
+    plain = "ActivateWindow(Videos,plugin://plugin.video.extra/,return)"
+    queried = "ActivateWindow(Videos,plugin://plugin.video.extra/?mode=list,return)"
+    assert wa.cacheable("plugin://plugin.video.extra/", ("plugin.video.extra",))
+    assert wa.convert_action(plain, ("plugin.video.extra",)) is None
+    hub = tmp_path / "skin.bingie-moviehub.DATA.xml"
+    hub.write_text(data(plain, queried))
+    before = skin_layout._label_ids(ET.parse(str(hub)).getroot().findall("shortcut"))
+    assert wa.autocache(str(tmp_path), now=0, extra_addons=("plugin.video.extra",)) == {"skin.bingie-moviehub.DATA.xml": 1}
+    assert actions(hub)[0] == plain and "mode%3Dlist" in actions(hub)[1]
+    assert skin_layout._label_ids(ET.parse(str(hub)).getroot().findall("shortcut")) == before

@@ -183,7 +183,7 @@ def start_maintenance(kodi, is_busy=tv_busy, stopping=lambda: False):
         last_day = None
     return Maintenance(lambda title, message: kodi.notify(title, message), baseline=make_baseline(kodi),
                        accounts=accounts, checkpoint=checkpoint, log=kodi.log, last_nightly_day=last_day,
-                       is_quiet=lambda: not is_busy())
+                       is_quiet=lambda: not is_busy(), stopping=stopping)
 
 
 def start_sampler(kodi, memory, internet):

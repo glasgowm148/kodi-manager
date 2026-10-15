@@ -152,8 +152,8 @@ function catalogueHarness(layoutRows=[], options={}) {
   const context = {URL,URLSearchParams,AbortController,console,setTimeout,clearTimeout,esc:value=>String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),out:()=>{},
     document:{querySelector:()=>root,createElement:()=>node()},window:{addEventListener(){}},localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},
     IntersectionObserver:class {constructor(callback){context.intersection=callback;}observe(){}disconnect(){}},navigator:{clipboard:{writeText:async()=>{}}},prompt:()=>null,confirm:()=>true,promptDialog:async()=>null,confirmDialog:async()=>true,copyText:async()=>'clipboard',
-    api:async (path,body)=>{
-      calls.push({path,body});
+    api:async (path,body,signal)=>{
+      calls.push({path,body,signal});
       if(options.api){const value=await options.api(path,body,calls);if(value!==undefined)return value;}
       if(path==='/api/widgets/sources')return {sources:options.sources || [{addon_id:'plugin.video.pov',label:'POV',path:rootPath,enabled:true,traversable:true}]};
       if(path==='/api/widgets/layout')return {revision:'revision-1',max_rows:20,sections:[{id:'section-1',label:options.sectionLabel || 'Movies',kind:options.sectionKind || 'hub',editable:options.editable !== false,rows:layoutRows}],new_section:{available:false}};
@@ -574,4 +574,80 @@ test('the studio keeps working after an in-page anchor and stops when the page c
   const after=h.calls.length;
   h.elements.get('#bs-refresh-catalogue').onclick(); await drainCatalogue();
   assert.equal(h.calls.length,after,'a stopped studio sends no more requests');
+});
+
+test('review and apply stay with the section the review was opened for when another tab is chosen meanwhile', async () => {
+  let releasePreview;
+  const preview=new Promise(resolve=>{releasePreview=resolve;});
+  const rowsA=[{id:'a1',label:'Popular',path:'special://videoplaylists/a'},{id:'a2',label:'Latest',path:'special://videoplaylists/b'}];
+  const rowsB=[{id:'b1',label:'Shows row',path:'special://videoplaylists/c'}];
+  const h=catalogueHarness([],{sources:[],rowPreview:{status:'ok',items:[]},api:path=>{
+    if(path==='/api/widgets/layout')return {revision:'revision-1',max_rows:20,sections:[{id:'section-1',label:'Movies',kind:'hub',editable:true,rows:rowsA},{id:'section-2',label:'Shows',kind:'hub',editable:true,rows:rowsB}],new_section:{available:false}};
+    if(path==='/api/widgets/layout/preview')return preview;
+    if(path==='/api/widgets/layout/apply')return {backup_id:'skin-layout-2'};
+    if(path==='/api/widgets/layout/rebuild')return {started:true};
+  }});
+  await settleCatalogue(h);
+  await h.click({section:'section-1'});
+  await h.click({moveRow:'0,1'});
+  const button=h.elements.get('#bs-review');
+  const reviewing=button.onclick({currentTarget:button});
+  await h.click({section:'section-2'});
+  releasePreview({revision:'revision-1',can_apply:true,reasons:[]});
+  await reviewing;
+  const dialog=h.elements.get('#bs-review-content').innerHTML;
+  assert.match(dialog,/<h3>Movies<\/h3>/,'the dialog describes the section being applied');
+  assert.match(dialog,/2 saved rows → 2 proposed rows/);
+  assert.doesNotMatch(dialog,/Shows row/);
+  const apply=h.elements.get('#bs-apply');
+  await apply.onclick({currentTarget:apply});
+  const sent=h.calls.filter(call=>call.path==='/api/widgets/layout/apply');
+  assert.equal(sent.length,1);
+  assert.equal(sent[0].body.section_id,'section-1');
+  assert.deepEqual(JSON.parse(JSON.stringify(sent[0].body.rows.map(row=>row.id))),['a2','a1']);
+});
+
+test('apply and rebuild are writes the page signal never cancels, and their outcome survives leaving the page', async () => {
+  const listeners=[], toasts=[];
+  let releaseApply;
+  const applyReply=new Promise(resolve=>{releaseApply=resolve;});
+  const rows=[{id:'row-a',label:'Popular',path:'special://videoplaylists/a'},{id:'row-b',label:'Latest',path:'special://videoplaylists/b'}];
+  const h=catalogueHarness(rows,{sources:[],rowPreview:{status:'ok',items:[]},api:path=>{
+    if(path==='/api/widgets/layout/preview')return {revision:'revision-1',can_apply:true,reasons:[]};
+    if(path==='/api/widgets/layout/apply')return applyReply;
+    if(path==='/api/widgets/layout/rebuild')return {started:true};
+  }});
+  h.context.window={addEventListener:(name,handler)=>listeners.push({name,handler}),removeEventListener:(name,handler)=>{const i=listeners.findIndex(l=>l.handler===handler);if(i>=0)listeners.splice(i,1);}};
+  h.context.location={hash:'#/widgets'};
+  h.context.currentRoute=()=>h.context.location.hash.split('?')[0];
+  h.context.toast=(message,tone)=>toasts.push({message,tone});
+  h.context.reportError=error=>toasts.push({message:error.message,tone:'error'});
+  await settleCatalogue(h);
+  await h.click({moveRow:'0,1'});
+  const review=h.elements.get('#bs-review');
+  await review.onclick({currentTarget:review});
+  assert.ok(h.calls.find(call=>call.path==='/api/widgets/layout/preview').signal,'reads keep the page signal');
+  const apply=h.elements.get('#bs-apply');
+  const applying=apply.onclick({currentTarget:apply});
+  h.context.location.hash='#/backups';
+  listeners.filter(l=>l.name==='hashchange').forEach(l=>l.handler());
+  releaseApply({backup_id:'skin-layout-3'});
+  await applying;
+  const sent=h.calls.find(call=>call.path==='/api/widgets/layout/apply');
+  assert.equal(sent.signal,undefined,'the apply POST is not tied to the page');
+  assert.equal(toasts.length,1);
+  assert.match(toasts[0].message,/^Section saved\. Backup skin-layout-3\./);
+  assert.equal(toasts[0].tone,'ok');
+  assert.equal(JSON.parse(h.storage.get('bingie_studio_drafts_v2'))['section-1'],undefined,'the applied draft is cleared');
+
+  const stay=layoutHarness();
+  await settleCatalogue(stay.h);
+  await stay.h.click({moveRow:'0,1'});
+  await stay.review();
+  await stay.apply();
+  await stay.h.elements.get('#bs-notice').children.at(-1).onclick();
+  const rebuild=stay.h.calls.find(call=>call.path==='/api/widgets/layout/rebuild');
+  assert.ok(rebuild);
+  assert.equal(rebuild.signal,undefined,'the rebuild POST is not tied to the page');
+  assert.match(stay.h.elements.get('#bs-notice').textContent,/Rebuild requested/);
 });

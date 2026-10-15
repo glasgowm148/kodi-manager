@@ -31,8 +31,11 @@ class Maintenance:
     RETRY_DEFERRED_AFTER = 10 * 60
 
     def __init__(self, notify, baseline=None, accounts=lambda: [], checkpoint=None, clock=time.time,
-                 localtime=time.localtime, log=lambda msg: None, last_nightly_day=None, is_quiet=None):
+                 localtime=time.localtime, log=lambda msg: None, last_nightly_day=None, is_quiet=None,
+                 stopping=lambda: False):
         self.notify, self.baseline, self.accounts, self.checkpoint = notify, baseline, accounts, checkpoint
+        # True once the service is exiting: no further Kodi calls between or after steps.
+        self.stopping = stopping
         self.clock, self.localtime, self.log = clock, localtime, log
         # Asked again just before a notification: checks can outlast the quiet spell.
         self.is_quiet = is_quiet
@@ -98,9 +101,13 @@ class Maintenance:
                         LAST["nightly"] = {"status": "error", "at": int(now), "error": type(exc).__name__}
                     self.log("Nightly checkpoint failed: %s" % type(exc).__name__)
                 ran.append("nightly")
+        if self.stopping():
+            return ran
         if quiet and self.baseline is not None and now >= self.next_baseline:
             self.next_baseline = now + self.BASELINE_EVERY
             rows = self.baseline.check()
+            if self.stopping():
+                return ran
             drift = [row for row in rows if not row["ok"] and not row["missing"]]
             with _LOCK:
                 LAST["baseline"] = {"at": int(now), "total": len(rows), "drifted": drift}
@@ -109,9 +116,13 @@ class Maintenance:
                 self._notify_once("baseline:" + ",".join(sorted(row["key"] for row in drift)),
                                   "Settings changed", "%s changed (often after an update). Re-apply in Kodi Manager → Health." % names)
             ran.append("baseline")
+        if self.stopping():
+            return ran
         if quiet and now >= self.next_accounts:
             self.next_accounts = now + self.ACCOUNTS_EVERY
             results = [r for r in self.accounts() if r]
+            if self.stopping():
+                return ran
             with _LOCK:
                 LAST["accounts"] = results
             for result in results:

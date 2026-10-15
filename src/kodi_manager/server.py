@@ -5,6 +5,7 @@ The pieces live in their own modules: ``http_base`` (request checks, envelope, b
 (what they compute). Names that used to be defined here are re-exported for scripts and tests.
 """
 import re
+import socket
 import threading
 import time  # noqa: F401  (re-exported: tests patch server.time)
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler  # noqa: F401
@@ -160,4 +161,10 @@ class ServerThread(threading.Thread):
         self.stopping.set()
         # Close the listening socket only. The server loop closes its own
         # request state; service shutdown never joins HTTP handlers here.
+        # Shut it down first: a select() still polling it would keep the port
+        # bound until it returns, so an immediate restart on it would fail.
+        try:
+            self.httpd.socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
         self.httpd.socket.close()

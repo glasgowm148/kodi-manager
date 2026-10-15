@@ -76,6 +76,9 @@ def clean_sample(sample) -> Optional[Dict[str, Any]]:
 
 _FETCHED = re.compile(rb'"fetched_at":\s*([0-9.]+)')
 _SOURCE = re.compile(rb'"source":\s*("(?:[^"\\]|\\.)*")')
+# An empty listing at the end, optionally followed by numeric fields (touch() wrote
+# ``used_at`` after ``files`` in 0.7.36).
+_EMPTY = re.compile(rb'"files":\s*\[\s*\]\s*(?:,\s*"[a-z_]+":\s*[0-9.eE+-]+\s*)*}\s*$')
 
 
 def _entry_glance(path):
@@ -88,7 +91,7 @@ def _entry_glance(path):
         tail = handle.read()
     source, fetched = _SOURCE.search(head), _FETCHED.search(head)
     return (json.loads(source.group(1).decode("utf-8")) if source else None,
-            float(fetched.group(1)) if fetched else None, bool(re.search(rb'"files":\s*\[\s*\]\s*}\s*$', tail)))
+            float(fetched.group(1)) if fetched else None, bool(_EMPTY.search(tail)))
 
 
 def widget_row_counts(cache_root, ttl=None, now=None):

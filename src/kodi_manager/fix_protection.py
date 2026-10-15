@@ -9,6 +9,11 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 
+try:
+    from .write_policy import RequestRefused
+except ImportError:
+    from write_policy import RequestRefused
+
 _LOCK = threading.Lock()
 
 
@@ -74,7 +79,7 @@ class FixProtection:
             status = self.status()
             available = {g['id'] for g in status['groups'] if g['repairable']}
             if not available:
-                raise ValueError('No changed files can be restored safely')
+                raise RequestRefused('No changed files can be restored safely')
             plan = []
             seen = {}
             for group in self.manifest['groups']:

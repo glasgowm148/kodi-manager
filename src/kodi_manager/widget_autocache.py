@@ -65,7 +65,9 @@ def cacheable(source, extra_addons=()):
 def convert_action(text, extra_addons=()):
     """Return the cached form of a widget action, or None to leave it alone."""
     match = _ACTION.fullmatch((text or "").strip())
-    if not match or not cacheable(match.group(2), extra_addons):
+    # Skin Shortcuts derives a row's label ID from a ?-less plugin path (see
+    # skin_layout._label_ids); adding a query would detach its properties.
+    if not match or "?" not in match.group(2) or not cacheable(match.group(2), extra_addons):
         return None
     return 'ActivateWindow(%s,"%s",return)' % (match.group(1), cache_url(match.group(2)))
 

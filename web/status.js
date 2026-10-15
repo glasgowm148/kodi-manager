@@ -263,7 +263,10 @@ function rowsChartSpec(history) {
 }
 async function trendsView(days = state.trendsDays || 7) {
   state.trendsDays = days;
+  // Range buttons can be pressed faster than the TV answers: only the newest request may draw.
+  const request = state.trendsRequest = (state.trendsRequest || 0) + 1;
   const history = await api(`/api/metrics/history?days=${encodeURIComponent(days)}`);
+  if (request !== state.trendsRequest) return;
   resetCharts();
   const range = `<div class="segmented" role="group" aria-label="Time range">${RANGES.map(([d, label]) => `<button type="button" data-range="${d}" aria-pressed="${d === days}">${esc(label)}</button>`).join("")}</div>`;
   const note = history.count ? `${history.count} samples, one every ${Math.round((history.resolution_seconds || 900) / 60)} minutes while the TV was idle. Gaps are times the TV was busy or off.` : "The TV records a sample every 15 minutes while it’s idle. Check back in an hour.";

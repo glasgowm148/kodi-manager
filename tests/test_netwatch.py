@@ -125,3 +125,30 @@ def test_probes_stop_when_the_service_is_exiting():
     assert dog.tick(stopping) is None
     assert calls == ["api.torbox.app"]  # no further 8-second probes once Kodi asks to stop
 
+
+
+def test_no_kodi_calls_after_the_service_stops_during_the_last_probe():
+    stopping, calls = [], []
+
+    def probe(host):
+        if host == "api.themoviedb.org":
+            stopping.append(True)   # the service retires while this probe is in flight
+        return None
+
+    def quiet():
+        calls.append("is_quiet")
+        return True
+
+    dog = Watchdog(lambda title, msg: calls.append("notify"), quiet,
+                   memory=lambda: calls.append("memory") or {"status": "ok"}, probe=probe, clock=Clock())
+    dog.next_check, dog.failures = 0, 1
+    assert dog.tick(lambda: bool(stopping)) is None
+    assert calls == ["is_quiet"]   # the check before probing only
+
+
+def test_no_memory_check_when_the_service_stops_after_the_internet_check():
+    calls, stopping = [], []
+    dog, clock, notes = make(HOSTS, memory=lambda: calls.append("memory") or {"status": "ok"})
+    dog.check_internet = lambda should_stop: stopping.append(True) or {"status": "ok"}
+    assert dog.tick(lambda: bool(stopping)) == {"status": "ok"}
+    assert calls == [] and notes == []

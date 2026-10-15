@@ -11,6 +11,7 @@ when something drifted, and re-applies on request. Three kinds of item:
   effect after Kodi restarts.
 """
 import json
+import math
 import os
 import re
 
@@ -80,6 +81,13 @@ def check_xml_value(value):
     if len(text) > 200 or re.search(r"[<>&\r\n]", text):
         raise ValueError("An addon.xml value must be plain text on one line, without < > or &")
     return text
+
+
+def check_value(value):
+    """A value given to protect: one plain JSON scalar (never an object, list or NaN)."""
+    if isinstance(value, float) and not math.isfinite(value) or not isinstance(value, (str, bool, int, float)):
+        raise ValueError("A protected setting's value must be text, a number or true/false")
+    return value
 
 
 def _same(expected, current):
@@ -192,24 +200,29 @@ class Baseline:
         """Protect the given items at their current live values (replaces items with the same key).
 
         ``check(item)`` (optional) raises for items the caller may not write."""
-        stored = {item_key(item): item for item in self.items()}
-        added = []
-        for raw in items:
-            item = validate_item(dict(raw))
-            if check is not None:
-                check(item)
-            value = raw.get("value") if "value" in raw else self.current(item)
-            if value is None:
-                raise LookupError("%s has no current value to protect" % item_key(item))
-            if item["kind"] == "addon_xml":
-                check_xml_value(value)
-            item["value"] = value
-            stored[item_key(item)] = {k: item[k] for k in ("kind", "addon", "id", "tag", "value", "label") if k in item}
-            added.append(item_key(item))
-        self.save(list(stored.values()))
+        # Held across read-modify-write so concurrent captures and removals keep each other's items.
+        with path_lock(self.path):
+            stored = {item_key(item): item for item in self.items()}
+            added = []
+            for raw in items:
+                item = validate_item(dict(raw))
+                if check is not None:
+                    check(item)
+                value = raw.get("value") if "value" in raw else self.current(item)
+                if value is None:
+                    raise LookupError("%s has no current value to protect" % item_key(item))
+                if "value" in raw:
+                    check_value(value)
+                if item["kind"] == "addon_xml":
+                    check_xml_value(value)
+                item["value"] = value
+                stored[item_key(item)] = {k: item[k] for k in ("kind", "addon", "id", "tag", "value", "label") if k in item}
+                added.append(item_key(item))
+            self.save(list(stored.values()))
         return {"protected": added, "count": len(stored)}
 
     def remove(self, keys):
-        kept = [item for item in self.items() if item_key(item) not in set(keys)]
-        self.save(kept)
+        with path_lock(self.path):
+            kept = [item for item in self.items() if item_key(item) not in set(keys)]
+            self.save(kept)
         return {"count": len(kept)}

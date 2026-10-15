@@ -752,3 +752,88 @@ def test_stop_during_listing_preserves_cache_without_native_reload(tmp_path):
     assert refresher.tick(stop.is_set) == 0
     assert cache.load(CONTINUE)['files'][0]['label'] == 'Before'
     assert bumps == []
+
+
+def test_refresher_drops_queued_jobs_of_rows_no_longer_shown(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    cache.save(CONTINUE, [{"label": "A", "file": "x"}], now=0)
+    cache.request(CONTINUE, priority=True)  # Queued just before the row went unused.
+    rpc = FakeRPC(listing("B"))
+    clock = Clock(wc.PRUNE_AFTER + 3600)
+    r = wc.Refresher(cache, rpc, lambda: False, lambda v: None, clock=clock)
+    r.next_sweep = 10 ** 12
+    r.tick()
+    assert rpc.calls == [] and cache.load(CONTINUE)["used_at"] == 0 and cache.status()["queued"] == 0
+    # When the sweep prunes the entry first, its queued job goes too: no resurrection.
+    cache.request(CONTINUE, priority=True)
+    r.next_sweep, r.next_work = 0, 0
+    r.tick()
+    assert rpc.calls == [] and cache.load(CONTINUE) is None and cache.status()["queued"] == 0
+
+
+def test_refresher_does_not_retry_never_cached_failing_rows_forever(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    rpc = FakeRPC({"error": {"code": -32602}})
+    clock = Clock(10 ** 6)
+    cache.record_failure(MOVIES, clock.t)  # serve()'s cold failure path
+    cache.request(MOVIES, priority=True)
+    r = wc.Refresher(cache, rpc, lambda: False, lambda v: None, clock=clock)
+    for _ in range(48):
+        clock.t += 3600
+        r.next_work = 0
+        r.tick()
+    assert len(rpc.calls) == 1 and cache.status()["queued"] == 0
+    # An existing row keeps retrying with backoff.
+    cache.save(SEASONS, [{"label": "S1", "file": "x"}], now=clock.t)
+    cache.request(SEASONS)
+    clock.t += 1
+    r.next_work = 0
+    r.tick()
+    assert cache.status()["queued"] == 1
+
+
+def test_first_fetches_requested_by_serve_count_as_use(tmp_path):
+    import time
+    xbmc, gui, plugin, vfs = kodi_modules(tmp_path, FakeRPC(listing("Up")))
+    before = time.time()
+    wc.serve(["x", "1", "?" + wc.cache_url(MOVIES).split("?", 1)[1]], xbmc, gui, plugin, vfs)
+    assert wc.WidgetCache(str(tmp_path)).load(MOVIES)["used_at"] >= before
+    # A cold failure retried by the refresher also records the skin's request as a use.
+    cache = wc.WidgetCache(str(tmp_path / "cold"))
+    cache.record_failure(SEASONS, 0)
+    cache.request(SEASONS, priority=True)
+    clock = Clock(5000)
+    wc.Refresher(cache, FakeRPC(listing("Up")), lambda: False, lambda v: None, clock=clock).tick()
+    assert cache.load(SEASONS)["used_at"] == 5000
+    cache.save(SEASONS, [], now=9000)  # A background refresh keeps it.
+    assert cache.load(SEASONS)["used_at"] == 5000
+    cache.save(SEASONS, [], now=9500, used_at=9400)
+    assert cache.load(SEASONS)["used_at"] == 9400
+
+
+def test_short_playback_keeps_a_pending_full_refresh(tmp_path):
+    clock = Clock(10 ** 6)
+    r = wc.Refresher(wc.WidgetCache(str(tmp_path)), FakeRPC({}), lambda: False, lambda v: None, clock=clock)
+    r.playback_started()
+    clock.t += 2400
+    r.playback_stopped()
+    clock.t += 30
+    r.playback_started()
+    clock.t += 40
+    r.playback_stopped()  # A failed start right after a real episode.
+    assert [kind for _at, kind in r.after_playback] == ["progress", "everything"]
+
+
+def test_touch_keeps_the_listing_last_for_the_empty_row_count(tmp_path):
+    import metrics
+    cache = wc.WidgetCache(str(tmp_path))
+    os.makedirs(cache.entries)
+    legacy = {"source": MOVIES, "fetched_at": 10 ** 9, "digest": "x", "pages": 1, "more": False,
+              "next_art": None, "content": "movies", "files": []}
+    Path(cache.entry_path(MOVIES)).write_text(json.dumps(legacy, separators=(",", ":")))
+    cache.touch(MOVIES, now=10 ** 9 + 10)
+    assert list(json.loads(Path(cache.entry_path(MOVIES)).read_text()))[-1] == "files"
+    assert metrics.widget_row_counts(str(tmp_path), ttl=wc.ttl_for, now=10 ** 9 + 10)["empty"] == 1
+    # Entries an earlier touch() wrote with used_at after the listing still count.
+    Path(cache.entry_path(MOVIES)).write_text(json.dumps(dict(legacy, used_at=1000000010.123456), separators=(",", ":")))
+    assert metrics.widget_row_counts(str(tmp_path), ttl=wc.ttl_for, now=10 ** 9 + 10)["empty"] == 1

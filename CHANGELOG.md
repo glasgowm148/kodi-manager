@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.37 — 2026-10-15
+
+- Backups copy SQLite hot journals again (0.7.36 dropped them, so a backup taken mid-write could restore a corrupt database); a snapshot whose -wal/-journal vanishes mid-copy is discarded and retried instead of keeping a stale database.
+- Widget cache: queued refreshes of rows nobody shows are dropped instead of reviving them for another 21 days, failing never-cached rows are not retried forever, a short playback no longer cancels the pending full refresh, and the empty-row count stays right after a row is shown.
+- Rows whose plugin path has no query keep their Skin Shortcuts label id (they are no longer routed through the cache); replacing the custom hub drops the old rows' properties and refuses stale Kids menu files.
+- v1 `enum` settings use Kodi's stored index (or `entries`) values, so they can be edited.
+- Validation refusals before any write (unknown or read-only setting, stale layout revision → 409 `stale_revision`, layout not applicable, nothing to repair) are recorded as refused instead of "outcome unknown". NaN/Infinity request bodies and non-scalar baseline values are refused; concurrent baseline edits no longer lose items.
+- The dashboard can rebind its port immediately after a network-setting change; the watchdog and maintenance make no Kodi calls once the service is stopping.
+- Web UI: write results that finish after you leave a page no longer redraw the old page (they show as a notice); TV-remote arrows no longer get trapped in charts, number fields and selects; focus survives the add-ons refresh; layout review applies the section it shows; leaving the page no longer cancels apply/rebuild; single-point sparklines and out-of-order Trends ranges fixed.
+- Releases now run the Kodi Python 3.8 tests and ruff before publishing.
+
 ## 0.7.36 — 2026-10-15
 
 - Cached rows the skin no longer shows stop refreshing their source add-on and are pruned after 21 days; a background refresh no longer counts as a use.

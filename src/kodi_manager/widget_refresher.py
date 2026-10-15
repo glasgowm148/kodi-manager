@@ -52,7 +52,8 @@ class Refresher:
         started, self.playback_started_at = self.playback_started_at, None
         if started is not None and now - started < self.SHORT_PLAYBACK:
             # A failed start or a quick back-out: watched state barely changed.
-            self.after_playback = [(now + 5, "progress")]
+            # Keep a full refresh still pending from an earlier, real playback.
+            self.after_playback = [(now + 5, "progress")] + [job for job in self.after_playback if job[1] == "everything"]
             return
         # Progress rows first (POV updates its local state on stop), then
         # again plus everything else once Trakt has had time to sync.
@@ -104,6 +105,10 @@ class Refresher:
             if should_stop() or not self._quiet():
                 self.cache.request(source, priority=_cache.is_progress(source))
                 continue
+            current = self.cache.load(source)
+            if current is not None and self.clock() - self.cache.used_at(
+                    current, self.cache._mtime(self.cache.entry_path(source))) > _cache.PRUNE_AFTER:
+                continue  # Queued before the skin stopped showing it: let prune() drop it.
             try:
                 attempted += 1
                 _cache.validate_source(source)
@@ -126,7 +131,9 @@ class Refresher:
                     self.cache.request(source, priority=_cache.is_progress(source))
                     continue  # The loop head re-queues the rest of this claimed batch.
                 self.cache.record_failure(source, self.clock())
-                self.cache.request(source, priority=_cache.is_progress(source))
+                if current is not None or self.cache.load(source) is not None:
+                    self.cache.request(source, priority=_cache.is_progress(source))
+                # else: a never-cached row is fetched again by serve() when the skin next shows it.
                 self.log("Widget refresh failed (%s); preserving cached row" % type(exc).__name__)
         if attempted:
             self.next_work = self.clock() + self.BATCH_PAUSE

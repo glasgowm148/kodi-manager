@@ -1,3 +1,4 @@
+import ast
 import os
 import sys
 import tempfile
@@ -121,6 +122,24 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual("Existing row", preview["customhub"][0]["label"])
         self.body["replace_customhub"] = True
         self.assertTrue(layout.preview_layout(self.kodi, self.index, self.body)["can_apply"])
+
+    def test_replacing_custom_hub_drops_old_row_properties(self):
+        self.put("skin.bingie-customhub.DATA.xml", b'<shortcuts><shortcut><label>Latest kids movies</label><action>ActivateWindow(Videos,plugin://plugin.video.test/?info=old,return)</action></shortcut><shortcut><label>Old row</label><action>ActivateWindow(Videos,plugin://plugin.video.test/?info=x,return)</action></shortcut></shortcuts>')
+        self.put("skin.bingie.properties", b"[['customhub','latestkidsmovies','widgetstyle','episodes'],['customhub','oldrow','limit','5'],['mainmenu','movies','widgetstyle','landscape']]")
+        self.body["replace_customhub"] = True
+        self.ready()
+        layout.apply_layout(self.kodi, self.index, self.body, True)
+        self.assertEqual([['mainmenu', 'movies', 'widgetstyle', 'landscape']], ast.literal_eval(self.read("skin.bingie.properties").decode()))
+
+    def test_new_kids_menu_refuses_stale_linked_files_and_properties(self):
+        self.put("skin.bingie-kids-1.DATA.xml", b'<shortcuts><shortcut><label>Stale</label><action>noop</action></shortcut></shortcuts>')
+        self.assertFalse(layout.preview_layout(self.kodi, self.index, self.body)["can_apply"])
+        os.remove(os.path.join(self.root, "skin.bingie-kids-1.DATA.xml"))
+        self.assertTrue(layout.preview_layout(self.kodi, self.index, self.body)["can_apply"])
+        self.put("skin.bingie.properties", b"[['mainmenu','kids','icon','stale.png']]")
+        preview = layout.preview_layout(self.kodi, self.index, self.body)
+        self.assertFalse(preview["can_apply"])
+        self.assertTrue(any("native review" in reason for reason in preview["reasons"]))
 
     def test_another_menu_customhub_cannot_be_replaced(self):
         self.put("skin.bingie-mainmenu.DATA.xml", b'<shortcuts><shortcut><label>Music</label><action>ActivateWindow(1113,return)</action></shortcut></shortcuts>')

@@ -171,9 +171,12 @@ function sparkline(t, values, {label = "Trend", maxGap = Infinity, min = null, m
   } else {
     const segments = splitSegments(t, values, maxGap);
     marks = segments.map(points => {
+      // A lone sample (one point, or one between gaps) is a dot, like the full chart's. The SVG is stretched
+      // (preserveAspectRatio="none"), so it is drawn as a round-capped zero-length stroke, which stays round.
+      if (points.length === 1) return `<path class="spark-line spark-dot" d="M${x(points[0][0]).toFixed(1)} ${y(points[0][1]).toFixed(1)}h0" vector-effect="non-scaling-stroke"/>`;
       const line = pathFor(points, x, y);
-      const area = points.length > 1 ? `${line}V${height - 1}H${x(points[0][0]).toFixed(1)}Z` : "";
-      return `${area ? `<path class="spark-area" d="${area}"/>` : ""}<path class="spark-line" d="${line}" vector-effect="non-scaling-stroke"/>`;
+      const area = `${line}V${height - 1}H${x(points[0][0]).toFixed(1)}Z`;
+      return `<path class="spark-area" d="${area}"/><path class="spark-line" d="${line}" vector-effect="non-scaling-stroke"/>`;
     }).join("");
   }
   return `<svg class="spark" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}" focusable="false">${marks}</svg>`;

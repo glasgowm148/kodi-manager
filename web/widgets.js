@@ -98,7 +98,8 @@ async function widgetStudioView() {
   function offerRebuild(text, error = false) {
     notice(text, error); if (!active()) return;
     const rebuild=document.createElement("button");rebuild.className="action";rebuild.textContent="Rebuild skin menu";$b("#bs-notice").append(rebuild);
-    rebuild.onclick=async()=>{rebuild.disabled=true;try{const started=await api("/api/widgets/layout/rebuild",{},abort.signal);if(!started.started)throw Error("Kodi did not start the rebuild.");notice("Rebuild requested. The skin will refresh after its menu has been generated.");}catch(error){offerRebuild(error.code === "playback_active" ? "Stop playback, then rebuild the skin menu." : error.message+" Try again, or restart Kodi to rebuild the menu.",true);}};
+    // A write: never aborted by leaving the page. Its outcome is shown here, or as a toast once the page has gone.
+    rebuild.onclick=async()=>{rebuild.disabled=true;try{const started=await api("/api/widgets/layout/rebuild",{});if(!started.started)throw Error("Kodi did not start the rebuild.");const done="Rebuild requested. The skin will refresh after its menu has been generated.";if(active())notice(done);else toast(done,"ok");}catch(error){const text=error.code === "playback_active" ? "Stop playback, then rebuild the skin menu." : error.message+" Try again, or restart Kodi to rebuild the menu.";if(active())offerRebuild(text,true);else toast(text,"error");}};
   }
   // Saved drafts of sections not opened in this visit are kept alongside the ones open now.
   function storeDrafts() { try { localStorage.setItem(storageKey, JSON.stringify({...savedDrafts,...drafts})); } catch (_) {} }
@@ -374,20 +375,35 @@ async function widgetStudioView() {
   $b("#bs-preset").onclick = async event => { const button=event.currentTarget; if(!canEdit()) return; button.disabled=true; try { const result=await api("/api/widgets/suggestions",{},abort.signal); if(draft().rows.length+result.rows.length>20) throw Error("This preset would exceed the 20-row limit."); draft().rows.push(...result.rows.map(r => ({...r,maxRating:"12A"}))); saveDrafts(); renderSections(); renderCurrent(); notice("Family starter rows added to the draft. Their previews show the filtered content."); } catch(error) { notice(error.message,true); } finally { button.disabled=!canEdit(); } };
   $b("#bs-review").onclick = async event => {
     if (!dirty() || !canEdit()) return; const button=event.currentTarget;button.disabled=true;
-    try { const body=widgetLayoutBody(draft()), result=await api("/api/widgets/layout/preview",body,abort.signal); if(!active()) return;
-      if (selected === "new") draft().revision = result.revision;
-      else if (result.revision !== draft().revision) {
+    // The section tabs stay usable while the preview is read: review the section this click was for.
+    const id=selected, value=draft(), saved=section();
+    try { const body=widgetLayoutBody(value), result=await api("/api/widgets/layout/preview",body,abort.signal); if(!active()) return;
+      if (id === "new") value.revision = result.revision;
+      else if (result.revision !== value.revision) {
         // The TV layout changed after this draft was started (another device or Kodi's own editor).
         // Continue only if this section's rows on the TV are still the ones the draft was built from.
         const fresh=await api("/api/widgets/layout",undefined,abort.signal); if(!active()) return;
-        const current=Array.isArray(fresh?.sections) ? [...widgetVisibleSections(fresh),...(fresh.inactive_sections || [])].find(s => s.id === selected) : null;
-        if (fresh?.revision !== result.revision || !current || widgetSectionBase(selected,current) !== draft().base) { notice("This section changed on your TV after you started this draft (on another device or in Kodi). Applying it would undo those newer changes. Export the section if you want to keep your edits, then use Refresh from TV and make them again.",true); return; }
-        draft().revision = result.revision; storeDrafts();
+        const current=Array.isArray(fresh?.sections) ? [...widgetVisibleSections(fresh),...(fresh.inactive_sections || [])].find(s => s.id === id) : null;
+        if (fresh?.revision !== result.revision || !current || widgetSectionBase(id,current) !== value.base) { notice("This section changed on your TV after you started this draft (on another device or in Kodi). Applying it would undo those newer changes. Export the section if you want to keep your edits, then use Refresh from TV and make them again.",true); return; }
+        value.revision = result.revision; storeDrafts();
       }
-      review={body,result,section:selected,revision:draft().revision};
-      $b("#bs-review-content").innerHTML=`<div class="bs-dialog-heading"><div><p class="muted">Review changes before they reach the TV</p><h3>${esc(draft().label)}</h3></div><button class="bs-icon-button" id="bs-close-review" aria-label="Close review">×</button></div><p>${section()?.rows.length || 0} saved rows → ${draft().rows.length} proposed rows. Only this section will be changed.</p><ol>${draft().rows.map(row => `<li><b>${esc(row.label)}</b><span>${esc((row.breadcrumb || []).join(" › ") || widgetSourceDescription(row) || sourceName(row.path))}${row.filtered ? " · Family " + esc(row.maxRating) : ""}</span></li>`).join("")}</ol>${result.reasons?.length ? `<div class="bs-notice bs-error">${result.reasons.map(esc).join("<br>")}</div>` : ""}<p class="muted">A backup is created first. Existing rows omitted from this draft will be removed from this section.</p><div class="bs-actions"><button class="bs-save" id="bs-apply" ${!result.can_apply ? "disabled" : ""}>Apply to TV</button><button class="action" id="bs-cancel-review">Keep editing</button></div><p id="bs-apply-result" role="status"></p>`;
+      review={body,result,section:id,revision:value.revision};
+      const pending=review;
+      $b("#bs-review-content").innerHTML=`<div class="bs-dialog-heading"><div><p class="muted">Review changes before they reach the TV</p><h3>${esc(value.label)}</h3></div><button class="bs-icon-button" id="bs-close-review" aria-label="Close review">×</button></div><p>${saved?.rows.length || 0} saved rows → ${value.rows.length} proposed rows. Only this section will be changed.</p><ol>${value.rows.map(row => `<li><b>${esc(row.label)}</b><span>${esc((row.breadcrumb || []).join(" › ") || widgetSourceDescription(row) || sourceName(row.path))}${row.filtered ? " · Family " + esc(row.maxRating) : ""}</span></li>`).join("")}</ol>${result.reasons?.length ? `<div class="bs-notice bs-error">${result.reasons.map(esc).join("<br>")}</div>` : ""}<p class="muted">A backup is created first. Existing rows omitted from this draft will be removed from this section.</p><div class="bs-actions"><button class="bs-save" id="bs-apply" ${!result.can_apply ? "disabled" : ""}>Apply to TV</button><button class="action" id="bs-cancel-review">Keep editing</button></div><p id="bs-apply-result" role="status"></p>`;
       const dialog=$b("#bs-review-dialog");dialog.showModal(); $b("#bs-close-review").onclick=()=>dialog.close();$b("#bs-cancel-review").onclick=()=>dialog.close();
-      $b("#bs-apply").onclick=async applyEvent=>{ const applyButton=applyEvent.currentTarget;applyButton.disabled=true;try { const result=await api("/api/widgets/layout/apply",{...review.body,expected_revision:review.revision},abort.signal); delete drafts[review.section];delete savedDrafts[review.section];saveDrafts();dialog.close();await loadLayout();offerRebuild(`Section saved. Backup ${result.backup_id}. Rebuild Bingie to show the changes on your TV.`); } catch(error) { $b("#bs-apply-result").textContent=error.message+" Close this preview and review again before retrying."; } };
+      $b("#bs-apply").onclick=async applyEvent=>{
+        const applyButton=applyEvent.currentTarget;applyButton.disabled=true;
+        // Not tied to the page's abort signal: leaving the page must not hide the outcome of a write the TV already made.
+        let applied;
+        try { applied=await api("/api/widgets/layout/apply",{...pending.body,expected_revision:pending.revision}); }
+        catch(error) { if (active()) $b("#bs-apply-result").textContent=error.message+" Close this preview and review again before retrying."; else reportError(error); return; }
+        review=null;delete drafts[pending.section];delete savedDrafts[pending.section];storeDrafts();
+        const message=`Section saved. Backup ${applied.backup_id}. Rebuild Bingie to show the changes on your TV.`;
+        if (!active()) { toast(message+" Open Home layout to rebuild the skin menu.","ok"); return; }
+        renderDraftStatus();dialog.close();
+        try { await loadLayout(); } catch (_) { /* the save stands; Refresh from TV reads the layout again */ }
+        offerRebuild(message);
+      };
     } catch(error) { notice(error.message,true); } finally { renderDraftStatus(); }
   };
   // Stop only when the page changes: in-page anchors (Skip to content) keep the studio working.

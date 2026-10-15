@@ -397,14 +397,20 @@ class WidgetCache:
             return None
         return entry if isinstance(entry, dict) and entry.get("source") == source and isinstance(entry.get("files"), list) else None
 
-    def save(self, source, files, now=None, pages=1, more=False, next_art=None):
-        """Store a listing. Returns True when it differs from the previous one."""
+    def save(self, source, files, now=None, pages=1, more=False, next_art=None, used_at=None):
+        """Store a listing. Returns True when it differs from the previous one.
+
+        ``used_at`` records a use (serve() passes it when the skin asked for the
+        row). Otherwise a refresh is not a use: the last time the row was shown is
+        kept so rows the skin no longer requests stop refreshing and are pruned. A
+        first listing without ``used_at`` counts as used now: its job came from
+        serve() (prune() drops the queued jobs of the entries it removes).
+        """
         now = time.time() if now is None else now
         old = self.load(source)
         digest = _digest(files)
-        # A refresh is not a use: keep the last time a row was shown so rows the
-        # skin no longer requests stop refreshing and are pruned (see used_at).
-        used_at = now if old is None else self.used_at(old, self._mtime(self.entry_path(source)))
+        if used_at is None:
+            used_at = now if old is None else self.used_at(old, self._mtime(self.entry_path(source)))
         self.record_success(source)
         self._write(self.entry_path(source), {"source": source, "fetched_at": now, "used_at": used_at,
                                               "digest": digest,
@@ -467,7 +473,9 @@ class WidgetCache:
             return
         try:
             # Re-read right before writing so a refresh saved since serve() loaded the entry is kept.
-            self._write(path, dict(self.load(source) or entry, used_at=now), fsync=False)
+            data = dict(self.load(source) or entry, used_at=now)
+            data["files"] = data.pop("files", [])  # Keep the listing last (see metrics._entry_glance).
+            self._write(path, data, fsync=False)
         except OSError:
             pass
 
@@ -570,6 +578,11 @@ class WidgetCache:
                 try:
                     os.remove(self.entry_path(entry["source"]))
                     removed += 1
+                except OSError:
+                    pass
+                try:
+                    # A job queued before the row went unused must not recreate it as freshly used.
+                    os.remove(os.path.join(self.queue, cache_key(entry["source"]) + ".json"))
                 except OSError:
                     pass
         return removed
@@ -739,7 +752,7 @@ def serve(argv, xbmc, xbmcgui, xbmcplugin, xbmcvfs):
             entry = {"source": source, "files": files, "content": content_for(source, files),
                      "more": more, "next_art": next_art}
             try:
-                cache.save(source, files, pages=pages, more=more, next_art=next_art)
+                cache.save(source, files, pages=pages, more=more, next_art=next_art, used_at=time.time())
             except OSError:
                 pass
         else:

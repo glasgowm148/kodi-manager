@@ -19,7 +19,7 @@ try:
     from .version import VERSION
     from .auth import authorized
     from .validation import redact, mask_query_secrets
-    from .write_policy import WriteRefused
+    from .write_policy import RequestRefused, WriteRefused
     from .netconfig import host_allowed, is_loopback
     from .addon_index import AddonIndex
     from .kodi_api import translate
@@ -29,7 +29,7 @@ except ImportError:
     from version import VERSION
     from auth import authorized
     from validation import redact, mask_query_secrets
-    from write_policy import WriteRefused
+    from write_policy import RequestRefused, WriteRefused
     from netconfig import host_allowed, is_loopback
     from addon_index import AddonIndex
     from kodi_api import translate
@@ -76,6 +76,11 @@ def _private_client(ip):
         return bool(addr.is_private or addr.is_loopback)
     except ValueError:
         return False
+
+
+def _reject_constant(name):
+    # NaN and Infinity are not JSON: stored, they break the dashboard's JSON.parse.
+    raise ValueError("Request body contains %s, which is not valid JSON" % name)
 
 
 class ApiError(Exception):
@@ -167,7 +172,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         outcome = "refused" if code in REFUSALS else "failed"
         # After a write starts, only a refusal the code raised on purpose (before the handler
         # returned) proves nothing changed; OS errors mapped onto refusal codes leave it unknown.
-        deliberate = getattr(self, "_deliberate_refusal", False) and code != "bad_request"
+        # A RequestRefused marks even a bad_request as deliberate: it is raised before any write.
+        deliberate = getattr(self, "_deliberate_refusal", False) and (
+            code != "bad_request" or getattr(self, "_request_refused", False))
         if started and getattr(self, "_operation_write", False) and (code not in REFUSALS or not deliberate):
             outcome = "unknown"
         meta = self._finish_operation(code, outcome, getattr(self, "_operation_result", None))
@@ -302,6 +309,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._action_started = False
         self._handler_returned = False
         self._deliberate_refusal = False
+        self._request_refused = False
         self._operation_result = None
         # Outside clients and wrong Host names are turned away (unrecorded) before the
         # request target is even parsed, so they cannot add 400s to the history.
@@ -382,7 +390,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.err(403, exc.code, str(exc))
         except ValueError as exc:
             setting_id = getattr(exc, "setting_id", None)
-            self.err(400, value_code, str(exc), {"setting_id": setting_id} if setting_id else None)
+            status, code = 400, value_code
+            if isinstance(exc, RequestRefused) and not self._handler_returned:
+                self._deliberate_refusal = self._request_refused = True
+                status, code = exc.status, exc.code or value_code
+            self.err(status, code, str(exc), {"setting_id": setting_id} if setting_id else None)
         except (LookupError, FileNotFoundError) as exc:
             self.err(404, "not_found", exc.args[0] if exc.args and isinstance(exc.args[0], str) else "Not found")
         except Exception as exc:
@@ -450,7 +462,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 timer.cancel()
             if expired.is_set() or len(raw) != length:
                 raise ValueError("Request body is incomplete or timed out; no action performed")
-        data = json.loads(raw.decode("utf-8")) if length else {}
+        data = json.loads(raw.decode("utf-8"), parse_constant=_reject_constant) if length else {}
         if not isinstance(data, dict):
             raise ValueError("Expected a JSON object.")
         self._body = data

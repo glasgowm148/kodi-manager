@@ -32,7 +32,9 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(settings["enable_metadata"]["value"], "false")
         self.assertEqual(settings["username"]["label"], "User name")
         self.assertEqual(settings["max_items"]["value"], "50")
-        self.assertEqual(settings["view_mode"]["options"][1]["value"], "poster")
+        # A v1 enum is stored as its index (real TMDb Helper enums use numeric defaults).
+        self.assertEqual(settings["view_mode"]["options"][1], {"value": "1", "label": "poster"})
+        self.assertEqual(settings["view_mode"]["value"], "1")
 
     def test_mask_token_like_settings(self):
         parsed = parse_schema(os.path.join(SAMPLES, "tmdbhelper_settings.xml"), SAMPLES, os.path.join(SAMPLES, "settings.xml"))
@@ -97,6 +99,24 @@ class ParserTests(unittest.TestCase):
         self.assertTrue(settings["empty"]["is_default"])
         self.assertFalse(settings["missing"]["default_known"])
         self.assertIsNone(settings["missing"]["is_default"])
+
+    def test_v1_enum_values_are_indexes_or_entries_and_labelenum_stays_labels(self):
+        from validation import coerce_value
+        parsed = self.parse_inline(
+            '<settings><setting id="quality" type="enum" label="Quality" values="Auto|1080p|720p"/>'
+            '<setting id="q2" type="enum" values="Auto|1080p|720p" default="1"/>'
+            '<setting id="size" type="enum" values="Small|Large" entries="10|20" default="20"/>'
+            '<setting id="lang" type="labelenum" values="en|de" default="en"/></settings>',
+            '<settings><setting id="quality" value="2" /></settings>')
+        settings = flatten_settings(parsed)
+        self.assertEqual(settings["quality"]["options"], [{"value": "0", "label": "Auto"}, {"value": "1", "label": "1080p"}, {"value": "2", "label": "720p"}])
+        self.assertEqual(settings["q2"]["options"][1], {"value": "1", "label": "1080p"})
+        self.assertEqual(settings["size"]["options"], [{"value": "10", "label": "Small"}, {"value": "20", "label": "Large"}])
+        self.assertEqual(settings["lang"]["options"][1], {"value": "de", "label": "de"})
+        self.assertEqual(coerce_value(settings["quality"], "2"), "2")
+        self.assertEqual(coerce_value(settings["size"], "10"), "10")
+        with self.assertRaises(ValueError):
+            coerce_value(settings["quality"], "720p")
 
 
 if __name__ == "__main__":

@@ -57,6 +57,16 @@ test('number and time formats read naturally', () => {
   assert.equal(ui.parseStamp('nightly'), null);
 });
 
+test('a lone sparkline sample is drawn as a visible dot, not an invisible move-to', () => {
+  const one = ui.sparkline([1000], [512], {min:0});
+  assert.match(one, /<path class="spark-line spark-dot" d="M[\d.]+ [\d.]+h0"/);
+  assert.doesNotMatch(one, /d="M[\d.]+ [\d.]+"/, 'no bare move-to path');
+  const gaps = ui.sparkline([0, 900, 5000, 5900], [500, null, 400, 300], {min:0, maxGap:2700});
+  assert.equal((gaps.match(/spark-dot/g) || []).length, 1, 'the isolated first sample is a dot');
+  assert.equal((gaps.match(/class="spark-area"/g) || []).length, 1, 'the two-point segment keeps its area and line');
+  assert.match(fs.readFileSync(path.resolve(__dirname, '../web/styles.css'), 'utf8'), /\.spark-dot\{stroke-width:\d/);
+});
+
 test('sparklines are labelled images, escape their label and are empty without data', () => {
   const svg = ui.sparkline([1, 2, 3], [5, null, 7], {label:'Free <memory>'});
   assert.match(svg, /role="img"/);

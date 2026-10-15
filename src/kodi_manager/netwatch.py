@@ -77,6 +77,8 @@ class Watchdog:
             if should_stop():
                 return None
             results.append((name, self.probe(host)))
+        if should_stop():   # the service retired while the last probe was in flight
+            return None
         failed = [name for name, seconds in results if seconds is None]
         slow = [name for name, seconds in results if seconds is not None and seconds > 4]
         status = "error" if len(failed) * 2 > len(results) else "warning" if failed or slow else "ok"
@@ -114,6 +116,8 @@ class Watchdog:
         else:
             self.failures = 0
             self.next_check = now + self.CHECK_EVERY
+        if should_stop():   # no Kodi calls while Kodi tears the service down
+            return result
         memory = self.memory()
         with _LOCK:
             LAST["memory"] = memory
