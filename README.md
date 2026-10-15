@@ -98,6 +98,11 @@ debugging where applicable, finding its IP and enabling Kodi HTTP control.
 For Apple TV, use the separate tvOS instructions. If a menu differs,
 ask what I see. Wait for my reply before moving to the next TV step.
 Do not invent connection details or scan my network.
+Ask for the IP address on its own and wait for my answer. Only then ask
+about a required port in a separate reply. Never request the IP and port
+together, even as an optional extra. Ask about Kodi's HTTP port and any
+Wireless debugging pairing port in separate replies too. Reuse details
+I have already supplied.
 
 Once TV preparation is ready:
 1. Install and configure nvidia-MCP. Verify the actual MCP connection
