@@ -143,7 +143,8 @@ def stack_backup_addons(kodi, index):
 
 def make_baseline(kodi):
     return Baseline(translate("special://profile/addon_data/service.kodi.addonadmin/baseline.json"), kodi,
-                    addon_path=lambda addon_id: (kodi.get_addon_details(addon_id) or {}).get("path", ""))
+                    addon_path=lambda addon_id: (kodi.get_addon_details(addon_id) or {}).get("path", ""),
+                    guisettings=translate("special://profile/guisettings.xml"))
 
 
 def maintenance_checks(kodi):

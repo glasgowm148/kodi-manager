@@ -258,6 +258,12 @@ test('restore results expose undo backups for stack and single add-on restores',
   assert.equal(ui.undoTargets({restored:true}).length, 0);
   const summary = ui.restoreSummary({restored:['a','b'], skipped:['c'], restart_required:true}, ui.undoTargets({undo_backups:{a:'u1',b:'u2'}}));
   assert.match(summary, /2 add-ons restored · 1 skipped\. Undo backups: u1, u2\./);
+  const live = status => ui.restoreSummary({restored:true, live:{skin_settings:{status, failed:['a.b','c'], changed:2}}}, []);
+  assert.match(live('applied'), /applied to the running skin\./);
+  assert.match(live('partial'), /2 skin settings could not be applied to the running skin \(a\.b, c\)/);
+  assert.match(live('unsupported'), /cannot apply skin settings live/);
+  assert.doesNotMatch(live('not_active'), /skin/);
+  assert.match(ui.restoreSummary({restored:true, live:{error:'ValueError'}}, []), /could not be applied/);
 });
 
 test('cached rows show age, status and escaped sources', () => {

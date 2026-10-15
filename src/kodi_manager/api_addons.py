@@ -1,6 +1,8 @@
 """API handlers for add-ons and their settings: listing and search, one add-on's settings,
 backups, checkpoints, protected settings and restores.
 """
+import os
+
 try:
     from .http_base import ApiError, RequestHandler
     from .adapters import adapter_for
@@ -11,6 +13,7 @@ try:
     from .validation import coerce_setting
     from . import fenlight_db
     from .write_policy import RequestRefused, check_writable, read_only_reason
+    from .skin_settings import apply_live, parse_skin_settings
 except ImportError:
     from http_base import ApiError, RequestHandler
     from adapters import adapter_for
@@ -21,6 +24,7 @@ except ImportError:
     from validation import coerce_setting
     import fenlight_db
     from write_policy import RequestRefused, check_writable, read_only_reason
+    from skin_settings import apply_live, parse_skin_settings
 
 
 class AddonRoutes(RequestHandler):
@@ -164,10 +168,28 @@ class AddonRoutes(RequestHandler):
         self._require_idle_unless_forced("Stop playback before restoring a backup")
         should_stop = self._backup_should_stop()
         try:
-            return restore_stack_backup(self.state.index, backup_id, should_stop=should_stop)
+            return restore_stack_backup(self.state.index, backup_id, should_stop=should_stop,
+                                        after_restore=self._apply_active_skin)
         except BackupAborted as exc:
             # Raised while taking the undo snapshots, before any live folder was touched.
             raise self._backup_aborted(exc, should_stop, "restore's undo snapshot") from None
+
+    def _apply_active_skin(self, folders):
+        """After a restore: the active skin's settings live in Kodi's memory, and Kodi writes
+        them over settings.xml on its next save, so set them there from the snapshot too.
+        None when the active skin was not restored."""
+        skin = (self.state.kodi.get_active_skin() or {}).get("addon_id", "")
+        folder = folders.get(skin) if skin else None
+        if not folder:
+            return None
+        path = os.path.join(folder, "settings.xml")
+        try:
+            with open(path, encoding="utf-8") as handle:
+                wanted = parse_skin_settings(handle.read())
+        except FileNotFoundError:
+            wanted = {}   # a snapshot without settings.xml: the skin had only its defaults
+        result = apply_live(self.state.kodi, skin, wanted)
+        return {"skin_settings": dict(result, skin=skin)}
 
     # --- one add-on ----------------------------------------------------------------
 
@@ -271,7 +293,7 @@ class AddonRoutes(RequestHandler):
         self._require_idle_unless_forced("Stop playback before restoring a backup")
         should_stop = self._backup_should_stop()
         try:
-            return restore_backup(addon, backup_id, should_stop=should_stop)
+            return restore_backup(addon, backup_id, should_stop=should_stop, after_restore=self._apply_active_skin)
         except BackupAborted as exc:
             # Raised while taking the undo snapshot, before the live folder was touched.
             raise self._backup_aborted(exc, should_stop, "restore's undo snapshot") from None

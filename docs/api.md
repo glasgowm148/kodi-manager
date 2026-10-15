@@ -30,6 +30,13 @@ For service installation and profile tokens, use [setup](setup.md).
   re-applying protected settings answer `409` and cannot be forced; a checkpoint also stops, and is
   discarded, if playback starts while it copies. Add-on and stack restores answer `409`; resend the
   same body with `"force": true` to restore anyway.
+- **The active skin's settings are applied live.** Kodi keeps the running skin's settings in memory
+  and writes them over `addon_data/<skin>/settings.xml` on its next save, so a restore that only
+  replaced the file would be undone. When a restore includes the active skin, its settings are also
+  set through the `Skin.SetBool`/`Skin.SetString`/`Skin.Reset` builtins and read back:
+  `live: {skin_settings: {skin, status, changed, failed[]}}`, where `status` is `applied`, `partial`
+  (`failed` names the settings Kodi did not take), `not_active` or `unsupported` (Kodi before 20).
+  `live: {error, detail}` means the files were restored but the live step failed.
 - Bodies are JSON objects of at most 1 MB with a fixed `Content-Length` and no transfer encoding.
   The complete body must arrive within 20 seconds; incomplete or malformed bodies never reach
   the action handler, including actions with no body fields. Header receipt has a separate
@@ -130,12 +137,12 @@ dependent is never proof that uninstalling is safe. This API does not uninstall 
 | `PATCH /api/addons/ID/settings` | yes | `{"changes": [{"id": "SETTING", "value": "VALUE", "source": "settings.xml"}]}`; `source` may be `settings.db` (Fen Light) or `raw` | `{changed_count, backup_id, warnings[]}`. `403 addon_not_allowed` for add-ons outside the detected stack unless listed in **Also allow editing these add-ons**. |
 | `POST /api/addons/ID/backup` | yes | `{}` | Backup manifest: `{backup_id, addon_id, addon_name, addon_version, timestamp, files_copied, …}` |
 | `GET /api/addons/ID/backups` | – | – | `{backups[]}`: that add-on's manifests, newest first |
-| `POST /api/addons/ID/restore` | yes | `{"backup_id": "…", "force": false}` | `{restored: true, backup_id, undo_backup_id, restart_required}`. Restore `undo_backup_id` to undo. |
+| `POST /api/addons/ID/restore` | yes | `{"backup_id": "…", "force": false}` | `{restored: true, backup_id, undo_backup_id, restart_required, live?}`. Restore `undo_backup_id` to undo. `live` is present when the active skin was restored (see below). |
 | `POST /api/addons/ID/open-settings` | yes | `{}` | `{opened}`: opens the add-on's own settings dialog on the TV. Refused while playing. |
 | `POST /api/stack/backup` | yes | `{}` | Checkpoint manifest: `{backup_id, timestamp, included_folders[], skipped_folders[], …}` covering the skin, helpers and players |
 | `GET /api/stack/backups` | – | – | `{backups[]}`: checkpoint manifests |
 | `GET /api/backups/timeline` | – | – | `{items[], count}`: checkpoints and playback-setting backups, newest first, each with `kind`, `component_count`, `skipped_count` |
-| `POST /api/stack/restore` | yes | `{"backup_id": "…", "force": false}` | `{restored[], skipped[], undo_backups{ADDON_ID: BACKUP_ID}, restart_required}`. Restore each undo backup with `POST /api/addons/ID/restore` to undo. |
+| `POST /api/stack/restore` | yes | `{"backup_id": "…", "force": false}` | `{restored[], skipped[], undo_backups{ADDON_ID: BACKUP_ID}, restart_required, live?}`. Restore each undo backup with `POST /api/addons/ID/restore` to undo. `live` as for one add-on. |
 
 Checkpoint manifests made by 0.7.8 and later also carry `total_bytes`.
 
@@ -237,7 +244,7 @@ help with discovery and are not parental access control.
 | --- | --- | --- | --- |
 | `GET /api/baseline` | read | – | `{items[{key, kind, label, expected, current, ok, missing}], count, drifted}` |
 | `POST /api/baseline/capture` | write | `{"items": [{"kind": "addon_setting", "addon", "id", "label"?, "value"?} \| {"kind": "kodi_setting", "id", ...} \| {"kind": "addon_xml", "addon", "tag", ...}]}` | Protects each item at its current (or given) value: `{protected[], count}` |
-| `POST /api/baseline/apply` | write | `{"keys"?: [...]}` | Re-applies drifted items: `{applied[], failed[], restart_required}` |
+| `POST /api/baseline/apply` | write | `{"keys"?: [...]}` | Re-applies drifted items: `{applied[], failed[], restart_required, core_saved?}`. `core_saved` is present when a Kodi setting was re-applied: `true` once Kodi wrote guisettings.xml and every value was read back from it, `false` when it did not (the value then holds only until Kodi exits cleanly), `null` when the file could not be read. |
 | `POST /api/baseline/remove` | write | `{"keys": [...]}` | `{count}` |
 
 Health also lists **Protected settings**, **Trakt sign-in**, **TorBox subscription**, **Nightly

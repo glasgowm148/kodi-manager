@@ -805,11 +805,13 @@ def list_backups(addon_id=None, stack=False):
 
 
 @_with_backup_root
-def restore_backup(addon_info, backup_id, should_stop=None):
+def restore_backup(addon_info, backup_id, should_stop=None, after_restore=None):
     """Make an add-on's addon_data match one of its snapshots, after taking an undo snapshot.
 
     ``should_stop`` (optional) can stop the undo snapshot (BackupAborted), before the
     live folder is touched; once replacing has begun the restore runs to completion.
+    ``after_restore({addon id: snapshot folder})`` (optional) runs once the folder is
+    replaced, while the snapshot is still held; what it returns is the result's "live".
     """
     aid = addon_info["addon_id"]
     snapshot = _backup_path(aid, backup_id)
@@ -833,8 +835,23 @@ def restore_backup(addon_info, backup_id, should_stop=None):
         except BaseException as exc:
             _roll_back([(aid, dest, skip, undo)], exc)
             raise
-    return {"restored": True, "backup_id": backup_id,
-            "undo_backup_id": undo["backup_id"], "restart_required": True}
+        live = _after_restore(after_restore, {aid: src})
+    result = {"restored": True, "backup_id": backup_id,
+              "undo_backup_id": undo["backup_id"], "restart_required": True}
+    if live is not None:
+        result["live"] = live
+    return result
+
+
+def _after_restore(callback, folders):
+    """Run ``callback(folders)``; the restore has already succeeded, so its failure is reported,
+    not raised."""
+    if callback is None:
+        return None
+    try:
+        return callback(folders)
+    except Exception as exc:  # noqa: BLE001 - reported in the result
+        return {"error": type(exc).__name__, "detail": str(exc)[:200]}
 
 
 def _roll_back(done, error):
@@ -900,18 +917,19 @@ def delete_stack_backup(backup_id):
 
 
 @_with_backup_root
-def restore_stack_backup(index, backup_id, should_stop=None):
+def restore_stack_backup(index, backup_id, should_stop=None, after_restore=None):
     """Restore every component of a stack snapshot, after taking an undo snapshot of each.
 
     ``should_stop`` (optional) can stop the undo snapshots (BackupAborted), which are all
     taken before the first live folder is touched; replacing then runs to completion.
+    ``after_restore`` as for restore_backup, with every restored add-on.
     """
     root = _backup_path("_stack", backup_id)
     with _restoring(root):
-        return _restore_stack(index, backup_id, root, should_stop)
+        return _restore_stack(index, backup_id, root, should_stop, after_restore)
 
 
-def _restore_stack(index, backup_id, root, should_stop):
+def _restore_stack(index, backup_id, root, should_stop, after_restore=None):
     if not os.path.isdir(root):
         raise ValueError("Stack backup not found")
     manifest = _read_manifest(root, strict=True)
@@ -967,4 +985,8 @@ def _restore_stack(index, backup_id, root, should_stop):
     except BaseException as exc:
         _roll_back(done, exc)
         raise
-    return {"restored": restored, "skipped": skipped, "undo_backups": undo_backups, "restart_required": True}
+    result = {"restored": restored, "skipped": skipped, "undo_backups": undo_backups, "restart_required": True}
+    live = _after_restore(after_restore, {aid: src for aid, _addon, src, _dest, _skip, _expected in plan})
+    if live is not None:
+        result["live"] = live
+    return result

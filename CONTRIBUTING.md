@@ -28,7 +28,9 @@ python scripts/check_release.py dist/*.whl dist/*.tar.gz dist/service.kodi.addon
 Bump `src/kodi_manager/version.py` and `addon.xml` together (pyproject reads its version from
 `version.py`; the add-on build and `check_release.py` fail on a mismatch), add a changelog entry and
 document compatibility. Pushing a `v*` tag runs `.github/workflows/release.yml`, which checks the tag
-against `version.py`, rebuilds the ZIP to confirm identical bytes and publishes a prerelease.
+against `version.py`, rebuilds the ZIP to confirm identical bytes and publishes a prerelease. The
+build runs with a read-only token; a separate publish job, the only one allowed to write, runs no
+project code: it downloads the built files, checks them against `SHA256SUMS` and creates the release.
 Inspect release archives, verify deterministic ZIP bytes and publish `SHA256SUMS`. Keep releases marked
 prerelease until the documented live-install/recovery checks pass. Checksums detect changed bytes;
 they are not an independent publisher signature. Inspect GitHub CI results before announcing support.

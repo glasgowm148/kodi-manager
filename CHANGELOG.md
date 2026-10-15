@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.40 — 2026-10-15
+
+- Restoring the active skin (on its own or in a stack backup) also applies its settings to the running skin through Kodi's `Skin.SetBool`/`Skin.SetString`/`Skin.Reset` builtins and reads them back. Before, Kodi wrote the old in-memory values over the restored settings.xml at its next save or exit. The result reports `live.skin_settings` (applied, partial with the settings Kodi did not take, or unsupported before Kodi 20).
+- Re-applying protected Kodi settings makes Kodi write guisettings.xml straight away and reads the values back (`core_saved`). JSON-RPC changes them only in memory, so a crash or force-stop used to lose them.
+- Release workflow: a read-only build job uploads the files; a separate publish job, the only one with write access, runs no project code, checks the files against SHA256SUMS (download-artifact v8 also verifies the artifact digest) and creates the release.
+
 ## 0.7.39 — 2026-10-15
 
 - Backups check free storage first (2× the last comparable snapshot, at least 200 MB) and refuse or skip with a "low storage" status instead of filling the TV; the nightly prunes down before retrying; half-finished snapshot folders from old versions are cleaned up.

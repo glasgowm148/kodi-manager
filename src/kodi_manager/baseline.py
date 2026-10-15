@@ -5,7 +5,9 @@ compares it with the live values after start-up and every few hours, notifies
 when something drifted, and re-applies on request. Three kinds of item:
 
 * ``addon_setting`` – an add-on setting (``addon``, ``id``, ``value``)
-* ``kodi_setting``  – a Kodi setting via JSON-RPC (``id``, ``value``)
+* ``kodi_setting``  – a Kodi setting via JSON-RPC (``id``, ``value``); JSON-RPC changes it
+  only in memory, so after re-applying one Kodi is asked to write guisettings.xml and the
+  file is read back (``core_saved``)
 * ``addon_xml``     – a simple element in an installed add-on's addon.xml,
   e.g. POV's ``reuselanguageinvoker`` (``addon``, ``tag``, ``value``); takes
   effect after Kodi restarts.
@@ -14,13 +16,16 @@ import json
 import math
 import os
 import re
+import xml.etree.ElementTree as ET
 
 try:
     from .fsutil import atomic_write_json, atomic_write_text, interprocess_lock, path_lock
     from .write_policy import RequestRefused
+    from .skin_settings import save_core_settings
 except ImportError:
     from fsutil import atomic_write_json, atomic_write_text, interprocess_lock, path_lock
     from write_policy import RequestRefused
+    from skin_settings import save_core_settings
 
 KINDS = ("addon_setting", "kodi_setting", "addon_xml")
 _ID = re.compile(r"^[A-Za-z0-9._-]{1,120}$")
@@ -95,12 +100,20 @@ def check_value(value):
 def _same(expected, current):
     if isinstance(expected, bool) or isinstance(current, bool):
         return str(expected).lower() == str(current).lower()
-    return str(expected) == str(current)
+    if str(expected) == str(current):
+        return True
+    if isinstance(expected, (int, float)):
+        try:   # guisettings.xml spells numbers its own way ("2.000000")
+            return float(expected) == float(str(current))
+        except ValueError:
+            return False
+    return False
 
 
 class Baseline:
-    def __init__(self, path, kodi, addon_path=lambda addon_id: ""):
+    def __init__(self, path, kodi, addon_path=lambda addon_id: "", guisettings=""):
         self.path, self.kodi, self.addon_path = path, kodi, addon_path
+        self.guisettings = guisettings
 
     # --- storage ---------------------------------------------------------------
     def items(self):
@@ -205,7 +218,7 @@ class Baseline:
         """Re-apply drifted items. ``check(item)`` (optional) raises for items the caller may
         not write, e.g. add-ons outside the write policy; those are reported as failed."""
         wanted = set(keys or [])
-        applied, failed, restart = [], [], False
+        applied, failed, restart, core = [], [], False, []
         # Held across the whole pass so a capture or removal from another thread or Kodi
         # interpreter cannot interleave with it.
         with path_lock(self.path), interprocess_lock(self.path):
@@ -221,9 +234,32 @@ class Baseline:
                         continue
                     restart = self._write(item) or restart
                     applied.append(key)
+                    if item["kind"] == "kodi_setting":
+                        core.append(item)
                 except Exception as exc:
                     failed.append({"key": key, "error": str(exc)[:200]})
-        return {"applied": applied, "failed": failed, "restart_required": restart}
+        result = {"applied": applied, "failed": failed, "restart_required": restart}
+        if core:
+            result["core_saved"] = self._save_core(core)
+        return result
+
+    def _save_core(self, items):
+        """Ask Kodi to write guisettings.xml, then read the re-applied values back from it.
+
+        True when every value is in the file, False when Kodi could not be asked or a value is
+        missing (it then holds only until Kodi exits cleanly), None when the file is unreadable.
+        """
+        if not hasattr(self.kodi, "execute_builtin") or not save_core_settings(self.kodi):
+            return False
+        if not self.guisettings:
+            return None
+        try:
+            with open(self.guisettings, encoding="utf-8") as handle:
+                root = ET.fromstring(handle.read())
+        except (OSError, ET.ParseError):
+            return None
+        stored = {elem.get("id"): elem.text or "" for elem in root.iter("setting")}
+        return all(item["id"] in stored and _same(item["value"], stored[item["id"]]) for item in items)
 
     def capture(self, items, check=None):
         """Protect the given items at their current live values (replaces items with the same key).

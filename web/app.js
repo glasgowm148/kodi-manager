@@ -832,7 +832,8 @@ function bindHealthActions(){
     const r = await api(button.dataset.healthAction, {});
     const applied = (r && r.applied) ? r.applied.length : 0;
     const failed = (r && r.failed) ? r.failed.length : 0;
-    toast(`${applied} setting${applied === 1 ? "" : "s"} re-applied${failed ? `, ${failed} failed` : ""}.${r && r.restart_required ? " Restart Kodi for add-on changes to take effect." : ""}`, failed ? "warn" : "ok");
+    const unsaved = r && r.core_saved === false;
+    toast(`${applied} setting${applied === 1 ? "" : "s"} re-applied${failed ? `, ${failed} failed` : ""}.${r && r.restart_required ? " Restart Kodi for add-on changes to take effect." : ""}${unsaved ? " Kodi did not save its settings file, so its own settings hold only until Kodi next exits cleanly." : ""}`, failed || unsaved ? "warn" : "ok");
     if (here()) await healthView();
   }));
 }
@@ -1010,17 +1011,27 @@ async function postWithForce(path, body, action="Restore"){
     return api(path, {...body, force:true});
   }
 }
+function skinLiveSummary(live){
+  if (live && live.error) return " The skin’s settings could not be applied to the running skin; restore again before restarting Kodi.";
+  const skin = live && live.skin_settings;
+  if (!skin) return "";
+  if (skin.status === "applied") return " The skin’s settings are applied to the running skin.";
+  if (skin.status === "partial") return ` ${skin.failed.length} skin setting${skin.failed.length === 1 ? "" : "s"} could not be applied to the running skin (${skin.failed.slice(0, 3).join(", ")}); Kodi may write the old value back when it exits.`;
+  if (skin.status === "unsupported") return " This Kodi cannot apply skin settings live; Kodi may write the old values back when it exits.";
+  return "";
+}
 function restoreSummary(result, undo){
   const restored = Array.isArray(result?.restored) ? `${result.restored.length} add-on${result.restored.length === 1 ? "" : "s"} restored` : "Restored";
   const skipped = (result?.skipped || []).length ? ` · ${result.skipped.length} skipped` : "";
   const ids = undo.map(u => u.backupId).join(", ");
-  return `${restored}${skipped}.${ids ? ` Undo backup${undo.length === 1 ? "" : "s"}: ${ids}.` : ""}${result?.restart_required ? " If an add-on doesn’t pick up the change, restart Kodi." : ""}`;
+  return `${restored}${skipped}.${ids ? ` Undo backup${undo.length === 1 ? "" : "s"}: ${ids}.` : ""}${skinLiveSummary(result?.live)}${result?.restart_required ? " If an add-on doesn’t pick up the change, restart Kodi." : ""}`;
 }
 function announceRestore(result, addonId){
   if (!result) return;
   const undo = undoTargets(result, addonId);
   const shownAt = Date.now();
-  toast(restoreSummary(result, undo), "ok", undo.length ? {actions:[{label:"Undo restore", run:() => undoRestore(undo, {confirmFirst:Date.now() - shownAt > QUICK_UNDO_MS})}]} : {});
+  const skinStatus = result?.live?.skin_settings?.status;
+  toast(restoreSummary(result, undo), result?.live?.error || skinStatus === "partial" || skinStatus === "unsupported" ? "warn" : "ok", undo.length ? {actions:[{label:"Undo restore", run:() => undoRestore(undo, {confirmFirst:Date.now() - shownAt > QUICK_UNDO_MS})}]} : {});
 }
 async function undoRestore(targets, {confirmFirst=false}={}){
   if (confirmFirst && !(await confirmDialog({title:"Undo this restore?", message:"Settings go back to how they were just before the restore.", detail:targets.map(t => t.backupId).join(", "), confirmLabel:"Undo restore"}))) return;

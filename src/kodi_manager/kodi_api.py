@@ -201,6 +201,13 @@ class KodiAPI:
     def execute_addon(self, addon_id, params=None):
         return self.jsonrpc("Addons.ExecuteAddon", {"addonid": addon_id, "params": params or {}})
 
+    def execute_builtin(self, command):
+        """Run a Kodi builtin and wait for it to finish; False outside Kodi."""
+        if not xbmc:
+            return False
+        xbmc.executebuiltin(command, True)
+        return True
+
     def open_skin_settings(self):
         if xbmc:
             xbmc.executebuiltin("ActivateWindow(skinsettings)")
