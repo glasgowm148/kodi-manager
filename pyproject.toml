@@ -16,6 +16,8 @@ classifiers = ["Development Status :: 3 - Alpha", "Programming Language :: Pytho
 dev = ["pytest>=8,<10", "build>=1.2,<2", "ruff>=0.12,<1"]
 
 [project.urls]
+Homepage = "https://glasgowm148.github.io/kodi-manager/"
+Documentation = "https://github.com/glasgowm148/kodi-manager/blob/main/docs/README.md"
 Repository = "https://github.com/glasgowm148/kodi-manager"
 Issues = "https://github.com/glasgowm148/kodi-manager/issues"
 
@@ -30,7 +32,7 @@ packages = ["src/kodi_manager"]
 "web" = "kodi_manager/web"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "web", "addon", "repository", "tests", "scripts", "docs", ".github", "typings", ".gitattributes", "pyproject.toml", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "SECURITY.md", "AGENTS.md"]
+include = ["src", "web", "addon", "repository", "website", "tests", "scripts", "docs", ".github", "typings", ".gitattributes", "pyproject.toml", "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "SECURITY.md", "AGENTS.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

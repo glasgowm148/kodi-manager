@@ -6,6 +6,8 @@ Users install `repository.kodi-manager.zip` once, then install Kodi Manager from
 
 ## What is published
 
+- The public landing page, practical guides, sitemap and static styles in `website/`.
+- Explicit synthetic documentation images selected by the builder, without private output files.
 - The repository installer, also listed in `addons.xml` so Kodi can update it.
 - The newest published service ZIP, including releases marked prerelease, with its metadata and artwork.
 - Older checksummed release ZIPs, so devices with a cached index can still download their selected version.
@@ -44,6 +46,12 @@ python scripts/build_repository.py \
 The output directory must be empty. Run `python -m pytest -q tests/test_repository.py`
 for layout, checksum refusal, version selection and deterministic installer checks.
 CI also builds the repository from the checked release artifacts.
+
+Run `python scripts/check_website.py dist/repository` on the complete artifact to check local
+links (including the installer), canonical URLs, the sitemap, descriptions and structured data.
+The source URL, repository ZIP, add-on index and package URLs remain the same when website
+content changes. Do not add client-side routing, authentication or redirects to those paths.
+See [website discovery and measurement](discovery.md) for editorial and indexing guidance.
 
 ## Recovery and checks
 

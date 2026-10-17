@@ -107,19 +107,15 @@ def build(addon, checksums, output, archives=()):
     (output / "addons.xml").write_bytes(data)
     (output / "addons.xml.sha256").write_text(hashlib.sha256(data).hexdigest() + "\n")
     (output / ".nojekyll").touch()
-    (output / "index.html").write_text("""<!doctype html>
-<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>Kodi Manager repository</title>
-<h1>Kodi Manager repository (preview)</h1>
-<p>In Kodi: Settings → File manager → Add source. Enter this page's address.</p>
-<p>Then: Add-ons → Install from zip file → select your source → select the ZIP below.</p>
-<ul><li><a href="repository.kodi-manager.zip">repository.kodi-manager.zip</a></li></ul>
-<p>Wait for the installed notification. Choose Install from repository →
-Kodi Manager Repository (preview) → Services → Kodi Manager → Install.</p>
-<p>Preview software. Updates follow your Kodi update settings.</p>
-<p><a href="https://github.com/glasgowm148/kodi-manager/blob/main/docs/setup.md">Full setup guide</a></p>
-</html>
-""", encoding="utf-8")
+    # Publish only the explicit public website and synthetic documentation images.
+    # Keep the Kodi installer/index/package paths and verified release bytes intact.
+    shutil.copytree(ROOT / "website", output, dirs_exist_ok=True)
+    for name, source in {
+        "logo.svg": "docs/images/logo.svg",
+        "dashboard.png": "docs/images/dashboard.png",
+        "settings-demo-poster.png": "docs/media/settings-demo-poster.png",
+    }.items():
+        shutil.copyfile(ROOT / source, output / "assets" / name)
     return output
 
 

@@ -35,3 +35,11 @@ Apple TV support is experimental: read [tvOS setup and recovery limits](apple-tv
 
 For advanced installation, see [agent/manual ZIP setup](setup-agent.md).
 Repository maintainers: [publishing and recovery](repository.md).
+
+## Public practical guides
+
+- [Which Kodi tool fits my task?](https://glasgowm148.github.io/kodi-manager/kodi-manager-vs-kore-yatse-chorus/)
+- [Edit add-on settings from a browser](https://glasgowm148.github.io/kodi-manager/edit-kodi-addon-settings-browser/)
+- [Back up and restore add-on settings](https://glasgowm148.github.io/kodi-manager/backup-restore-kodi-settings/)
+
+Maintainers: [website publishing and discovery](discovery.md).

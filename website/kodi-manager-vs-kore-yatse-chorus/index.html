@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kodi Manager vs Kore, Yatse and Chorus2: which Kodi tool do you need?</title>
+<meta name="description" content="Compare Kodi Manager, Kore, Yatse and Chorus2 by task: playback remote, browser library, add-on settings, diagnostics and configuration recovery.">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="https://glasgowm148.github.io/kodi-manager/kodi-manager-vs-kore-yatse-chorus/">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Kodi Manager vs Kore, Yatse and Chorus2: which Kodi tool do you need?">
+<meta property="og:description" content="Compare Kodi Manager, Kore, Yatse and Chorus2 by task: playback remote, browser library, add-on settings, diagnostics and configuration recovery.">
+<meta property="og:url" content="https://glasgowm148.github.io/kodi-manager/kodi-manager-vs-kore-yatse-chorus/">
+<meta property="og:image" content="https://glasgowm148.github.io/kodi-manager/assets/dashboard.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "name": "Kodi Manager vs Kore, Yatse and Chorus2: which Kodi tool do you need?", "description": "Compare Kodi Manager, Kore, Yatse and Chorus2 by task: playback remote, browser library, add-on settings, diagnostics and configuration recovery.", "url": "https://glasgowm148.github.io/kodi-manager/kodi-manager-vs-kore-yatse-chorus/", "headline": "Kodi Manager vs Kore, Yatse and Chorus2: which Kodi tool do you need?", "datePublished": "2026-10-17", "dateModified": "2026-10-17", "author": {"@type": "Person", "name": "glasgowm148", "url": "https://github.com/glasgowm148"}, "isPartOf": {"@type": "WebSite", "name": "Kodi Manager", "url": "https://glasgowm148.github.io/kodi-manager/"}}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header><div class="shell"><nav aria-label="Main navigation"><a class="brand" href="../"><img src="../assets/logo.svg" alt="" width="38" height="38">Kodi Manager</a><div class="links"><a href="../#guides">Guides</a><a href="https://github.com/glasgowm148/kodi-manager/blob/main/docs/README.md">Documentation</a><a href="https://github.com/glasgowm148/kodi-manager">GitHub</a></div></nav></div></header>
+<main id="main" class="shell">
+<article class="article"><p class="breadcrumb"><a href="../">Kodi Manager</a> / Guides</p><p class="eyebrow">Practical guide</p><h1>Kodi Manager vs Kore, Yatse and Chorus2: which Kodi tool do you need?</h1><p class="meta">By glasgowm148, project maintainer · Reviewed <time datetime="2026-10-17">17 October 2026</time></p>
+<p class="lead">Choose Kore or Yatse for an Android playback remote, Chorus2 for Kodi's browser media interface, and Kodi Manager for add-on settings, diagnostics and configuration recovery.</p>
+<p>These tools can complement one another. This comparison is written by the Kodi Manager maintainer, based on the projects' own documentation. It is a scope comparison, not a performance benchmark.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Details table; scroll horizontally on small screens"><table><thead><tr><th scope="col">Tool</th><th scope="col">Start here when you want…</th><th scope="col">Where it runs</th></tr></thead><tbody>
+<tr><th scope="row"><a href="https://kodi.wiki/view/Kore">Kore</a></th><td>An official remote, library browsing, playlist control, subtitles and audio-stream selection.</td><td>Android phone or tablet.</td></tr>
+<tr><th scope="row"><a href="https://www.yatse.tv/">Yatse</a></th><td>An Android remote with voice commands and optional Pro streaming, casting and offline media features.</td><td>Android phone or tablet; some features require its paid unlocker.</td></tr>
+<tr><th scope="row"><a href="https://github.com/xbmc/chorus2">Chorus2</a></th><td>Music, movie and TV-library browsing in a browser, playback control and many core Kodi settings.</td><td>Kodi's web interface, enabled through Kodi's HTTP-control settings.</td></tr>
+<tr><th scope="row">Kodi Manager</th><td>Searchable supported add-on settings, dependency information, playback-routing inspection and configuration checkpoints with restore/undo.</td><td>A Kodi service with a separate browser dashboard; free MIT-licensed preview.</td></tr>
+</tbody></table></div>
+<h2>“I just want to pause a film or choose subtitles”</h2><p>Start with a playback remote. Kore is Team Kodi's Android remote; Yatse adds its own remote and media features. Check each project's current feature list before choosing. Installing a maintenance service adds little value if navigation is your only goal.</p>
+<h2>“I want to use Kodi from a web browser”</h2><p>First decide what you want to do in the browser. Chorus2 is the natural starting point for media-library browsing and playback. It also exposes many core Kodi settings, so browser settings access alone is not unique to Kodi Manager.</p>
+<p>Choose Kodi Manager when the question is about an <em>add-on's</em> supported settings, the playback pipeline, diagnostic history or restoring a configuration checkpoint. It uses its own service address and token. Enabling Kodi's usual web interface does not install or authenticate Kodi Manager.</p>
+<h2>“I changed an add-on setting and need to undo it”</h2><p>Kodi Manager keeps configuration backups for supported edits. Its dashboard has add-on backups, stack checkpoints and undo backups created before restores. <a href="../backup-restore-kodi-settings/">Read the recovery workflow and limits</a> before relying on it: these are configuration copies, not an Android-device image or cloud-history backup.</p>
+<h2>“Can an AI assistant help maintain the TV?”</h2><p>The optional <a href="https://glasgowm148.github.io/nvidia-MCP/">nvidia-MCP server</a> exposes scoped tools to a compatible assistant on your computer. Neither a remote app nor a browser dashboard alone provides that local MCP connection. An ordinary browser chat cannot start the local server.</p>
+<h2>Check fit before installing</h2><p>Kodi Manager is preview software targeting Kodi 19+; optional cached rows need Kodi 20+. Live evidence is limited to one customized Shield. General diagnostics are separate from the home-layout editor, whose write support is restricted to reviewed Bingie / Skin Shortcuts source versions and hashes.</p>
+<p><a href="../#install">Install the dashboard</a> or <a href="../edit-kodi-addon-settings-browser/">walk through a supported settings change</a>.</p>
+<aside class="sources" aria-label="Sources"><h2>Sources and further reading</h2><ul><li><a href="https://kodi.wiki/view/Kore">Kore — official Kodi Wiki</a></li><li><a href="https://www.yatse.tv/">Yatse — developer feature and licensing overview</a></li><li><a href="https://github.com/xbmc/chorus2">Chorus2 — Team Kodi source and web-interface guide</a></li><li><a href="https://github.com/glasgowm148/kodi-manager/blob/main/docs/compatibility.md">Kodi Manager — compatibility and validation</a></li></ul></aside><div class="notice"><a href="../#guides">More Kodi Manager guides</a> · <a href="https://github.com/glasgowm148/kodi-manager/issues/new/choose">Report an issue with redacted details</a></div></article></main>
+<footer><div class="shell"><p><a href="https://github.com/glasgowm148/kodi-manager">Source &amp; releases</a><a href="https://github.com/glasgowm148/kodi-manager/blob/main/docs/compatibility.md">Compatibility</a><a href="https://github.com/glasgowm148/kodi-manager/blob/main/SECURITY.md">Security</a><a href="../privacy/">Site privacy</a><a href="../sitemap.xml">Sitemap</a></p><p>Maintained by <a href="https://github.com/glasgowm148">glasgowm148</a>. Independent project; not affiliated with NVIDIA, the Kodi Foundation or the other projects mentioned. Free MIT-licensed preview software.</p></div></footer>
+</body>
+</html>

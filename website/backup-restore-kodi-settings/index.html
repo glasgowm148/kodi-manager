@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to back up and restore Kodi add-on settings</title>
+<meta name="description" content="Use Kodi Manager configuration checkpoints, add-on backups and undo restores. Learn profile scope, retention and what is excluded from a Kodi settings backup.">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="https://glasgowm148.github.io/kodi-manager/backup-restore-kodi-settings/">
+<meta property="og:type" content="article">
+<meta property="og:title" content="How to back up and restore Kodi add-on settings">
+<meta property="og:description" content="Use Kodi Manager configuration checkpoints, add-on backups and undo restores. Learn profile scope, retention and what is excluded from a Kodi settings backup.">
+<meta property="og:url" content="https://glasgowm148.github.io/kodi-manager/backup-restore-kodi-settings/">
+<meta property="og:image" content="https://glasgowm148.github.io/kodi-manager/assets/dashboard.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/site.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "name": "How to back up and restore Kodi add-on settings", "description": "Use Kodi Manager configuration checkpoints, add-on backups and undo restores. Learn profile scope, retention and what is excluded from a Kodi settings backup.", "url": "https://glasgowm148.github.io/kodi-manager/backup-restore-kodi-settings/", "headline": "How to back up and restore Kodi add-on settings", "datePublished": "2026-10-17", "dateModified": "2026-10-17", "author": {"@type": "Person", "name": "glasgowm148", "url": "https://github.com/glasgowm148"}, "isPartOf": {"@type": "WebSite", "name": "Kodi Manager", "url": "https://glasgowm148.github.io/kodi-manager/"}}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header><div class="shell"><nav aria-label="Main navigation"><a class="brand" href="../"><img src="../assets/logo.svg" alt="" width="38" height="38">Kodi Manager</a><div class="links"><a href="../#guides">Guides</a><a href="https://github.com/glasgowm148/kodi-manager/blob/main/docs/README.md">Documentation</a><a href="https://github.com/glasgowm148/kodi-manager">GitHub</a></div></nav></div></header>
+<main id="main" class="shell">
+<article class="article"><p class="breadcrumb"><a href="../">Kodi Manager</a> / Guides</p><p class="eyebrow">Practical guide</p><h1>How to back up and restore Kodi add-on settings</h1><p class="meta">By glasgowm148, project maintainer · Reviewed <time datetime="2026-10-17">17 October 2026</time></p>
+<p class="lead">Kodi Manager can back up supported add-on configuration and save the skin, helpers and players together as a checkpoint. Restores keep undo backups, but this is not a full Kodi or Android-device image.</p>
+<p>Use this workflow before experimenting with supported settings or restoring an earlier working configuration. Keep an independent private copy before replacing a customized installation.</p>
+<h2>Choose the backup that matches the change</h2><div class="table-wrap" tabindex="0" role="region" aria-label="Details table; scroll horizontally on small screens"><table><thead><tr><th scope="col">Backup</th><th scope="col">Use it for</th><th scope="col">Scope</th></tr></thead><tbody>
+<tr><th scope="row">Add-on backup</th><td>A supported add-on settings change.</td><td>That add-on's configuration folder in the active Kodi profile.</td></tr>
+<tr><th scope="row">Configuration checkpoint</th><td>Saving the skin, helpers and players together.</td><td>The configuration components recorded in its manifest.</td></tr>
+<tr><th scope="row">Independent private copy</th><td>Protecting important configuration before replacing a customized installation.</td><td>The files you explicitly copy and verify; plan separately for device/app recovery.</td></tr>
+</tbody></table></div>
+<h2>Create a checkpoint</h2><ol><li><a href="../#install">Install and connect Kodi Manager</a>, then confirm the active Kodi profile.</li><li>When viewing has finished, enable writes and open <strong>Backups → Create checkpoint</strong>.</li><li>Confirm the checkpoint appears and check its components. Keep credentials and backup files private.</li></ol>
+<p>Supported edits also make backups before writing. An idle nightly checkpoint can run after 03:00. If playback starts, Kodi quits or the profile changes during the copy, that partial checkpoint is deleted and retried later. A schedule is not a substitute for checking a backup before an important change.</p>
+<h2>Restore, verify and undo</h2><ol><li>Finish viewing and confirm the intended profile. Open <strong>Backups → Add-on backups</strong>, or select the checkpoint you need.</li><li>Inspect its contents and date. Enable writes before restoring.</li><li>Restore the backup. The current configuration is backed up first; the result notice provides <strong>Undo restore</strong>.</li><li>Check the relevant add-on and actual behavior. If it has not reloaded its settings, restart Kodi after viewing has finished.</li><li>If needed, use the recorded undo backups to restore the configuration that existed immediately before the restore.</li></ol>
+<p>A successful dashboard request proves the operation completed, not that every add-on has reloaded. Restoring makes a folder match the backup: newer files are removed from it and retained in the undo copy. Do not repeat a restore blindly after an uncertain result.</p>
+<h2>Where backups live and how long they stay</h2><p>Backups are profile-local under <code>special://profile/addon_data/service.kodi.addonadmin/backups</code>, with per-add-on folders and <code>_stack</code> checkpoints. They may contain tokens or passwords. The default retention is the newest 20 backups per add-on and the checkpoint folder separately; older entries are pruned when a new backup is made.</p>
+<h2>What this cannot recover</h2><p>Configuration recovery does not downgrade Kodi, restore Android private app data, migrate cloud history or provide a filesystem-wide transaction. Playback-setting backups marked <code>kind: pipeline</code> need the manual file-restoration workflow in the recovery documentation. Restoring Manager's own folder preserves its current access settings and device identity.</p>
+<p>On experimental Apple TV support, tvOS can purge non-XML backup manifests and directories. Keep independent private copies and read the platform-specific recovery limits. Live validation remains limited to one customized Shield; the public ZIP and other devices still need installation checks.</p>
+<aside class="sources" aria-label="Sources"><h2>Sources and further reading</h2><ul><li><a href="https://github.com/glasgowm148/kodi-manager/blob/main/docs/recovery.md">Kodi Manager — configuration recovery, failure handling and retention</a></li><li><a href="https://github.com/glasgowm148/kodi-manager/blob/main/docs/apple-tv.md#storage-and-recovery">Kodi Manager — Apple TV storage and recovery limits</a></li><li><a href="https://github.com/glasgowm148/nvidia-MCP/blob/main/docs/apk-upgrades.md">nvidia-MCP — separate APK upgrade and recovery workflow</a></li></ul></aside><div class="notice"><a href="../#guides">More Kodi Manager guides</a> · <a href="https://github.com/glasgowm148/kodi-manager/issues/new/choose">Report an issue with redacted details</a></div></article></main>
+<footer><div class="shell"><p><a href="https://github.com/glasgowm148/kodi-manager">Source &amp; releases</a><a href="https://github.com/glasgowm148/kodi-manager/blob/main/docs/compatibility.md">Compatibility</a><a href="https://github.com/glasgowm148/kodi-manager/blob/main/SECURITY.md">Security</a><a href="../privacy/">Site privacy</a><a href="../sitemap.xml">Sitemap</a></p><p>Maintained by <a href="https://github.com/glasgowm148">glasgowm148</a>. Independent project; not affiliated with NVIDIA, the Kodi Foundation or the other projects mentioned. Free MIT-licensed preview software.</p></div></footer>
+</body>
+</html>

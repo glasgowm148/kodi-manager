@@ -9,6 +9,8 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c4b5fd?style=flat-square" alt="MIT license"></a>
 </p>
 
+<p align="center"><a href="https://glasgowm148.github.io/kodi-manager/"><strong>Website &amp; practical guides</strong></a></p>
+
 <p align="center">
   <a href="#what-you-can-do">Features</a> ·
   <a href="#quick-start">Quick start</a> ·
@@ -167,6 +169,12 @@ The dependency-free Python 3.9+ library exposes `ManagerClient`, `parse_schema` 
 `flatten_settings`. See the [library guide](docs/library.md) for installation and examples, the
 [HTTP API](docs/api.md) for endpoints, and [Contributing](CONTRIBUTING.md) for tests and release checks.
 Installing the library alone does not install the Kodi service.
+
+## Practical guides
+
+- [Which Kodi tool fits my task?](https://glasgowm148.github.io/kodi-manager/kodi-manager-vs-kore-yatse-chorus/)
+- [Edit add-on settings from a browser](https://glasgowm148.github.io/kodi-manager/edit-kodi-addon-settings-browser/)
+- [Back up and restore add-on settings](https://glasgowm148.github.io/kodi-manager/backup-restore-kodi-settings/)
 
 ## Documentation
 

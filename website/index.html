@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kodi Manager — manage Kodi add-on settings from your browser</title>
+<meta name="description" content="Free, open-source Kodi maintenance dashboard: search add-on settings, inspect playback routing and restore configuration backups from your browser.">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="https://glasgowm148.github.io/kodi-manager/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Kodi Manager — manage Kodi add-on settings from your browser">
+<meta property="og:description" content="Free, open-source Kodi maintenance dashboard: search add-on settings, inspect playback routing and restore configuration backups from your browser.">
+<meta property="og:url" content="https://glasgowm148.github.io/kodi-manager/">
+<meta property="og:image" content="https://glasgowm148.github.io/kodi-manager/assets/dashboard.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Kodi Manager", "description": "Free, open-source Kodi maintenance dashboard: search add-on settings, inspect playback routing and restore configuration backups from your browser.", "url": "https://glasgowm148.github.io/kodi-manager/", "applicationCategory": "UtilitiesApplication", "operatingSystem": "Kodi 19+", "license": "https://github.com/glasgowm148/kodi-manager/blob/main/LICENSE", "isAccessibleForFree": true, "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "sameAs": "https://github.com/glasgowm148/kodi-manager"}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header><div class="shell"><nav aria-label="Main navigation"><a class="brand" href="./"><img src="assets/logo.svg" alt="" width="38" height="38">Kodi Manager</a><div class="links"><a href="#guides">Guides</a><a href="https://github.com/glasgowm148/kodi-manager/blob/main/docs/README.md">Documentation</a><a href="https://github.com/glasgowm148/kodi-manager">GitHub</a></div></nav></div></header>
+<main id="main" class="shell">
+
+<section class="hero"><p class="eyebrow">Free · Open source · Preview</p><h1>Understand your Kodi setup.<br>From your browser.</h1>
+<p class="lead">Search add-on settings, trace playback problems and restore configuration backups on your phone or computer.</p>
+<div class="actions"><a class="button" href="#install">Install Kodi Manager</a><a class="button secondary" href="https://github.com/glasgowm148/kodi-manager">View source on GitHub</a></div>
+<p>Kodi Manager runs inside Kodi. Its dashboard works on your home network; an AI assistant is optional. The project is free under the MIT license.</p>
+<div class="notice">Preview software targeting Kodi 19+. Live evidence comes from one customized NVIDIA Shield. Other devices and the current public ZIP still need live installation validation. <a href="https://github.com/glasgowm148/kodi-manager/blob/main/docs/compatibility.md">Read compatibility and evidence</a>.</div></section>
+<figure><img src="assets/dashboard.png" alt="Kodi Manager dashboard with current issues, device status and maintenance tasks"><figcaption>The real dashboard with synthetic demo data. No personal accounts or viewing history.</figcaption></figure>
+<section><h2>Find the setting. Understand the change.</h2><div class="grid">
+<article class="card"><h3>Settings you can find</h3><p>Search supported add-on settings, inspect saved values and defaults, and edit permitted settings with backups.</p></article>
+<article class="card"><h3>Playback you can trace</h3><p>Inspect the path from skin and metadata helper to the selected player, alongside connection checks and masked diagnostic history.</p></article>
+<article class="card"><h3>Changes you can review</h3><p>Create configuration checkpoints and restore with undo backups. Optional home-layout edits require reviewed Bingie and Skin Shortcuts sources.</p></article></div>
+<p>Writes start off. Cached home-screen rows are optional and need Kodi 20+. General inspection works across skins; editing depends on supported add-ons and access settings.</p></section>
+<section id="install"><h2>Install using the TV remote</h2>
+<p>Add this source in <strong>Kodi → Settings → File manager → Add source</strong>:</p>
+<pre><code>https://glasgowm148.github.io/kodi-manager/</code></pre>
+<ol><li>In Kodi, enable <strong>Settings → System → Add-ons → Unknown sources</strong>.</li>
+<li>Open <strong>Add-ons → Install from zip file</strong>, choose that source and select <a href="repository.kodi-manager.zip">repository.kodi-manager.zip</a>.</li>
+<li>Choose <strong>Install from repository → Kodi Manager Repository (preview) → Services → Kodi Manager</strong>.</li>
+<li>In <strong>Configure → Dashboard</strong>, enable <strong>Allow LAN access</strong> and leave <strong>Enable writes</strong> off. Open Kodi Manager's tile under Video add-ons to display the dashboard address and private token.</li></ol>
+<p>Keep Kodi running. Open the displayed address on your phone or computer and sign in with that token. Updates follow Kodi's update settings. <a href="https://github.com/glasgowm148/kodi-manager/blob/main/docs/setup.md">Full menu instructions and connection help</a>.</p>
+<p>The dashboard uses plain HTTP. Use a trusted LAN and keep the token private. This installs the public service, without household configurations or third-party patches.</p></section>
+<section id="guides"><h2>Start with the question you have</h2><div class="grid"><article class="card"><h3><a href="kodi-manager-vs-kore-yatse-chorus/">Kodi Manager vs Kore, Yatse and Chorus2</a></h3><p>Choose a remote, a web interface or a maintenance dashboard by the task you need to do.</p></article><article class="card"><h3><a href="edit-kodi-addon-settings-browser/">How to edit Kodi add-on settings from a browser</a></h3><p>Find a setting on your phone or computer, check its scope and make a reversible change.</p></article><article class="card"><h3><a href="backup-restore-kodi-settings/">Back up and restore Kodi add-on settings</a></h3><p>Use profile-local configuration checkpoints, understand undo and know what a backup leaves out.</p></article></div></section>
+<section><h2>Want an assistant to help?</h2><p><a href="https://glasgowm148.github.io/nvidia-MCP/">nvidia-MCP</a> connects a compatible local MCP assistant to Kodi and the TV. Use Kodi Manager alone for browser maintenance, or connect the two for supported settings and diagnostics.</p><p><a href="https://github.com/glasgowm148/nvidia-MCP#one-prompt-for-both">Copy the guided setup prompt for both projects</a>. The agent handles computer setup while you approve TV permissions and keep credentials private.</p></section>
+</main>
+<footer><div class="shell"><p><a href="https://github.com/glasgowm148/kodi-manager">Source &amp; releases</a><a href="https://github.com/glasgowm148/kodi-manager/blob/main/docs/compatibility.md">Compatibility</a><a href="https://github.com/glasgowm148/kodi-manager/blob/main/SECURITY.md">Security</a><a href="privacy/">Site privacy</a><a href="sitemap.xml">Sitemap</a></p><p>Maintained by <a href="https://github.com/glasgowm148">glasgowm148</a>. Independent project; not affiliated with NVIDIA, the Kodi Foundation or the other projects mentioned. Free MIT-licensed preview software.</p></div></footer>
+</body>
+</html>
