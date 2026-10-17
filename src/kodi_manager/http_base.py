@@ -267,6 +267,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _auth(self, path):
         if path == "/api/bootstrap/status" and self._bootstrap_allowed():
             return True
+        if path == "/api/identity/proof":
+            return True  # Unauthenticated by design: it proves the server to a client, not the reverse.
         if not authorized(self.headers.get("Authorization"), self.state.config.get("auth_token")):
             self.err(401, "unauthorized", "Missing or invalid bearer token")
             return False

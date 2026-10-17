@@ -9,8 +9,9 @@ For service installation and profile tokens, use [setup](setup.md).
 
 ## Conventions
 
-- **Auth.** Every `/api/` request needs `Authorization: Bearer TOKEN`. The only exception is
-  `GET /api/bootstrap/status`, and only while legacy installer files exist (the portable release never
+- **Auth.** Every `/api/` request needs `Authorization: Bearer TOKEN`. The exceptions are
+  `POST /api/identity/proof` (it proves the server to a client and reveals nothing about the token) and
+  `GET /api/bootstrap/status`, only while legacy installer files exist (the portable release never
   creates them). A missing or wrong token answers `401` with code `unauthorized`. When **Allow LAN
   access** is on, requests from non-private addresses are refused with `403` `forbidden`.
 - **Host names.** Pages and API requests are served only when the `Host` header is `localhost` (or a
@@ -224,6 +225,7 @@ Searches are kept per Kodi profile (newest first, 50 at most, repeats moved to t
 
 | Method and path | Writes | Request | Response `data` |
 |---|---|---|---|
+| `POST /api/identity/proof` | read, no token | `{"nonce": "<32–128 lowercase hex>"}` | `{proof, version}`: `proof` is hex HMAC-SHA256 with the Manager token as key over `kodi-manager-identity-v1:` + nonce. Lets a client on the TV confirm it reached this Kodi Manager before sending the token; use a fresh random nonce each time. |
 | `POST /api/search/voice` | yes | `{"query": "the traitors"}` | `{opened: true, query, how}` (`how` is `bingie`, or the TMDb Helper add-on used) or `{opened: false, reason}` (`empty_query`, `no_search_handler`). Puts the text into the running skin's search as if typed there and records it. Bingie: its search window with `Skin.String(CustomSearchTerm)`; other skins: a TMDb Helper search in Videos. For a voice helper app on the TV. |
 | `GET /api/search/history` | – | – | `{entries[{query, at}]}` |
 | `POST /api/search/history/remove` | yes | `{"query": "…"}` or `{"all": true}` | `{removed}` |

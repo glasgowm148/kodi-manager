@@ -15,6 +15,7 @@ try:
     from .metrics import HISTORY_FILE, MetricsHistory
     from .diagnostics import CAPABILITIES, support_bundle
     from .search_history import HISTORY_FILE as SEARCH_HISTORY_FILE, SearchHistory, open_search
+    from .auth import identity_proof
 except ImportError:
     from http_base import ApiError, RequestHandler
     from version import VERSION
@@ -26,6 +27,7 @@ except ImportError:
     from metrics import HISTORY_FILE, MetricsHistory
     from diagnostics import CAPABILITIES, support_bundle
     from search_history import HISTORY_FILE as SEARCH_HISTORY_FILE, SearchHistory, open_search
+    from auth import identity_proof
 
 
 class StatusRoutes(RequestHandler):
@@ -165,6 +167,17 @@ class StatusRoutes(RequestHandler):
 
     def _search_history(self):
         return SearchHistory(translate(SEARCH_HISTORY_FILE))
+
+    def api_identity_proof(self):
+        """Unauthenticated: answer a client's nonce with HMAC-SHA256(token, context + nonce).
+
+        A helper app sends the nonce before it sends the token, and sends the token only if the
+        proof is right, so an app squatting on this port while Kodi is stopped never receives it.
+        """
+        proof = identity_proof(self.state.config.get("auth_token"), self.body().get("nonce"))
+        if proof is None:
+            raise ValueError("nonce must be 32-128 lowercase hex characters")
+        return {"proof": proof, "version": VERSION}
 
     def api_search_voice(self):
         """Put spoken (or any) text into the running skin's search, e.g. from a voice helper app."""

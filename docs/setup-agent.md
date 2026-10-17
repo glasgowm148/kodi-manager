@@ -45,8 +45,8 @@ or JSON editing tasks. Ask only for missing connection information or unavoidabl
 
 1. Check for an existing Manager installation and inspect its version/profile before replacing it.
    Preserve local changes and create an appropriate private backup for an authorized upgrade.
-2. Download `service.kodi.addonadmin-0.7.42.zip` and `SHA256SUMS` from the release's Assets at
-   [v0.7.42](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.42). Verify the ZIP checksum.
+2. Download `service.kodi.addonadmin-0.7.43.zip` and `SHA256SUMS` from the release's Assets at
+   [v0.7.43](https://github.com/glasgowm148/kodi-manager/releases/tag/v0.7.43). Verify the ZIP checksum.
    GitHub's Source code ZIP, Python wheel and tar.gz cannot be installed through Kodi.
    nvidia-MCP users can instead export its pinned older bundle (currently 0.7.23) with
    `nvidia-mcp --export-manager DIRECTORY`. That command checks the ZIP itself and creates no
@@ -65,7 +65,7 @@ to that asset's filename. A missing entry or mismatched digest means stop and do
 import hashlib
 from pathlib import Path
 
-name = "service.kodi.addonadmin-0.7.42.zip"
+name = "service.kodi.addonadmin-0.7.43.zip"
 entries = [line.split() for line in Path("SHA256SUMS").read_text().splitlines() if line.strip()]
 matches = [parts[0] for parts in entries if len(parts) == 2 and parts[1] == name]
 if len(matches) != 1:

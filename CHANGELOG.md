@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.43 — 2026-10-17
+
+- `POST /api/identity/proof {"nonce"}` (no token needed) answers with HMAC-SHA256 of the client's nonce under the Manager token. A helper app on the TV (the voice-search apps) checks this before it sends the token, so an app listening on the port while Kodi is stopped can no longer collect it. The proof reveals nothing about the token, and a proof seen earlier is useless because each request uses a fresh nonce.
+- Website guides: setting search is the dashboard's **Search settings** box (not the All add-ons filter); the backups section is **Single add-on backups**; the privacy page no longer lists sites the Kodi Manager site does not link to.
+
 ## 0.7.42 — 2026-10-15
 
 - Restoring the active skin: a snapshot without the skin's settings.xml no longer resets every live skin setting (it now leaves them alone and reports `no_settings_file`). Settings Kodi already has are set through JSON-RPC and saved once, instead of one Skin.* builtin each — every builtin also rewrites guisettings.xml on Kodi's GUI thread, so a large restore could freeze the TV. Settings the skin registered while running (not listed by `Settings.GetSkinSettings`) are checked through `Skin.String`/`Skin.HasSetting`, so they are no longer reported as failed after being applied.

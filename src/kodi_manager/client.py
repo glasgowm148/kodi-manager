@@ -11,7 +11,7 @@ from .operation_records import correlation, clean, next_step, REFUSALS
 READ_POSTS = frozenset({
     "/api/widgets/browse", "/api/widgets/suggestions", "/api/widgets/row-preview",
     "/api/widgets/layout/preview", "/api/pipeline/rescan", "/api/playback/test",
-    "/api/widget-cache/refresh",
+    "/api/widget-cache/refresh", "/api/identity/proof",
 })
 MAX_BYTES = 4_000_000
 
