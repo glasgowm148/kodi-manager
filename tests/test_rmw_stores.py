@@ -163,6 +163,30 @@ def test_interprocess_lock_excludes_another_open_file_description_in_this_proces
         os.close(fd)
 
 
+@pytest.mark.parametrize("alias", [False, True])
+@pytest.mark.parametrize("pathlike", [False, True])
+def test_interprocess_lock_uses_canonical_path(tmp_path, alias, pathlike):
+    fcntl = pytest.importorskip("fcntl")
+    target = tmp_path / "rows.json"
+    target.write_text("[]")
+    path = target
+    if alias:
+        path = tmp_path / "alias.json"
+        try:
+            path.symlink_to(target)
+        except OSError:
+            pytest.skip("Symlinks unavailable")
+    with fsutil.interprocess_lock(path if pathlike else str(path)):
+        # A separate open description models another Kodi interpreter.
+        fd = os.open(str(target) + ".lock", os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(fd)
+    assert not (tmp_path / "alias.json.lock").exists()
+
+
 def test_interprocess_lock_is_a_no_op_without_fcntl(tmp_path, monkeypatch):
     real_import = builtins.__import__
 

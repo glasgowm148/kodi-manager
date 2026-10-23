@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.44 — 2026-10-23 (candidate)
+
+- Canonicalize interprocess lock files so symlink aliases and Path inputs share the same lock and cannot lose concurrent store updates.
+- Document isolated offline verification and package builds.
+
 ## 0.7.43 — 2026-10-17
 
 - `POST /api/identity/proof {"nonce"}` (no token needed) answers with HMAC-SHA256 of the client's nonce under the Manager token. A helper app on the TV (the voice-search apps) checks this before it sends the token, so an app listening on the port while Kodi is stopped can no longer collect it. The proof reveals nothing about the token, and a proof seen earlier is useless because each request uses a fresh nonce.

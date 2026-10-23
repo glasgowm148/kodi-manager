@@ -33,7 +33,7 @@ _IPC_HELD = threading.local()
 
 @contextlib.contextmanager
 def interprocess_lock(path):
-    """Exclusive lock on ``path`` shared with other Kodi interpreters: flock on "<path>.lock".
+    """Exclusive lock shared with other Kodi interpreters: flock on "<realpath>.lock".
 
     Kodi runs each add-on script (the context menu, the service) in its own Python
     interpreter of one process, so :func:`path_lock` alone does not serialise them. flock
@@ -57,9 +57,11 @@ def interprocess_lock(path):
     fd = None
     try:
         import fcntl
-        directory = os.path.dirname(os.path.abspath(path))
+        # Use the same canonical path for identity and the on-disk lock.
+        # Aliases must not acquire separate locks in other interpreters.
+        directory = os.path.dirname(key)
         os.makedirs(directory, exist_ok=True)
-        fd = os.open(path + ".lock", os.O_RDWR | os.O_CREAT, 0o644)
+        fd = os.open(key + ".lock", os.O_RDWR | os.O_CREAT, 0o644)
         fcntl.flock(fd, fcntl.LOCK_EX)
     except (ImportError, OSError, AttributeError):
         if fd is not None:
