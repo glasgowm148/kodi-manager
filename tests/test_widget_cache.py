@@ -365,6 +365,34 @@ def test_refresher_waits_while_playing_and_after_playback_refreshes_progress(tmp
     assert r.tick() == 2
 
 
+def test_refresher_fetches_nothing_while_unattended_and_catches_up_on_return(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    cache.save(MOVIES, [], now=0)
+    rpc, clock, away = FakeRPC(listing("Up")), Clock(10 ** 6), [True]
+    r = wc.Refresher(cache, rpc, lambda: False, lambda v: None, clock=clock, is_unattended=lambda: away[0])
+    r.next_sweep = 0
+    r.playback_stopped()
+    for _ in range(3):
+        clock.t += 400  # several sweeps and the after-playback refreshes fall due
+        assert r.tick() == 0
+    assert rpc.calls == []
+    away[0] = False
+    r.next_sweep = clock.t + 10 ** 6  # the return itself must trigger the catch-up sweep
+    assert r.tick() >= 1 and rpc.calls
+
+
+def test_refresher_treats_a_failing_unattended_check_as_attended(tmp_path):
+    cache = wc.WidgetCache(str(tmp_path))
+    cache.save(MOVIES, [], now=0)
+    rpc = FakeRPC(listing("Up"))
+
+    def broken():
+        raise RuntimeError("no GUI")
+    r = wc.Refresher(cache, rpc, lambda: False, lambda v: None, clock=Clock(10 ** 6), is_unattended=broken)
+    r.next_sweep = 0
+    assert r.tick() == 1
+
+
 def test_refresher_keeps_old_rows_when_source_fails(tmp_path):
     cache = wc.WidgetCache(str(tmp_path))
     cache.save(MOVIES, [{"label": "Up", "file": "plugin://plugin.video.pov/?x=1"}], now=0)
