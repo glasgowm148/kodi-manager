@@ -116,8 +116,11 @@ item is never cut off. With 0, Kodi Manager uses Bingie's own limit
 - **Background work.** Refreshes run one row at a time, at most two rows per batch, with a
   10-second pause between batches. A batch stops starting new rows after 10 seconds; an
   in-flight provider request still needs to finish. Playback, dialogs and recent remote
-  input pause background work. Stale rows requested by the visible hub get queue priority.
-  Existing artwork and item counts are retained.
+  input pause background work. So does nobody watching (screensaver or display off, or no
+  remote input for an hour): each refresh runs the source add-on, and doing that all night
+  grows Kodi's memory for rows nobody sees. Stale rows are swept as soon as someone is back.
+  Stale rows requested by the visible hub get queue priority. Existing artwork and item
+  counts are retained.
 
 - **Context menus.** Listings are read through Kodi's JSON-RPC. Titles, artwork, ratings, cast,
   resume points, watched state and IDs are kept, but an add-on's own context menu is not. Kodi

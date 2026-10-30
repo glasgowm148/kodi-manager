@@ -19,6 +19,11 @@ class Refresher:
     (POV searching for sources) and no remote presses for a while. A failed or
     very short playback does not trigger a full refresh, and full refreshes
     are rate-limited.
+
+    While nobody is watching (``is_unattended``: screensaver, display off or
+    no input for an hour) nothing is fetched: each fetch runs the source
+    add-on, and doing that all night grows Kodi's memory for rows nobody
+    sees. The first tick after someone returns sweeps stale rows at once.
     """
 
     EVERYTHING_EVERY = 30 * 60   # at most one full refresh per 30 minutes
@@ -30,9 +35,12 @@ class Refresher:
     stop: threading.Event        # set by the service (service_workers.start_widget_refresher)
 
     def __init__(self, cache, jsonrpc, is_playing, bump, log=lambda msg: None, clock=time.time,
-                 external_reload=lambda: "", is_busy=lambda: False, sleep=None):
+                 external_reload=lambda: "", is_busy=lambda: False, sleep=None,
+                 is_unattended=lambda: False):
         self.cache, self.jsonrpc, self.is_playing, self.bump, self.log, self.clock = cache, jsonrpc, is_playing, bump, log, clock
         self.is_busy = is_busy
+        self.is_unattended = is_unattended
+        self.unattended = False
         self.sleep = sleep or (lambda seconds: None)
         self.next_work = clock()
         self.next_sweep = clock() + 20
@@ -65,10 +73,22 @@ class Refresher:
         except Exception:
             return False
 
+    def _away(self):
+        try:
+            return bool(self.is_unattended())
+        except Exception:
+            return False
+
     def tick(self, should_stop=lambda: False):
         if should_stop():
             return 0
         now = self.clock()
+        if self._away():
+            self.unattended = True
+            return 0
+        if self.unattended:
+            self.unattended = False
+            self.next_sweep = min(self.next_sweep, now)  # catch up on rows that went stale
         if not self._quiet() or now < self.next_work:
             return 0
         token = self.external_reload()

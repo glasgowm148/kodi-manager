@@ -30,6 +30,8 @@ except ImportError:
 BUSY_CONDITION = ("Player.HasMedia | Window.IsActive(busydialog) | Window.IsActive(busydialognocancel)"
                   " | Window.IsActive(progressdialog) | Window.IsActive(extendedprogressdialog)"
                   " | Window.IsActive(progress_media.xml) | System.HasModalDialog | !System.IdleTime(60)")
+# Nobody watching: rows refreshed now would go unseen (see Refresher).
+UNATTENDED_CONDITION = "System.ScreenSaverActive | System.DPMSActive | System.IdleTime(3600)"
 
 
 # Window(10000) properties widget add-ons bump after a library or Trakt sync;
@@ -106,7 +108,7 @@ def start_widget_refresher(kodi):
     refresher = Refresher(cache, jsonrpc_via(runtime), lambda: runtime.Player().isPlayingVideo(),
                           lambda value: set_property(RELOAD_PROPERTY, value), kodi.log,
                           external_reload=lambda: external_reload_token(xbmcgui.Window(10000)),
-                          is_busy=tv_busy)
+                          is_busy=tv_busy, is_unattended=tv_unattended)
     refresher.stop = threading.Event()
     refresher.sleep = refresher.stop.wait
     health = WidgetHealth(cache, set_property, lambda: xbmcgui.Dialog().notification(
@@ -136,6 +138,16 @@ def tv_busy():
         return bool(xbmc.getCondVisibility(BUSY_CONDITION))
     except Exception:
         return True
+
+
+def tv_unattended():
+    """True while nobody is watching (see UNATTENDED_CONDITION); False outside Kodi."""
+    if not xbmc:
+        return False
+    try:
+        return bool(xbmc.getCondVisibility(UNATTENDED_CONDITION))
+    except Exception:
+        return False
 
 
 def start_maintenance(kodi, is_busy=tv_busy, stopping=lambda: False):

@@ -2,6 +2,7 @@
 
 ## 0.7.44 — 2026-10-23 (candidate)
 
+- Widget rows are not refreshed while nobody is watching (screensaver or display off, or no remote input for an hour); each refresh runs the source add-on, and doing so all night grew Kodi's memory on the Shield. Stale rows are swept as soon as someone is back.
 - Canonicalize interprocess lock files so symlink aliases and Path inputs share the same lock and cannot lose concurrent store updates.
 - Document isolated offline verification and package builds.
 
